@@ -6,7 +6,6 @@ testjob:
     - mkdir ~/.julia && mkdir ~/.julia/v0.6 && ln -s $PWD ~/.julia/v0.6/GNSSSignals
   script:
     - julia -e 'Pkg.test("GNSSSignals", coverage=true)'
-  after_script:
     - julia -e 'Pkg.add("Coverage"); cd(Pkg.dir("GNSSSignals"));
       using Coverage; cl, tl = get_summary(process_folder());
       println("(", cl/tl*100, "%) covered")'
