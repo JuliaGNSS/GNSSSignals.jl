@@ -2,6 +2,7 @@ image: julia:0.6
 
 testjob:
   before_script:
+    - apt-get install -y bzip2
     - mkdir ~/.julia && mkdir ~/.julia/v0.6 && ln -s $PWD ~/.julia/v0.6/GNSSSignals
   script:
     - julia -e 'Pkg.test("GNSSSignals", coverage=true)'
