@@ -1,7 +1,7 @@
 """
 $(SIGNATURES)
 
-Returns functions to generate sampled code and code phase for the GPS L1 signal
+Returns functions to generate sampled code and code phase for the GPS L1 signal.
 # Examples
 ```julia-repl
 julia> gen_gpsl1_code, get_gpsl1_code_phase = init_gpsl1_codes()

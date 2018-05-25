@@ -9,8 +9,7 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Generates carrier.
-    `samples` is the range of samples, `f` the frequency, `φ₀` the phase and `f_s` the sampling frequency.
+    Generate carrier at sample points `samples` with frequency `f`, phase `φ₀` and sampling frequency `f_s`.
     # Examples
     ```julia-repl
     julia> gen_carrier(1:4000, 200, 10 * π / 180, 4e6)
@@ -25,8 +24,7 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Calculates carrier phase.
-    `sample` is the sample, `f` the frequency, `φ₀` the phase and `f_s` the sampling frequency.
+    Calculate carrier phase at sample point `sample` with frequency `f`, phase `φ₀` and sampling frequency `f_s`.
     # Examples
     ```julia-repl
     julia> get_carrier_phase(4000, 200, 10 * π / 180, 4e6)
@@ -39,9 +37,8 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Generates the sampled code for a given code.
-    `samples` is the range of samples, `f` the frequency, `φ₀` the phase, 
-    `f_s` the sampling frequency and `code` the code.
+    Generate sampled code at sample points `samples` with the code frequency `f`, code phase `φ₀` and sampling 
+    frequency `f_s`. The code is provided by `code`.
     # Examples
     ```julia-repl
     julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
@@ -56,9 +53,8 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Calculates the code phase.
-    `sample` is the sample, `f` the frequency, `φ₀` the phase, 
-    `f_s` the sampling frequency and `code_length` the length of the code.
+    Calculates the code phase at sample point `sample` with the code frequency `f`, code phase `φ₀`, sampling 
+    frequency `f_s` and code length `code_length`.
     # Examples
     ```julia-repl
     julia> get_sat_code_phase(4000, 1023e3, 2, 4e6, 1023)
@@ -71,8 +67,8 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Reads codes from a file.
-    `filename` is the filename including its path and `code_length` the length of the code.
+    Reads codes from a file with filename `filename` (including the path). The code length is provided 
+    by `code_length`.
     # Examples
     ```julia-repl
     julia> read_in_codes("/data/gpsl1codes.bin", 1023)
