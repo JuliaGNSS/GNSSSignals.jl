@@ -10,7 +10,7 @@ module GNSSSignals
     $(SIGNATURES)
 
     Generates carrier.
-    `samples` is the range of samples, `f` the frequency, `φ₀` the phase and f_s the sampling frequency.
+    `samples` is the range of samples, `f` the frequency, `φ₀` the phase and `f_s` the sampling frequency.
     # Examples
     ```julia-repl
     julia> gen_carrier(1:4000, 200, 10 * π / 180, 4e6)
@@ -26,7 +26,7 @@ module GNSSSignals
     $(SIGNATURES)
 
     Calculates carrier phase.
-    `sample` is the sample, `f` the frequency, `φ₀` the phase and f_s the sampling frequency.
+    `sample` is the sample, `f` the frequency, `φ₀` the phase and `f_s` the sampling frequency.
     # Examples
     ```julia-repl
     julia> get_carrier_phase(4000, 200, 10 * π / 180, 4e6)
@@ -41,7 +41,7 @@ module GNSSSignals
 
     Generates the sampled code for a given code.
     `samples` is the range of samples, `f` the frequency, `φ₀` the phase, 
-    f_s the sampling frequency and `code` the code.
+    `f_s` the sampling frequency and `code` the code.
     # Examples
     ```julia-repl
     julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
@@ -58,7 +58,7 @@ module GNSSSignals
 
     Calculates the code phase.
     `sample` is the sample, `f` the frequency, `φ₀` the phase, 
-    f_s the sampling frequency and `code_length` the length of the code.
+    `f_s` the sampling frequency and `code_length` the length of the code.
     # Examples
     ```julia-repl
     julia> get_sat_code_phase(4000, 1023e3, 2, 4e6, 1023)
