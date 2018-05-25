@@ -20,8 +20,8 @@ Pkg.clone("git@git.rwth-aachen.de:nav/GNSSSignals.jl.git")
 using GNSSSignals
 gen_sampled_code, get_code_phase = init_gpsl1_codes()
 sat_prn = 1
-code = gen_sampled_code(1:4000, 1023, 20, 4e6, sat_prn)
-code_phase = get_code_phase(4000, 1023, 20, 4e6)
+code = gen_sampled_code(1:4000, 1023e3, 20, 4e6, sat_prn)
+code_phase = get_code_phase(4000, 1023e3, 20, 4e6)
 carrier = gen_carrier(1:4000, 1e3, 20 * pi / 180, 4e6)
 carrier_phase = get_carrier_phase(4000, 1e3, 20 * pi / 180, 4e6)
 ```
