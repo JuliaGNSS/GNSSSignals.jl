@@ -45,8 +45,8 @@ module GNSSSignals
     ```
     """
     function gen_sat_code(samples, f, φ₀, f_s, code)
-        code_indices = floor.(Int16, f / f_s .* samples .+ φ₀)
-        code_indices .= 1 .+ mod.(code_indices - 1, length(code))
+        code_indices = floor.(Int16, f ./ f_s .* samples .+ φ₀)
+        code_indices .= 1.+ mod.(code_indices, length(code))
         code[code_indices]
     end
 
