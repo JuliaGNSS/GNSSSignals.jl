@@ -1,10 +1,11 @@
 module GNSSSignals
 
-    using Yeppp, DocStringExtensions
+    using Yeppp, DocStringExtensions, DataStructures
 
     export gen_carrier, get_carrier_phase, gen_sat_code, get_sat_code_phase, init_gpsl1_codes
 
     include("gpsl1.jl")
+    include("generateL5signals.jl")
 
     """
     $(SIGNATURES)
