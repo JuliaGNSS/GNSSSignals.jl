@@ -5,7 +5,7 @@ Generate L5 PRN satellite code withe the `initial_xb_code_states`.
 julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
 ```
 """
-    
+
 function gen_L5_I5_code(initial_xb_code_states)
     XA = CircularBuffer{Int}(13)
     XB = CircularBuffer{Int}(13)
@@ -13,6 +13,9 @@ function gen_L5_I5_code(initial_xb_code_states)
     append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     append!(XB, initial_xb_code_states)
     for i = 1:10230
+        if (XA in initial_xb_code_tests)
+            println(" XA this is ", XA, "on position: ", i)
+        end
         if (i == 8190)
             append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
             continue
@@ -20,12 +23,12 @@ function gen_L5_I5_code(initial_xb_code_states)
         if (i == 8191)
             append!(XB, initial_xb_code_states)
         end
-        xa = 1 + XA[9] + XA[10] + XA[12] + XA[13]
-        xb = 1 + XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]
-        new_value = (xa+xb) % 2
-        unshift!(XB, new_value)
-        unshift!(XA, new_value)
-        satellite_code[i] = new_value
+        xa = XA[9] + XA[10] + XA[12] + XA[13]
+        xb = XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]
+        output = (XA[13] + XB[13]) % 2
+        unshift!(XA, xa % 2)
+        unshift!(XB, xb % 2)
+        satellite_code[i] = 2 * output - 1
     end
     return satellite_code
 end
@@ -42,7 +45,7 @@ julia> gen_gpsl1_code(samples, f, φ₀, f_s, sat)
 julia> get_code_phase(sample, f, φ₀, f_s)
 ```
 """
-function init_gpsl5_code(sat)
+function init_gpsl5_code()
     code_length = 10230
     #=These are the initial XB Code States for the I5 code, initial_xb_code_states[1] is a 1 3 chip array which represent the shift register values
     initial_xb_code_states[3][4] represents the 4th shift register of the GPS Signal with PRN numver 3  =#
@@ -85,8 +88,11 @@ function init_gpsl5_code(sat)
         [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0],    #36
         [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0]     #37
     ]
-    satellite_code = gen_L5_I5_code(initial_xb_code_states[sat])
-    gen_sampled_code(samples, f, φ₀, f_s) = gen_sat_code(samples, f, φ₀, f_s, satellite_code)
+    codes = zeros(37*code_length)
+    for i = 1:37
+        codes[(code_length*(i-1) + 1):(code_length * i)] = gen_L5_I5_code(initial_xb_code_states[i])
+    end
+    gen_sampled_code(samples, f, φ₀, f_s, sat) = gen_sat_code(samples, f, φ₀, f_s, codes[(code_length * (sat-1) + 1):(code_length * sat)])
     get_sampled_code_phase(sample, f, φ₀, f_s) = get_sat_code_phase(sample, f, φ₀, f_s, code_length)
     gen_sampled_code, get_sampled_code_phase
 end
