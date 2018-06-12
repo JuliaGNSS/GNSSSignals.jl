@@ -1,6 +1,25 @@
 """
 $(SIGNATURES)
 
+Reads codes from a file with filename `filename` (including the path). The code length is provided 
+by `code_length`.
+# Examples
+```julia-repl
+julia> read_in_codes("/data/gpsl1codes.bin", 1023)
+```
+"""
+function read_in_codes(filename, code_length)
+    file_stats = stat(filename)
+    num_prn_codes = floor(Int, file_stats.size / code_length)
+    codes = open(filename) do file_stream
+        float(read(file_stream, Int8, code_length, num_prn_codes))
+    end
+end 
+
+
+"""
+$(SIGNATURES)
+
 Returns functions to generate sampled code and code phase for the GPS L1 signal.
 # Examples
 ```julia-repl
