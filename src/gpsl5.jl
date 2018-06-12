@@ -1,13 +1,12 @@
 """
-Generate L5 satellite code withe the  `initial_xb_code_states` with the code phase `φ₀`.
+Generate L5 PRN satellite code withe the `initial_xb_code_states`.
 # Examples
 ```julia-repl
 julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
 ```
 """
     
-function gen_L5_I5_code(initial_xb_code_states, φ₀)
-    # ToDo include phase offset into calculations
+function gen_L5_I5_code(initial_xb_code_states)
     XA = CircularBuffer{Int}(13)
     XB = CircularBuffer{Int}(13)
     satellite_code = zeros(10230)
@@ -86,7 +85,7 @@ function init_gpsl5_code(sat)
         [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0],    #36
         [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0]     #37
     ]
-    satellite_code = gen_L5_I5_code(initial_xb_code_states[sat], phase)
+    satellite_code = gen_L5_I5_code(initial_xb_code_states[sat])
     gen_sampled_code(samples, f, φ₀, f_s) = gen_sat_code(samples, f, φ₀, f_s, satellite_code)
     get_sampled_code_phase(sample, f, φ₀, f_s) = get_sat_code_phase(sample, f, φ₀, f_s, code_length)
     gen_sampled_code, get_sampled_code_phase
