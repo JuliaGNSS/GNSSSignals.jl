@@ -1,3 +1,18 @@
+@testset "shift_registers" begin
+reg_xb = GNSSSignals.init_shift_register([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                                                    XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
+                                                    )
+    registers = []
+    for i = 1:8191
+        reg_xb, output, registers = reg_xb()
+        if (i in [266, 804, 1559, 3471, 5343])
+            @test registers in [ [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0] , [0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0], [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1], [1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1] ]
+        end
+    end
+    @test registers == [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+end
+
 @testset "GPS L5" begin
 gen_sampled_code, get_code_phase = @inferred GNSSSignals.init_gpsl5_code()
 

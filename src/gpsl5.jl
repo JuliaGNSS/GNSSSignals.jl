@@ -1,3 +1,56 @@
+function init_shift_register(init_registers, update_fkt)
+    init_circ_buffer = CircularBuffer{Int}(13)
+    append!(init_circ_buffer, init_registers)
+    () -> _shift_reg(init_circ_buffer, update_fkt)
+end
+
+function _shift_reg(registers, update_func)
+        output = registers[13]
+        update = update_func(registers)
+        unshift!(registers, update)
+    () -> _shift_reg(registers, update_func), output, registers
+end
+
+function _shift_reg(registers, update_func)
+    () -> begin
+        output = registers[13]
+        update = update_func(registers)
+        unshift!(registers, update)
+        output, registers 
+    end
+end
+
+function gen_L5_I5_code_v2(initial_xb_code_states)
+    reg_xa = init_shift_register(
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        XA -> (XA[9] + XA[10] + XA[12] + XA[13]) % 2
+        )
+    reg_xb = init_shift_register(
+        initial_xb_code_states,
+        XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
+        )
+    satellite_code = zeros(10230)
+    for i = 1:10230
+        #reg_xa, output_xa = reg_xa()
+        #reg_xb, output_xb = reg_xb()
+        output_xa, = reg_xa()
+        output_xb, = reg_xb()
+        satellite_code[i] =  2* ((output_xa + output_xb) % 2) - 1
+        if (i == 8190)
+            reg_xa = init_shift_register(
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            XA -> (XA[9] + XA[10] + XA[12] + XA[13]) % 2
+            )
+        end
+        if (i == 8191)
+            reg_xb = init_shift_register(initial_xb_code_states,
+                                 XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
+                                 )
+        end
+        
+    end
+    return satellite_code
+end
 """
 Generate L5 PRN satellite code withe the `initial_xb_code_states`.
 # Examples
@@ -13,22 +66,18 @@ function gen_L5_I5_code(initial_xb_code_states)
     append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     append!(XB, initial_xb_code_states)
     for i = 1:10230
-        if (XA in initial_xb_code_tests)
-            println(" XA this is ", XA, "on position: ", i)
-        end
-        if (i == 8190)
-            append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
-            continue
-        end
-        if (i == 8191)
-            append!(XB, initial_xb_code_states)
-        end
         xa = XA[9] + XA[10] + XA[12] + XA[13]
         xb = XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]
         output = (XA[13] + XB[13]) % 2
         unshift!(XA, xa % 2)
         unshift!(XB, xb % 2)
         satellite_code[i] = 2 * output - 1
+        if (i == 8190)
+            append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+        end
+        if (i == 8191)
+            append!(XB, initial_xb_code_states)
+        end
     end
     return satellite_code
 end
@@ -90,7 +139,7 @@ function init_gpsl5_code()
     ]
     codes = zeros(37*code_length)
     for i = 1:37
-        codes[(code_length*(i-1) + 1):(code_length * i)] = gen_L5_I5_code(initial_xb_code_states[i])
+        codes[(code_length * (i-1) + 1):(code_length * i)] = gen_L5_I5_code(initial_xb_code_states[i])
     end
     gen_sampled_code(samples, f, φ₀, f_s, sat) = gen_sat_code(samples, f, φ₀, f_s, codes[(code_length * (sat-1) + 1):(code_length * sat)])
     get_sampled_code_phase(sample, f, φ₀, f_s) = get_sat_code_phase(sample, f, φ₀, f_s, code_length)
