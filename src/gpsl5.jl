@@ -1,5 +1,5 @@
 
-function init_shift_reg(init_registers, update_func)
+function init_shift_register(init_registers, update_func)
     registers = CircularBuffer{Int}(13)
     append!(registers, init_registers)
     () -> begin
