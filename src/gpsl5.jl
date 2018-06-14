@@ -1,17 +1,7 @@
-function init_shift_register(init_registers, update_fkt)
-    init_circ_buffer = CircularBuffer{Int}(13)
-    append!(init_circ_buffer, init_registers)
-    () -> _shift_reg(init_circ_buffer, update_fkt)
-end
 
-function _shift_reg(registers, update_func)
-        output = registers[13]
-        update = update_func(registers)
-        unshift!(registers, update)
-    () -> _shift_reg(registers, update_func), output, registers
-end
-
-function _shift_reg(registers, update_func)
+function init_shift_reg(init_registers, update_func)
+    registers = CircularBuffer{Int}(13)
+    append!(registers, init_registers)
     () -> begin
         output = registers[13]
         update = update_func(registers)
