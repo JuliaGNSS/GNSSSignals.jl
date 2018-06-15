@@ -1,15 +1,28 @@
 @testset "shift_registers" begin
-reg_xb = GNSSSignals.init_shift_register([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                                                    XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
-                                                    )
-    registers = []
+XB = CircularBuffer{Int}(13)
+append!(XB, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+registers = 0
     for i = 1:8191
-        reg_xb, output, registers = reg_xb()
+        output_xb, registers = GNSSSignals.shift_register_mit_uebergabe(XB, XB -> XB[1] ⊻ XB[3] ⊻ XB[4] ⊻ XB[6] ⊻ XB[7] ⊻ XB[8] ⊻ XB[12] ⊻ XB[13])
         if (i in [266, 804, 1559, 3471, 5343])
             @test registers in [ [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0], [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0] , [0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0], [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1], [1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1] ]
         end
     end
     @test registers == [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+
+end
+
+@testset "shift_registers_int" begin
+registers = 8191
+for i = 1:8191
+    output_xb, registers = GNSSSignals.shift_register_int_freitag(registers, [1,3,4,6,7,8,12,13])
+    results = [ 1258, 514 , 514, 7298, 7955]
+    if (i in [266, 804, 1559, 3471, 5343])
+        @test registers in results
+    end
+end
+@test registers == 8191
+
 
 end
 

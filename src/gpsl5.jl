@@ -1,46 +1,65 @@
-
-function init_shift_register(init_registers, update_func)
-    registers = CircularBuffer{Int}(13)
-    append!(registers, init_registers)
-    () -> begin
-        output = registers[13]
-        update = update_func(registers)
-        unshift!(registers, update)
-        output, registers 
+function darstellen(integer)
+    a = zeros(13)
+    for i = 1:13
+        b = (integer >> (i-1)) & 1
+        a[14-i] = b
     end
+    a
 end
 
-function gen_L5_I5_code_v2(initial_xb_code_states)
-    reg_xa = init_shift_register(
-        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        XA -> (XA[9] + XA[10] + XA[12] + XA[13]) % 2
-        )
-    reg_xb = init_shift_register(
-        initial_xb_code_states,
-        XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
-        )
-    satellite_code = zeros(10230)
+function shift_register_mit_uebergabe(register, update_func)
+    output = register[13]
+    update = update_func(register)
+    unshift!(register, update)
+    output, register 
+end
+
+function shift_register_int_freitag(register, indices)
+    update = 0
+    for i in indices
+        update = update ⊻ ((register >> (13 - i)) & 1)
+    end
+    register & 1, (register >> 1) + 2^12 * update
+end
+
+function gen_L5_I5_code_with_ints_freitag(initial_xb_code_states)
+    XA = 8191 # int with 3 leading zeros and then 13*1
+    XB = 0
+    XB = initial_xb_code_states' * [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    satellite_code = zeros(Int8, 10230)
+    XA_indices = [9,10,12,13]
+    XB_indices = [1,3,4,6,7,8,12,13]
     for i = 1:10230
-        #reg_xa, output_xa = reg_xa()
-        #reg_xb, output_xb = reg_xb()
-        output_xa, = reg_xa()
-        output_xb, = reg_xb()
-        satellite_code[i] =  2* ((output_xa + output_xb) % 2) - 1
+        output_xa, XA = shift_register_int_freitag(XA, XA_indices)
+        output_xb, XB = shift_register_int_freitag(XA, XB_indices)
+        satellite_code[i] =  2 * (output_xa ⊻ output_xb) - 1
         if (i == 8190)
-            reg_xa = init_shift_register(
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            XA -> (XA[9] + XA[10] + XA[12] + XA[13]) % 2
-            )
+            XA = 8191
         end
-        if (i == 8191)
-            reg_xb = init_shift_register(initial_xb_code_states,
-                                 XB -> (XB[1] + XB[3] + XB[4] + XB[6] + XB[7] + XB[8] + XB[12] + XB[13]) % 2
-                                 )
-        end
-        
     end
     return satellite_code
 end
+
+
+function gen_L5_I5_code_with_param_and_circular_buffer(initial_xb_code_states)
+    XA = CircularBuffer{Int}(13)
+    XB = CircularBuffer{Int}(13)
+    satellite_code = zeros(10230)
+    append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+    append!(XB, initial_xb_code_states)
+    XA -> (XA[9] ⊻ XA[10] ⊻ XA[12] ⊻ XA[13])
+    satellite_code = zeros(10230)
+    for i = 1:10230
+        output_xa, XA = shift_register_mit_uebergabe(XA, XA -> XA[9] ⊻ XA[10] ⊻ XA[12] ⊻ XA[13])
+        output_xb, XB = shift_register_mit_uebergabe(XB, XB -> XB[1] ⊻ XB[3] ⊻ XB[4] ⊻ XB[6] ⊻ XB[7] ⊻ XB[8] ⊻ XB[12] ⊻ XB[13])
+        satellite_code[i] =  2* (output_xa ⊻ output_xb) - 1
+        if (i == 8190)
+            append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+        end
+        
+    end
+end
+
 """
 Generate L5 PRN satellite code withe the `initial_xb_code_states`.
 # Examples
@@ -65,13 +84,29 @@ function gen_L5_I5_code(initial_xb_code_states)
         if (i == 8190)
             append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
         end
-        if (i == 8191)
-            append!(XB, initial_xb_code_states)
-        end
     end
     return satellite_code
 end
 
+function gen_L5_I5_code_bool_without_extern_func(initial_xb_code_states)
+    XA = BitArray([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+    XB = BitArray(initial_xb_code_states)
+    satellite_code = falses(10230)
+    for i = 1:10230
+        xa = XA[9] ⊻ XA[10] ⊻ XA[12] ⊻ XA[13]
+        xb = XB[1] ⊻ XB[3] ⊻ XB[4] ⊻ XB[6] ⊻ XB[7] ⊻ XB[8] ⊻ XB[12] ⊻ XB[13]
+        output = (XA[13] ⊻ XB[13])
+        XA >> 1
+        XA[1] = xa
+        XB >> 1
+        XB[1] = xb
+        satellite_code[i] = 2 * output - 1
+        if (i == 8190)
+            XA = BitArray([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+        end
+    end
+    return satellite_code
+end
 
 """
 $(SIGNATURES)
