@@ -19,13 +19,12 @@ function shift_register_int_freitag(register, indices)
     for i in indices
         update = update ⊻ ((register >> (13 - i)) & 1)
     end
-    register & 1, (register >> 1) + 2^12 * update
+    (register & 1), (register >> 1) + 2^12 * update
 end
 
 function gen_L5_I5_code_with_ints_freitag(initial_xb_code_states)
     XA = 8191 # int with 3 leading zeros and then 13*1
-    XB = 0
-    XB = initial_xb_code_states' * [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    XB = initial_xb_code_states' * [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1]
     satellite_code = zeros(Int8, 10230)
     XA_indices = [9,10,12,13]
     XB_indices = [1,3,4,6,7,8,12,13]
@@ -40,15 +39,12 @@ function gen_L5_I5_code_with_ints_freitag(initial_xb_code_states)
     return satellite_code
 end
 
-
 function gen_L5_I5_code_with_param_and_circular_buffer(initial_xb_code_states)
     XA = CircularBuffer{Int}(13)
     XB = CircularBuffer{Int}(13)
-    satellite_code = zeros(10230)
     append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     append!(XB, initial_xb_code_states)
-    XA -> (XA[9] ⊻ XA[10] ⊻ XA[12] ⊻ XA[13])
-    satellite_code = zeros(10230)
+    satellite_code = zeros(Int8, 10230)
     for i = 1:10230
         output_xa, XA = shift_register_mit_uebergabe(XA, XA -> XA[9] ⊻ XA[10] ⊻ XA[12] ⊻ XA[13])
         output_xb, XB = shift_register_mit_uebergabe(XB, XB -> XB[1] ⊻ XB[3] ⊻ XB[4] ⊻ XB[6] ⊻ XB[7] ⊻ XB[8] ⊻ XB[12] ⊻ XB[13])
@@ -71,7 +67,7 @@ julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
 function gen_L5_I5_code(initial_xb_code_states)
     XA = CircularBuffer{Int}(13)
     XB = CircularBuffer{Int}(13)
-    satellite_code = zeros(10230)
+    satellite_code = zeros(Int8, 10230)
     append!(XA, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     append!(XB, initial_xb_code_states)
     for i = 1:10230

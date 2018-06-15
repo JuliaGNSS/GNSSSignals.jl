@@ -16,14 +16,12 @@ end
 registers = 8191
 for i = 1:8191
     output_xb, registers = GNSSSignals.shift_register_int_freitag(registers, [1,3,4,6,7,8,12,13])
-    results = [ 1258, 514 , 514, 7298, 7955]
+    results = [2788, 2056 , 3322, 2087, 6431]
     if (i in [266, 804, 1559, 3471, 5343])
         @test registers in results
     end
 end
 @test registers == 8191
-
-
 end
 
 @testset "GPS L5" begin
