@@ -54,6 +54,7 @@ function gen_L5_I5_code_with_param_and_circular_buffer(initial_xb_code_states)
         end
         
     end
+    satellite_code
 end
 
 """
