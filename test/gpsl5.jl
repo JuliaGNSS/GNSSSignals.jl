@@ -11,7 +11,7 @@ end
 end
 
 @testset "GPS L5" begin
-gen_sampled_code, get_code_phase = @inferred GNSSSignals.init_gpsl5_i5_code()
+gen_sampled_code, get_code_phase = @inferred GNSSSignals.init_gpsl5_code()
 
 code = @inferred gen_sampled_code(0:10229, 10230, 0, 10230, 1)
 power = code' * code / 10230

@@ -77,7 +77,7 @@ julia> gen_gpsi5_code(samples, f, φ₀, f_s, sat)
 julia> get_i5_code_phase(sample, f, φ₀, f_s)
 ```
 """
-function init_gpsl5_i5_code()
+function init_gpsl5_code()
     code_length = 10230
     #=These are the initial XB Code States for the I5 code, initial_xb_code_states[1] is a 1 3 chip array which represent the shift register values
     initial_xb_code_states[3][4] represents the 4th shift register of the GPS Signal with PRN numver 3  =#
