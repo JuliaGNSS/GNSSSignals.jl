@@ -2,7 +2,8 @@
 gen_sampled_code, get_code_phase = @inferred GNSSSignals.init_gpsl1_codes()
 
 code = @inferred gen_sampled_code(0:1022, 1023, 0, 1023, 1)
-power = code' * code / 1023
+f_code = float(code)
+power = f_code' * f_code / 1023
 @test power ≈ 1
 @test code == SAT1_CODE
 

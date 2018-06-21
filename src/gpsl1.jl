@@ -12,7 +12,7 @@ function read_in_codes(filename, code_length)
     file_stats = stat(filename)
     num_prn_codes = floor(Int, file_stats.size / code_length)
     codes = open(filename) do file_stream
-        float(read(file_stream, Int8, code_length, num_prn_codes))
+        read(file_stream, Int8, code_length, num_prn_codes)
     end
 end 
 
