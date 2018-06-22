@@ -111,7 +111,28 @@ end
 """
 $(SIGNATURES)
 
-Returns functions to generate sampled code and code phase for the GPS L5 (I5) signal.
+Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,  each ⊻   with one bit of the 10bit Neuman-Hofman sequence 0000110101.
+
+# Examples
+```julia-repl
+julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
+julia> gen_neuman_hofman_sequence(initial_states_PRN_num_1_I)
+```
+"""
+
+function gen_neuman_hofman_sequence(initial_xb_code_states)
+    satellite_code = gen_l5_code(initial_xb_code_states) # = satellite_code .⊻ 0
+    neg_sat_code = satellite_code .* Int8(-1) # .⊻ 1 if the array would be with 0 and 1 instead of -1, 1
+    # 10 digit NH code 0000110101
+    nh_satellite_code = vcat(satellite_code, satellite_code, satellite_code, satellite_code, #0000
+     neg_sat_code, neg_sat_code, satellite_code,  #110
+      neg_sat_code, satellite_code, neg_sat_code) #101
+end
+
+"""
+$(SIGNATURES)
+
+Returns functions to generate sampled code and code phase for the GPS L5 (I5) signal, with the Neuman-Hofman-Code already applied.
 # Examples
 ```julia-repl
 julia> gen_gpsi5_code, get_i5_code_phase = init_gpsl5_i5_codes()
@@ -120,20 +141,9 @@ julia> get_i5_code_phase(sample, f, φ₀, f_s)
 ```
 """
 
-function gen_neuman_hofman_sequence(initial_xb_code_states)
-    satellite_code = gen_l5_code(initial_xb_code_states) # = satellite_code .⊻ 0
-    ones_sat_code = 1 .⊻ satellite_code
-    # 10 digit NH code 0000110101
-    nh_satellite_code = vcat(satellite_code, satellite_code, satellite_code, satellite_code, #0000
-     ones_sat_code, ones_sat_code, satellite_code,  #110
-      ones_sat_code, satellite_code, ones_sat_code) #101
-
-end
-
 function init_gpsl5_code()
     code_length = 102300
-    codes = zeros(Int8, 102300*37)
-    codes = mapreduce(sat -> gen_neuman_hofman_sequence(INITIAL_XB_CODE_STATES[sat]), hcat, 1:37)
+    codes = mapreduce(sat -> gen_neuman_hofman_sequence(INITIAL_XB_CODE_STATES[sat]), hcat, 1:37)::Array{Int8, 2}
     gen_sampled_code(samples, f, φ₀, f_s, sat) = gen_sat_code(samples, f, φ₀, f_s, codes[:,sat])
     get_sampled_code_phase(sample, f, φ₀, f_s) = get_sat_code_phase(sample, f, φ₀, f_s, code_length)
     gen_sampled_code, get_sampled_code_phase
