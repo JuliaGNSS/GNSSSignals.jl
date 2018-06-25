@@ -121,7 +121,7 @@ julia> l5_code_with_neuman_hofman = add_neuman_hofman_code(gen_l5_code(initial_s
 """
 
 function add_neuman_hofman_code(l5_code)
-    vec(l5_code .* Vector{Int8}([-1, -1, -1, -1, 1, 1, -1, 1, -1, 1])')
+    vec(l5_code .* Vector{Int8}([1, 1, 1, 1, -1, -1, 1, -1, 1, -1])')
 end
 
 """
