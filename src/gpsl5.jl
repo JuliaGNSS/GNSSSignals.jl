@@ -116,17 +116,12 @@ Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,  each ⊻
 # Examples
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
-julia> gen_neuman_hofman_sequence(initial_states_PRN_num_1_I)
+julia> l5_code_with_neuman_hofman = add_neuman_hofman_code(gen_l5_code(initial_states_PRN_num_1_I))
 ```
 """
 
-function gen_neuman_hofman_sequence(initial_xb_code_states)
-    satellite_code = gen_l5_code(initial_xb_code_states) # = satellite_code .⊻ 0
-    neg_sat_code = satellite_code .* Int8(-1) # .⊻ 1 if the array would be with 0 and 1 instead of -1, 1
-    # 10 digit NH code 0000110101
-    nh_satellite_code = vcat(satellite_code, satellite_code, satellite_code, satellite_code, #0000
-     neg_sat_code, neg_sat_code, satellite_code,  #110
-      neg_sat_code, satellite_code, neg_sat_code) #101
+function add_neuman_hofman_code(l5_code)
+    vec(l5_code .* Vector{Int8}([-1, -1, -1, -1, 1, 1, -1, 1, -1, 1])')
 end
 
 """
@@ -143,7 +138,7 @@ julia> get_i5_code_phase(sample, f, φ₀, f_s)
 
 function init_gpsl5_code()
     code_length = 102300
-    codes = mapreduce(sat -> gen_neuman_hofman_sequence(INITIAL_XB_CODE_STATES[sat]), hcat, 1:37)::Array{Int8, 2}
+    codes = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat])), hcat, 1:37)::Array{Int8, 2}
     gen_sampled_code(samples, f, φ₀, f_s, sat) = gen_sat_code(samples, f, φ₀, f_s, codes[:,sat])
     get_sampled_code_phase(sample, f, φ₀, f_s) = get_sat_code_phase(sample, f, φ₀, f_s, code_length)
     gen_sampled_code, get_sampled_code_phase
