@@ -26,9 +26,9 @@ carrier = gen_carrier(1:4000, 1e3, 20 * pi / 180, 4e6)
 carrier_phase = get_carrier_phase(4000, 1e3, 20 * pi / 180, 4e6)
 
 sat_prn = 4
-gen_gpsi5_code, get_i5_code_phase = init_gpsl5_i5_codes()
-gen_gpsi5_code(1:10230, 1023e4, 20, 4e6, sat_prn)
-get_i5_code_phase(10230, 1023e4, 20, 4e6)
+gen_gps_code, get_code_phase = init_gpsl5_codes()
+gen_gps_code(1:10230, 1023e4, 20, 4e6, sat_prn)
+get_code_phase(10230, 1023e4, 20, 4e6)
 ```
 
 ## Todo
