@@ -136,7 +136,7 @@ julia> get_i5_code_phase(sample, f, φ₀, f_s)
 ```
 """
 
-function init_gpsl5_code()
+function init_gpsl5_codes()
     code_length = 102300
     codes = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat])), hcat, 1:37)::Array{Int8, 2}
     gen_sampled_code(samples, f, φ₀, f_s, sat) = gen_sat_code(samples, f, φ₀, f_s, codes[:,sat])

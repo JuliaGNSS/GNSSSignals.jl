@@ -11,7 +11,7 @@
 end
 
 @testset "GPS L5" begin
-    gen_sampled_code, get_code_phase =  GNSSSignals.init_gpsl5_code()
+    gen_sampled_code, get_code_phase =  GNSSSignals.init_gpsl5_codes()
     power = 0.0
     code =  @inferred gen_sampled_code(0:10229, 10230, 0, 10230, 1)
     f_code = float(code)
@@ -26,7 +26,7 @@ end
 end 
 
 @testset "Neuman sequence" begin
-    gen_sampled_code, get_code_phase =  GNSSSignals.init_gpsl5_code()
+    gen_sampled_code, get_code_phase =  GNSSSignals.init_gpsl5_codes()
     code = gen_sampled_code(0:103199, 10230, 0, 10230, 1)
     satellite_code = code[1:10230]
     NH_code = [0,0,0,0,1,1,0,1,0,1]
