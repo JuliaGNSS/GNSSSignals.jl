@@ -8,7 +8,8 @@ module GNSSSignals
         gen_code,
         calc_code_phase,
         GPSL1,
-        GPSL5
+        GPSL5,
+        AbstractGNSSSystem
 
     abstract type AbstractGNSSSystem end
 
