@@ -1,11 +1,11 @@
-image: julia:0.6
+image: julia:0.7
 
 testjob:
   before_script:
     - apt-get update && apt-get install bzip2
-    - mkdir ~/.julia && mkdir ~/.julia/v0.6 && ln -s $PWD ~/.julia/v0.6/GNSSSignals
+    - julia -e "using Pkg; Pkg.add(PackageSpec(url=\"$PWD\"))"
   script:
-    - julia -e 'Pkg.test("GNSSSignals", coverage=true)'
-    - julia -e 'Pkg.add("Coverage"); cd(Pkg.dir("GNSSSignals"));
+    - julia -e 'using Pkg; Pkg.test("GNSSSignals", coverage=true)'
+    - julia -e 'using Pkg; Pkg.add("Coverage");
       using Coverage; cl, tl = get_summary(process_folder());
       println("(", cl/tl*100, "%) covered")'
