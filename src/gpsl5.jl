@@ -119,7 +119,6 @@ julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
 julia> l5_code_with_neuman_hofman = add_neuman_hofman_code(gen_l5_code(initial_states_PRN_num_1_I))
 ```
 """
-
 function add_neuman_hofman_code(l5_code)
     vec(l5_code .* Vector{Int8}([1, 1, 1, 1, -1, -1, 1, -1, 1, -1])')
 end
@@ -135,7 +134,6 @@ julia> gen_gpsi5_code(samples, f, φ₀, f_s, sat)
 julia> get_i5_code_phase(sample, f, φ₀, f_s)
 ```
 """
-
 function GPSL5()
     code_length = 102300
     codes = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat])), hcat, 1:37)::Array{Int8, 2}
