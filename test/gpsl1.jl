@@ -2,7 +2,7 @@
     gps_l1 = @inferred GPSL1()
 
     code = @inferred gen_code(gps_l1, 0:1022, 1023, 0, 1023, 1)
-    power = code.' * code / 1023
+    power = code' * code / 1023
     @test power ≈ 1
     @test code == SAT1_CODE
 

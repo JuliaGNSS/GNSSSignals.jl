@@ -2,7 +2,7 @@ module GNSSSignals
 
     using Yeppp, DocStringExtensions, DataStructures
 
-    export 
+    export
         gen_carrier,
         get_carrier_phase,
         gen_code,
@@ -14,14 +14,14 @@ module GNSSSignals
     abstract type AbstractGNSSSystem end
 
     struct GPSL1 <: AbstractGNSSSystem
-        codes::Array{Int8, 2}
+        codes::Array{Float64, 2}
         code_length::Int
         code_freq::Float64
         center_freq::Float64
     end
 
     struct GPSL5 <: AbstractGNSSSystem
-        codes::Array{Int8, 2}
+        codes::Array{Float64, 2}
         code_length::Int
         code_freq::Float64
         center_freq::Float64
@@ -31,7 +31,7 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Reads codes from a file with filename `filename` (including the path). The code length is provided 
+    Reads codes from a file with filename `filename` (including the path). The code length is provided
     by `code_length`.
     # Examples
     ```julia-repl
@@ -42,9 +42,9 @@ module GNSSSignals
         file_stats = stat(filename)
         num_prn_codes = floor(Int, file_stats.size / code_length)
         codes = open(filename) do file_stream
-            read(file_stream, Int8, code_length, num_prn_codes)
+            read!(file_stream, Array{Int8}(undef, code_length, num_prn_codes))
         end
-    end 
+    end
 
     include("gpsl1.jl")
     include("gpsl5.jl")

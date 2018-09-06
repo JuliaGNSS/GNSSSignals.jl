@@ -13,15 +13,15 @@ end
 @testset "GPS L5" begin
     gps_l5 = GPSL5()
     code = @inferred gen_code(gps_l5, 0:10229, 10230, 0, 10230, 1)
-    power = code.' * code / 10230
-    @test power == 1 
+    power = code' * code / 10230
+    @test power == 1
     @test code == L5_SAT1_Code
 
     early = @inferred gen_code(gps_l5, 1:40920, 1023e4, 3.5, 4 * 1023e4, 2)
     prompt = @inferred gen_code(gps_l5, 1:40920, 1023e4, 4, 4 * 1023e4, 2)
     late = @inferred gen_code(gps_l5, 1:40920, 1023e4, 4.5, 4 * 1023e4, 2)
     @test early' * prompt == late' * prompt
-end 
+end
 
 @testset "Neuman sequence" begin
     gps_l5 = GPSL5()
