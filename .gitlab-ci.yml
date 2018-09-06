@@ -5,7 +5,6 @@ testjob:
     - apt-get update && apt-get install bzip2
     - julia -e "using Pkg; Pkg.add(PackageSpec(url=\"$PWD\"))"
   script:
-    - julia -e 'using Pkg; Pkg.test("GNSSSignals", coverage=true)'
-    - julia -e 'using Pkg; Pkg.add("Coverage");
+    - julia -e 'using Pkg; Pkg.add("Coverage"); Pkg.test("GNSSSignals", coverage=true)';
       using Coverage; cl, tl = get_summary(process_folder());
       println("(", cl/tl*100, "%) covered")'
