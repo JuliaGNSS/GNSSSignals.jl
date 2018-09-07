@@ -3,7 +3,7 @@ image: julia:0.7
 testjob:
   before_script:
     - apt-get update && apt-get install bzip2
-    - julia -e "using Pkg; Pkg.add(PackageSpec(url=\"$PWD\"))"
+    - julia -e "using Pkg; Pkg.develop(PackageSpec(url=pwd()))"
   script:
     - julia -e 'using Pkg; Pkg.add("Coverage"); Pkg.test("GNSSSignals", coverage=true);
       using Coverage; cl, tl = get_summary(process_folder());
