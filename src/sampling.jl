@@ -8,7 +8,7 @@ julia> gen_carrier(1:4000, 200, 10 * π / 180, 4e6)
 ```
 """
 function gen_carrier(samples, f, φ₀, f_s)
-    arg = collect((2 * π * f / f_s) .* samples .+ φ₀)
+    arg = (2π * f / f_s) .* collect(samples) .+ φ₀
     sin_sig, cos_sig = zeros(length(samples)), zeros(length(samples))
     Yeppp.sin!(sin_sig, arg), Yeppp.cos!(cos_sig, arg) # use Yeppp for better performance
     complex.(cos_sig, sin_sig) # or cis.(arg)
