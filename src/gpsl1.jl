@@ -12,5 +12,5 @@ julia> get_code_phase(sample, f, φ₀, f_s)
 function GPSL1()
     code_length = 1023
     codes = read_in_codes(joinpath(Base.Pkg.dir("GNSSSignals"), "data/codes_gps_l1.bin"), code_length)
-    GPSL1(codes, code_length, 1023e3, 1.57542e9)
+    GPSL1(codes, code_length, 1023e3Hz, 1.57542e9Hz)
 end
