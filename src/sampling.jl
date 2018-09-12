@@ -4,7 +4,7 @@ $(SIGNATURES)
 Generate carrier at sample points `samples` with frequency `f`, phase `φ₀` and sampling frequency `f_s`.
 # Examples
 ```julia-repl
-julia> gen_carrier(1:4000, 200, 10 * π / 180, 4e6)
+julia> gen_carrier(1:4000, 200Hz, 10 * π / 180, 4e6Hz)
 ```
 """
 function gen_carrier(samples, f, φ₀, f_s)
@@ -19,7 +19,7 @@ $(SIGNATURES)
 Calculate carrier phase at sample point `sample` with frequency `f`, phase `φ₀` and sampling frequency `f_s`.
 # Examples
 ```julia-repl
-julia> get_carrier_phase(4000, 200, 10 * π / 180, 4e6)
+julia> get_carrier_phase(4000, 200Hz, 10 * π / 180, 4e6Hz)
 ```
 """
 function get_carrier_phase(sample, f, φ₀, f_s)
@@ -33,7 +33,7 @@ Generate sampled code at sample points `samples` with the code frequency `f`, co
 frequency `f_s`. The code is provided by `code`.
 # Examples
 ```julia-repl
-julia> gen_sat_code(1:4000, 1023e3, 2, 4e6, [1, -1, 1, 1, 1])
+julia> gen_code(1:4000, 1023e3Hz, 2, 4e6Hz, [1, -1, 1, 1, 1])
 ```
 """
 function gen_code(samples, f, φ₀, f_s, code)
@@ -53,7 +53,7 @@ Calculates the code phase at sample point `sample` with the code frequency `f`, 
 frequency `f_s` and code length `code_length`.
 # Examples
 ```julia-repl
-julia> calc_code_phase(4000, 1023e3, 2, 4e6, 1023)
+julia> calc_code_phase(4000, 1023e3Hz, 2, 4e6Hz, 1023)
 ```
 """
 function calc_code_phase(sample, f, φ₀, f_s, code_length)

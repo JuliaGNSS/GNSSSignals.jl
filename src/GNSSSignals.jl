@@ -1,6 +1,7 @@
 module GNSSSignals
 
     using Yeppp, DocStringExtensions, DataStructures
+    using Unitful: Hz
 
     export 
         gen_carrier,
@@ -16,15 +17,15 @@ module GNSSSignals
     struct GPSL1 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
-        code_freq::Float64
-        center_freq::Float64
+        code_freq::typeof(1.0Hz)
+        center_freq::typeof(1.0Hz)
     end
 
     struct GPSL5 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
-        code_freq::Float64
-        center_freq::Float64
+        code_freq::typeof(1.0Hz)
+        center_freq::typeof(1.0Hz)
         code_length_wo_neuman::Int
     end
 
