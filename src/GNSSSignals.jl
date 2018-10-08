@@ -15,14 +15,14 @@ module GNSSSignals
     abstract type AbstractGNSSSystem end
 
     struct GPSL1 <: AbstractGNSSSystem
-        codes::Array{Float64, 2}
+        codes::Array{Int8, 2}
         code_length::Int
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
     end
 
     struct GPSL5 <: AbstractGNSSSystem
-        codes::Array{Float64, 2}
+        codes::Array{Int8, 2}
         code_length::Int
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
