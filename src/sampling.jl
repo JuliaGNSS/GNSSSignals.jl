@@ -7,11 +7,8 @@ Generate carrier at sample points `samples` with frequency `f`, phase `φ₀` an
 julia> gen_carrier(1:4000, 200Hz, 10 * π / 180, 4e6Hz)
 ```
 """
-function gen_carrier(samples, f, φ₀, f_s)
-    arg = (2π * f / f_s) .* collect(samples) .+ φ₀
-    sin_sig, cos_sig = zeros(length(samples)), zeros(length(samples))
-    Yeppp.sin!(sin_sig, arg), Yeppp.cos!(cos_sig, arg) # use Yeppp for better performance
-    complex.(cos_sig, sin_sig) # or cis.(arg)
+function gen_carrier(sample, f, φ₀, f_s)
+    cis((2π * f / f_s) * sample + φ₀)
 end
 
 """
@@ -37,14 +34,12 @@ frequency `f_s`. The code is provided by `code`.
 julia> gen_code(1:4000, 1023e3Hz, 2, 4e6Hz, [1, -1, 1, 1, 1])
 ```
 """
-function gen_code(samples, f, φ₀, f_s, code)
-    code_indices = floor.(Int, f ./ f_s .* samples .+ φ₀)
-    code_indices .= 1 .+ mod.(code_indices, length(code))
-    code[code_indices]
+function gen_code(sample, f, φ₀, f_s, codes, prn)
+    codes[1 + mod(floor(Int, f / f_s * sample + φ₀), size(codes, 1)), prn]
 end
 
-function gen_code(gnss_system::T, samples, f, φ₀, f_s, prn) where T <: AbstractGNSSSystem
-    gen_code(samples, f, φ₀, f_s, gnss_system.codes[:,prn])
+function gen_code(gnss_system::T, sample, f, φ₀, f_s, prn) where T <: AbstractGNSSSystem
+    gen_code(sample, f, φ₀, f_s, gnss_system.codes, prn)
 end
 
 """

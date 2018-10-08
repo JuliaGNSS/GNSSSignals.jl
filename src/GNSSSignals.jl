@@ -1,6 +1,6 @@
 module GNSSSignals
 
-    using Yeppp, DocStringExtensions, DataStructures
+    using DocStringExtensions, DataStructures
     using Unitful: Hz
 
     export

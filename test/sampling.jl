@@ -1,5 +1,6 @@
 @testset "Carrier" begin
-    carrier = @inferred gen_carrier(1:1000, 1e3, 30π / 180, 4e6)
+    @inferred gen_carrier(1, 1e3, 30π / 180, 4e6)
+    carrier = gen_carrier.(1:1000, 1e3, 30π / 180, 4e6)
     power = 1e-3 * carrier' * carrier
     @test power ≈ 1
 
@@ -7,8 +8,12 @@
 end
 
 @testset "Subcarrier" begin
-    prn = [1 1 -1 1 -1 -1 1 1 1 -1 1 -1 -1 -1]
-    code = @inferred gen_code(1:1000, 1e6, 4e-7, 4e6, prn)
-    power = 1e-3 * code' * code
+    code = [1, 1, -1, 1, -1, -1, 1, 1, 1, -1, 1, -1, -1, -1]
+    codes = hcat(code, circshift(code, 2))
+    @inferred gen_code(1, 1e6, 2, 4e6, codes, 1)
+    code_sampled = [gen_code(x, 1e6, 2, 4e6, codes, 1) for x = 1:1000]
+    power = 1e-3 * code_sampled' * code_sampled
     @test power ≈ 1
+
+    @test code_sampled == code[1 .+ mod.(floor.(Int, 1e6 ./ 4e6 .* (1:1000) .+ 2), length(code)), 1]
 end
