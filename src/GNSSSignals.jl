@@ -5,7 +5,7 @@ module GNSSSignals
 
     export
         gen_carrier,
-        get_carrier_phase,
+        calc_carrier_phase,
         gen_code,
         calc_code_phase,
         GPSL1,

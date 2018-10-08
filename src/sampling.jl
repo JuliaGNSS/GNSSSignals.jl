@@ -20,7 +20,7 @@ Calculate carrier phase at sample point `sample` with frequency `f`, phase `φ�
 julia> get_carrier_phase(4000, 200Hz, 10 * π / 180, 4e6Hz)
 ```
 """
-function get_carrier_phase(sample, f, φ₀, f_s)
+function calc_carrier_phase(sample, f, φ₀, f_s)
     mod2pi((2 * π * f / f_s) * sample + φ₀)
 end
 

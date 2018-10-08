@@ -5,6 +5,8 @@
     @test power ≈ 1
 
     @test carrier ≈ cis.((2 * π * 1e3 / 4e6) .* (1:1000) .+ (30π / 180))
+
+    @test @inferred(calc_carrier_phase(1, 100, 0.2, 4e6)) == mod2pi((2 * π * 100 / 4e6) * 1 + 0.2)
 end
 
 @testset "Subcarrier" begin
@@ -16,4 +18,6 @@ end
     @test power ≈ 1
 
     @test code_sampled == code[1 .+ mod.(floor.(Int, 1e6 ./ 4e6 .* (1:1000) .+ 2), length(code)), 1]
+
+    @test @inferred(calc_code_phase(1, 1023e3, 100, 4e6, 1023)) == mod(1023e3 / 4e6 * 1 + 100 + 1023 / 2, 1023) - 1023 / 2
 end
