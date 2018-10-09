@@ -19,5 +19,5 @@ end
 
     @test code_sampled == code[1 .+ mod.(floor.(Int, 1e6 ./ 4e6 .* (1:1000) .+ 2), length(code)), 1]
 
-    @test @inferred(calc_code_phase(1, 1023e3, 100, 4e6, 1023)) == mod(1023e3 / 4e6 * 1 + 100 + 1023 / 2, 1023) - 1023 / 2
+    @test @inferred(calc_code_phase(1, 1023e3, 100, 4e6, 1023)) == mod(1023e3 / 4e6 * 1 + 100, 1023)
 end

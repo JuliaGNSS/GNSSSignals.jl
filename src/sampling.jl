@@ -53,5 +53,5 @@ julia> calc_code_phase(4000, 1023e3Hz, 2, 4e6Hz, 1023)
 ```
 """
 function calc_code_phase(sample, f, φ₀, f_s, code_length)
-    mod(f / f_s * sample + φ₀ + code_length / 2, code_length) - code_length / 2
+    mod(f / f_s * sample + φ₀, code_length)
 end
