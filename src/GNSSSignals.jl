@@ -26,7 +26,7 @@ module GNSSSignals
         code_length::Int
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
-        code_length_wo_neuman::Int
+        neuman_hofman_code::Vector{Int8}
     end
 
     """
