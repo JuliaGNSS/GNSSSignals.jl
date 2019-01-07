@@ -12,6 +12,14 @@ end
 
 @testset "GPS L5" begin
     gps_l5 = GPSL5()
+
+    @test gps_l5.code_length == 102300
+    @test gps_l5.code_period == 10ms
+    @test gps_l5.code_freq == 10230e3Hz
+    @test gps_l5.center_freq == 1.17645e9Hz
+    @test gps_l5.code_length_wo_neuman_hofman_code == 10230
+    @test gps_l5.num_prns_per_bit == 10
+
     @inferred gen_code(gps_l5, 0, 10230, 0, 10230, 1)
     code = gen_code.(Ref(gps_l5), 0:10229, 10230, 0, 10230, 1)
     power = dot(Float64.(code), Float64.(code)) / 10230

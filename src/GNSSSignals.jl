@@ -1,11 +1,13 @@
 module GNSSSignals
 
-    using DocStringExtensions, DataStructures
-    using Unitful: Hz
+    using DocStringExtensions, DataStructures, StaticArrays
+    using Unitful: Hz, ms
 
     export
         gen_carrier,
+        gen_carrier_fast,
         calc_carrier_phase,
+        calc_code_phase_unsafe,
         gen_code,
         calc_code_phase,
         GPSL1,
@@ -17,16 +19,21 @@ module GNSSSignals
     struct GPSL1 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
+        code_period::typeof(1ms)
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
+        num_prns_per_bit::Int
     end
 
     struct GPSL5 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
+        code_period::typeof(1ms)
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
         neuman_hofman_code::Vector{Int8}
+        code_length_wo_neuman_hofman_code::Int
+        num_prns_per_bit::Int
     end
 
     """

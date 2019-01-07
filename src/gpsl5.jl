@@ -136,7 +136,8 @@ julia> get_i5_code_phase(sample, f, φ₀, f_s)
 """
 function GPSL5()
     code_length = 102300
+    code_length_wo_neuman_hofman_code = 10230
     neuman_hofman_code = [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
     codes = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat]), neuman_hofman_code), hcat, 1:37)::Array{Int8, 2}
-    GPSL5(codes, code_length, 1023e4Hz, 1.17645e9Hz, neuman_hofman_code)
+    GPSL5(codes, code_length, 10ms, 1023e4Hz, 1.17645e9Hz, neuman_hofman_code, code_length_wo_neuman_hofman_code, 10)
 end
