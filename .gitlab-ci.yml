@@ -1,4 +1,4 @@
-image: julia:0.6
+image: julia:0.7
 
 testjob:
   before_script:
