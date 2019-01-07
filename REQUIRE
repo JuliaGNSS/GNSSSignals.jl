@@ -1,6 +1,6 @@
-julia 0.6
+julia 0.7
 
-Yeppp
 DocStringExtensions
 DataStructures
 Unitful
+StaticArrays
