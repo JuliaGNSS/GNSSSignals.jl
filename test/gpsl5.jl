@@ -14,7 +14,6 @@ end
     gps_l5 = GPSL5()
 
     @test gps_l5.code_length == 102300
-    @test gps_l5.code_period == 10ms
     @test gps_l5.code_freq == 10230e3Hz
     @test gps_l5.center_freq == 1.17645e9Hz
     @test gps_l5.code_length_wo_neuman_hofman_code == 10230
