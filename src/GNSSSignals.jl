@@ -19,7 +19,6 @@ module GNSSSignals
     struct GPSL1 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
-        code_period::typeof(1ms)
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
         num_prns_per_bit::Int
@@ -28,7 +27,6 @@ module GNSSSignals
     struct GPSL5 <: AbstractGNSSSystem
         codes::Array{Int8, 2}
         code_length::Int
-        code_period::typeof(1ms)
         code_freq::typeof(1.0Hz)
         center_freq::typeof(1.0Hz)
         neuman_hofman_code::Vector{Int8}
