@@ -1,13 +1,8 @@
 """
 $(SIGNATURES)
 
-Returns functions to generate sampled code and code phase for the GPS L1 signal.
-# Examples
-```julia-repl
-julia> gen_gpsl1_code, get_gpsl1_code_phase = init_gpsl1_codes()
-julia> gen_gpsl1_code(samples, f, φ₀, f_s, sat)
-julia> get_code_phase(sample, f, φ₀, f_s)
-```
+Returns a `GPSL1 <: AbstractGNSSSystem` type which holds information about the
+GPSL5. It can e.g. be used to generate the PRN code.
 """
 function GPSL1()
     code_length = 1023

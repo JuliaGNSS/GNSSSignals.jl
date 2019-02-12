@@ -1,5 +1,7 @@
-#=These are the initial XB Code States for the I5 code, initial_xb_code_states[1] is a 1 3 chip array which represent the shift register values
-initial_xb_code_states[3][4] represents the 4th shift register of the GPS Signal with PRN numver 3  =#
+#=These are the initial XB Code States for the I5 code,
+initial_xb_code_states[1] is a 1 3 chip array which represent the shift
+register values initial_xb_code_states[3][4] represents the 4th shift register
+of the GPS Signal with PRN numver 3  =#
 const INITIAL_XB_CODE_STATES = [                      #sat PRN number
     [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0],    #01
     [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1],    #02
@@ -62,7 +64,9 @@ end
 """
 $(SIGNATURES)
 
-Takes the status of the registers as an Int `registers`, and an array of register `indices` to calculate and return the new register values and the register_output.
+Takes the status of the registers as an Int `registers`, and an array of
+register `indices` to calculate and return the new register values and the
+register output.
 
 ```julia-repl
 julia> reshape(8190)
@@ -85,7 +89,8 @@ end
 """
 $(SIGNATURES)
 
-Calculate the gps L5 PRN `satellite_code` for the initial XB register states 'initial_xb_code_states'.
+Calculate the gps L5 PRN `satellite_code` for the initial XB register states
+'initial_xb_code_states'.
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
 julia> prn_code_sat_1_I_signal = gen_l5_code(initial_states_PRN_num_1_I)
@@ -111,7 +116,8 @@ end
 """
 $(SIGNATURES)
 
-Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,  each ⊻ with one bit of the 10bit Neuman-Hofman sequence 0000110101.
+Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,
+each ⊻ with one bit of the 10bit Neuman-Hofman sequence 0000110101.
 
 # Examples
 ```julia-repl
@@ -126,13 +132,8 @@ end
 """
 $(SIGNATURES)
 
-Returns functions to generate sampled code and code phase for the GPS L5 (I5) signal, with the Neuman-Hofman-Code already applied.
-# Examples
-```julia-repl
-julia> gen_gpsi5_code, get_i5_code_phase = init_gpsl5_i5_codes()
-julia> gen_gpsi5_code(samples, f, φ₀, f_s, sat)
-julia> get_i5_code_phase(sample, f, φ₀, f_s)
-```
+Returns a `GPSL5 <: AbstractGNSSSystem` type which holds information about the
+GPSL5. It can e.g. be used to generate the PRN code.
 """
 function GPSL5()
     code_length = 102300

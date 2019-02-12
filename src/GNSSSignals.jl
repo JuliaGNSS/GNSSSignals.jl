@@ -37,8 +37,8 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Reads codes from a file with filename `filename` (including the path). The code length is provided
-    by `code_length`.
+    Reads codes from a file with filename `filename` (including the path).
+    The code length is provided by `code_length`.
     # Examples
     ```julia-repl
     julia> read_in_codes("/data/gpsl1codes.bin", 1023)
