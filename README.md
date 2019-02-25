@@ -6,12 +6,13 @@
 ## Features
 
 * GPS L1
+* GPS L5
 
 ## Getting started
 
 Install:
-```julia
-Pkg.clone("git@git.rwth-aachen.de:nav/GNSSSignals.jl.git")
+```julia-repl
+pkg> add https://github.com/JuliaGNSS/GNSSSignals.jl.git
 ```
 
 ## Usage
@@ -33,7 +34,6 @@ get_code_phase(10230, 1023e4, 20, 4e6)
 
 ## Todo
 
-* add GPS Q5 of the L5 signal
 * Galileo signals
 
 ## License

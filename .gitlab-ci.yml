@@ -1,9 +1,0 @@
-image: julia:1.0
-
-testjob:
-  before_script:
-    - julia -e "using Pkg; Pkg.develop(PackageSpec(url=pwd()))"
-  script:
-    - julia -e 'using Pkg; Pkg.add("Coverage"); Pkg.test("GNSSSignals", coverage=true);
-      using Coverage; cl, tl = get_summary(process_folder());
-      println("(", cl/tl*100, "%) covered")'
