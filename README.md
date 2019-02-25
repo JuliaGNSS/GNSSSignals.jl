@@ -19,17 +19,23 @@ pkg> add https://github.com/JuliaGNSS/GNSSSignals.jl.git
 
 ```julia
 using GNSSSignals
-gen_sampled_code, get_code_phase = init_gpsl1_codes()
-sat_prn = 1
-code = gen_sampled_code(1:4000, 1023e3, 20, 4e6, sat_prn)
-code_phase = get_code_phase(4000, 1023e3, 20, 4e6)
-carrier = gen_carrier(1:4000, 1e3, 20 * pi / 180, 4e6)
-carrier_phase = get_carrier_phase(4000, 1e3, 20 * pi / 180, 4e6)
-
-sat_prn = 4
-gen_gps_code, get_code_phase = init_gpsl5_codes()
-gen_gps_code(1:10230, 1023e4, 20, 4e6, sat_prn)
-get_code_phase(10230, 1023e4, 20, 4e6)
+gpsl1 = GPSL1()
+code_freq = 1023e3
+code_phase = 4
+sample_freq = 4e6
+prn = 1
+sampled_code = gen_code.(Ref(gpsl1), 1:4000, code_freq, code_phase, sample_freq, prn)
+```
+Output:
+```julia
+4000-element Array{Int8,1}:
+  1
+  1
+  1
+  ⋮
+ -1
+ -1
+  1
 ```
 
 ## Todo
