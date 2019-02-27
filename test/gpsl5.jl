@@ -21,7 +21,7 @@ end
 
     @inferred gen_code(gps_l5, 0, 10230, 0, 10230, 1)
     code = gen_code.(Ref(gps_l5), 0:10229, 10230, 0, 10230, 1)
-    power = dot(Float64.(code), Float64.(code)) / 10230
+    power = Float64.(code)' * Float64.(code) / 10230
     @test power == 1
     @test code == L5_SAT1_Code
 

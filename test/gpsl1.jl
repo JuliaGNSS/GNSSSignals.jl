@@ -8,7 +8,7 @@
 
     @inferred gen_code(gps_l1, 0, 1023, 0, 1023, 1)
     code = gen_code.(Ref(gps_l1), 0:1022, 1023, 0, 1023, 1)
-    power = dot(Float64.(code), Float64.(code)) / 1023
+    power = Float64.(code)' * Float64.(code) / 1023
     @test power ≈ 1
     @test code == SAT1_CODE
 
