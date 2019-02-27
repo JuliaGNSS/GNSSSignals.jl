@@ -41,7 +41,3 @@ Output:
 ## Todo
 
 * Galileo signals
-
-## License
-
-MIT License
