@@ -12,7 +12,8 @@
 
 Install:
 ```julia-repl
-pkg> add https://github.com/JuliaGNSS/GNSSSignals.jl.git
+julia> ]
+pkg> add GNSSSignals
 ```
 
 ## Usage
