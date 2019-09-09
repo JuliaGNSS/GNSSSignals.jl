@@ -1,6 +1,7 @@
 name = "GNSSSignals"
 uuid = "52c80523-2a4e-5c38-8979-05588f836870"
 authors = ["Soeren Zorn <soeren.zorn@nav.rwth-aachen.de>"]
+version = "0.9.2"
 
 [deps]
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
