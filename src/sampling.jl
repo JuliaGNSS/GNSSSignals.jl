@@ -75,14 +75,25 @@ function gen_code(gnss_system::GPSL1, sample::T, f, φ₀, f_s, prn) where T <: 
     gnss_system.codes[1 + mod_1023(floor(T, f / f_s * sample + φ₀)), prn]
 end
 
-function mod_1023(x::UInt16)
-    x = (x & 1023) + (x >> 10)
-    (x + ((x + 1) >> 10)) & 1023
+function get_code_unsafe(gnss_system, phase, prn)
+    gnss_system.codes[1 + floor(Int, phase), prn]
 end
 
-function mod_1023(x::UInt32)
-    x = (x & 1023) + (x >> 10) + (x >> 20) + (x >> 30)
-    (x + ((x + 1) >> 10)) & 1023
+#function mod_1023(x::UInt16)
+#    x = (x & 1023) + (x >> 10)
+#    (x + ((x + 1) >> 10)) & 1023
+#end
+
+#function mod_1023(x::UInt32)
+#    x = (x & 1023) + (x >> 10) + (x >> 20) + (x >> 30)
+#    (x + ((x + 1) >> 10)) & 1023
+#end
+
+function mod_1023(x::Int32)
+    x = (x >> 20) + (x & 0xFFFFF);
+    x = (x >> 10) + (x & 0x3FF);
+    x = (x >> 10) + (x & 0x3FF);
+    x = x - (1023 & (-(x>1022)));
 end
 
 """

@@ -8,7 +8,9 @@ module GNSSSignals
         gen_carrier_fast,
         calc_carrier_phase,
         calc_code_phase_unsafe,
+        get_code_length,
         gen_code,
+        get_code_unsafe,
         calc_code_phase,
         GPSL1,
         GPSL5,
@@ -50,6 +52,10 @@ module GNSSSignals
         codes = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prn_codes))
         end
+    end
+
+    function get_code_length(system::AbstractGNSSSystem)
+        system.code_length
     end
 
     include("gpsl1.jl")
