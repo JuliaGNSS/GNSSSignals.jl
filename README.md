@@ -43,6 +43,7 @@ In addition to that, there are some auxiliarly functions:
 | `get_code_frequency(::Type{<:AbstractGNSSSystem})`        | Get code frequency                                                                 |
 | `get_data_frequency(::Type{<:AbstractGNSSSystem})`        | Get data frequency                                                                 |
 | `get_code(::Type{<:AbstractGNSSSystem}, phase, prn::Int)` | Get code at phase `phase` from PRN `prn`                                           |
+| `get_code_center_frequency_ratio(::Type{<:AbstractGNSSSystem})` | Get code to center frequency ratio                                           |
 
 #### Example
 
