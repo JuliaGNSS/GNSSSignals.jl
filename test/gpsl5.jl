@@ -10,34 +10,26 @@
     @test registers == 8191
 end
 
-@testset "GPS L5" begin
-    gps_l5 = GPSL5()
+@testset "GPS L1" begin
 
-    @test gps_l5.code_length == 102300
-    @test gps_l5.code_freq == 10230e3Hz
-    @test gps_l5.center_freq == 1.17645e9Hz
-    @test gps_l5.code_length_wo_neuman_hofman_code == 10230
-    @test gps_l5.num_prns_per_bit == 10
+    @test @inferred(get_center_frequency(GPSL5)) == 1.17645e9Hz
+    @test @inferred(get_code_length(GPSL5)) == 102300
+    @test @inferred(get_shortest_code_length(GPSL5)) == 10230
+    @test @inferred(get_code(GPSL5, 0, 1)) == 1
+    @test @inferred(get_code(GPSL5, 0.0, 1)) == 1
+    @test @inferred(get_code_unsafe(GPSL5, 0.0, 1)) == 1
+    @test @inferred(get_data_frequency(GPSL5)) == 100Hz
+    @test @inferred(get_code_frequency(GPSL5)) == 10230e3Hz
+    @test get_code.(GPSL5, 0:10229, 1) == L5_SAT1_CODE
 
-    @inferred gen_code(gps_l5, 0, 10230, 0, 10230, 1)
-    code = gen_code.(Ref(gps_l5), 0:10229, 10230, 0, 10230, 1)
-    power = Float64.(code)' * Float64.(code) / 10230
-    @test power == 1
-    @test code == L5_SAT1_Code
-
-    early = gen_code.(Ref(gps_l5), 1:40920, 1023e4, 3.5, 4 * 1023e4, 2)
-    prompt = gen_code.(Ref(gps_l5), 1:40920, 1023e4, 4, 4 * 1023e4, 2)
-    late = gen_code.(Ref(gps_l5), 1:40920, 1023e4, 4.5, 4 * 1023e4, 2)
-    @test early' * prompt == late' * prompt
 end
 
 @testset "Neuman sequence" begin
-    gps_l5 = GPSL5()
-    code = gen_code.(Ref(gps_l5), 0:103199, 10230, 0, 10230, 1)
+    code = get_code.(GPSL5, 0:103199, 1)
     satellite_code = code[1:10230]
-    NH_code = [0,0,0,0,1,1,0,1,0,1]
+    neuman_hofman_code = [0,0,0,0,1,1,0,1,0,1]
     for i = 1:10
-        @test code[1+10230*(i-1):10230*i]== (satellite_code .* (Int8(-1)^NH_code[i]))
+        @test code[1+10230*(i-1):10230*i] == (satellite_code .* (Int8(-1)^neuman_hofman_code[i]))
     end
     @test code[1:10230] == code[10231:20460]
 end

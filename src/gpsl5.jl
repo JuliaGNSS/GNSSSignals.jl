@@ -2,7 +2,7 @@
 initial_xb_code_states[1] is a 1 3 chip array which represent the shift
 register values initial_xb_code_states[3][4] represents the 4th shift register
 of the GPS Signal with PRN numver 3  =#
-const INITIAL_XB_CODE_STATES = [                      #sat PRN number
+const INITIAL_XB_CODE_STATES = [                #sat PRN number
     [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0],    #01
     [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1],    #02
     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],    #03
@@ -129,16 +129,96 @@ function add_neuman_hofman_code(l5_code, neuman_hofman_code)
     vec(l5_code .* Vector{Int8}(neuman_hofman_code)')
 end
 
+
+function get_neuman_hofman_code()
+    [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
+end
+
+const GPS_L5_CODES = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()), hcat, 1:37)::Array{Int8, 2}
+
 """
 $(SIGNATURES)
 
-Returns a `GPSL5 <: AbstractGNSSSystem` type which holds information about the
-GPSL5. It can e.g. be used to generate the PRN code.
+Get codes of type GPSL5 as a Matrix where each column
+represents a PRN.
+```julia-repl
+julia> get_code(GPSL5)
+```
 """
-function GPSL5()
-    code_length = 102300
-    code_length_wo_neuman_hofman_code = 10230
-    neuman_hofman_code = [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
-    codes = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat]), neuman_hofman_code), hcat, 1:37)::Array{Int8, 2}
-    GPSL5(codes, code_length, 1023e4Hz, 1.17645e9Hz, neuman_hofman_code, code_length_wo_neuman_hofman_code, 10)
+function get_codes(::Type{GPSL5})
+    GPS_L5_CODES
+end
+
+"""
+$(SIGNATURES)
+
+Get code length of GNSS system GPSL5.
+```julia-repl
+julia> get_code_length(GPSL5)
+```
+"""
+@inline function get_code_length(::Type{GPSL5})
+    102300
+end
+
+"""
+$(SIGNATURES)
+
+Get shortest code length of GNSS system GPSL5.
+```julia-repl
+julia> get_shortest_code_length(GPSL5)
+```
+"""
+@inline function get_shortest_code_length(::Type{GPSL5})
+    10230
+end
+
+"""
+$(SIGNATURES)
+
+Get center frequency of GNSS system GPSL5.
+```julia-repl
+julia> get_center_frequency(GPSL5)
+```
+"""
+@inline function get_center_frequency(::Type{GPSL5})
+    1.17645e9Hz
+end
+
+"""
+$(SIGNATURES)
+
+Get code frequency of GNSS system GPSL5.
+```julia-repl
+julia> get_code_frequency(GPSL5)
+```
+"""
+@inline function get_code_frequency(::Type{GPSL5})
+    1023e4Hz
+end
+
+"""
+$(SIGNATURES)
+
+Get data frequency of GNSS system GPSL5.
+```julia-repl
+julia> get_data_frequency(GPSL5)
+```
+"""
+@inline function get_data_frequency(::Type{GPSL5})
+    100Hz
+end
+
+"""
+$(SIGNATURES)
+
+Get code of GNSS system GPSL5 at phase `phase` of prn `prn`.
+The phase will not be wrapped by the code length. The phase has to smaller
+than the code length and must be an integer.
+```julia-repl
+julia> get_code_unsafe(GPSL5, 10, 1)
+```
+"""
+function get_code_unsafe(::Type{GPSL5}, phase::Int, prn::Int)
+    @inbounds GPS_L5_CODES[1 + phase, prn]
 end
