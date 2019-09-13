@@ -8,3 +8,4 @@ const L5_SAT1_CODE = Int8[1, 1, -1, 1, 1, -1, -1, -1, 1, -1, 1, -1, 1, -1, -1, -
 include("carrier.jl")
 include("gpsl1.jl")
 include("gpsl5.jl")
+include("common.jl")

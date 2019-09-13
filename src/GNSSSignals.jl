@@ -14,7 +14,8 @@ module GNSSSignals
         get_code_frequency,
         get_code_unsafe,
         get_code,
-        get_data_frequency
+        get_data_frequency,
+        get_code_center_frequency_ratio
 
     abstract type AbstractGNSSSystem end
 
@@ -39,34 +40,9 @@ module GNSSSignals
         end
     end
 
-    """
-    $(SIGNATURES)
-
-    Get code of type <: `AbstractGNSSSystem` at phase `phase` of prn `prn`.
-    ```julia-repl
-    julia> get_code(GPSL1, 1200.3, 1)
-    ```
-    """
-    function get_code(::Type{T}, phase, prn::Int) where T <: AbstractGNSSSystem
-        get_code_unsafe(T, mod(phase, get_code_length(T)), prn)
-    end
-
-    """
-    $(SIGNATURES)
-
-    Get code of type <: `AbstractGNSSSystem` at phase `phase` of prn `prn`.
-    The phase will not be wrapped by the code length. The phase has to smaller
-    than the code length.
-    ```julia-repl
-    julia> get_code_unsafe(GPSL1, 10.3, 1)
-    ```
-    """
-    function get_code_unsafe(::Type{T}, phase, prn::Int) where T <: AbstractGNSSSystem
-        get_code_unsafe(T, floor(Int, phase), prn::Int)
-    end
-
     include("gpsl1.jl")
     include("gpsl5.jl")
     include("carrier.jl")
+    include("common.jl")
 
 end
