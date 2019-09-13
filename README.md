@@ -37,12 +37,12 @@ In addition to that, there are some auxiliarly functions:
 
 | Function                                                | Description                                                                        |
 |---------------------------------------------------------|------------------------------------------------------------------------------------|
-| get_code_length(::Type{<:AbstractGNSSSystem})           | Get code length                                                                    |
-| get_shortest_code_length(::Type{<:AbstractGNSSSystem})  | Get shortest code length (For e.g. GPS L5: Code length without Neuman Hofman code) |
-| get_center_frequency(::Type{<:AbstractGNSSSystem})      | Get center frequency                                                               |
-| get_code_frequency(::Type{<:AbstractGNSSSystem})        | Get code frequency                                                                 |
-| get_data_frequency(::Type{<:AbstractGNSSSystem})        | Get data frequency                                                                 |
-| get_code(::Type{<:AbstractGNSSSystem}, phase, prn::Int) | Get code at phase `phase` from PRN `prn`                                           |
+| `get_code_length(::Type{<:AbstractGNSSSystem})`           | Get code length                                                                    |
+| `get_shortest_code_length(::Type{<:AbstractGNSSSystem})`  | Get shortest code length (For e.g. GPS L5: Code length without Neuman Hofman code) |
+| `get_center_frequency(::Type{<:AbstractGNSSSystem})`      | Get center frequency                                                               |
+| `get_code_frequency(::Type{<:AbstractGNSSSystem})`        | Get code frequency                                                                 |
+| `get_data_frequency(::Type{<:AbstractGNSSSystem})`        | Get data frequency                                                                 |
+| `get_code(::Type{<:AbstractGNSSSystem}, phase, prn::Int)` | Get code at phase `phase` from PRN `prn`                                           |
 
 #### Example
 
