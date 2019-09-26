@@ -83,6 +83,6 @@ than the code length and must be an integer.
 julia> get_code_unsafe(GPSL1, 10, 1)
 ```
 """
-function get_code_unsafe(::Type{GPSL1}, phase::Int, prn::Int)
-    @inbounds GPS_CA_CODES[1 + phase, prn]
+Base.@propagate_inbounds function get_code_unsafe(::Type{GPSL1}, phase::Int, prn::Int)
+    GPS_CA_CODES[1 + phase, prn]
 end

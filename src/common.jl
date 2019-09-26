@@ -20,7 +20,7 @@ than the code length.
 julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
-function get_code_unsafe(::Type{T}, phase, prn::Int) where T <: AbstractGNSSSystem
+Base.@propagate_inbounds function get_code_unsafe(::Type{T}, phase, prn::Int) where T <: AbstractGNSSSystem
     get_code_unsafe(T, floor(Int, phase), prn::Int)
 end
 
