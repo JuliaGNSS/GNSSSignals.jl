@@ -15,7 +15,9 @@ module GNSSSignals
         get_code_unsafe,
         get_code,
         get_data_frequency,
-        get_code_center_frequency_ratio
+        get_code_center_frequency_ratio,
+        get_carrier_fast_unsafe,
+        get_carrier_vfast_unsafe
 
     abstract type AbstractGNSSSystem end
 
