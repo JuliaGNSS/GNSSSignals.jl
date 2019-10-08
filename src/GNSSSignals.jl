@@ -7,6 +7,7 @@ module GNSSSignals
         AbstractGNSSSystem,
         GPSL1,
         GPSL5,
+        GalileoE1B,
         get_codes,
         get_code_length,
         get_shortest_code_length,
@@ -25,6 +26,8 @@ module GNSSSignals
 
     struct GPSL5 <: AbstractGNSSSystem end
 
+    struct GalileoE1B <: AbstractGNSSSystem end
+
     """
     $(SIGNATURES)
 
@@ -42,9 +45,9 @@ module GNSSSignals
         end
     end
 
-    include("gpsl1.jl")
-    include("gpsl5.jl")
+    include("gps_l1.jl")
+    include("gps_l5.jl")
+    include("galileo_e1b.jl")
     include("carrier.jl")
     include("common.jl")
-
 end

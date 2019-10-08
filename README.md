@@ -51,7 +51,3 @@ In addition to that, there are some auxiliarly functions:
 julia> get_code_length(GPSL1)
 1023
 ```
-
-## Todo
-
-* Add Galileo signals
