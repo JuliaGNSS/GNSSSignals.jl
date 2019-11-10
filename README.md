@@ -7,6 +7,7 @@
 
 * GPS L1
 * GPS L5
+* Galileo E1B
 
 ## Getting started
 
@@ -38,7 +39,7 @@ In addition to that, there are some auxiliarly functions:
 | Function                                                | Description                                                                        |
 |---------------------------------------------------------|------------------------------------------------------------------------------------|
 | `get_code_length(::Type{<:AbstractGNSSSystem})`           | Get code length                                                                    |
-| `get_shortest_code_length(::Type{<:AbstractGNSSSystem})`  | Get shortest code length (For e.g. GPS L5: Code length without Neuman Hofman code) |
+| `get_secondary_code_length(::Type{<:AbstractGNSSSystem})`  | Get secondary code length |
 | `get_center_frequency(::Type{<:AbstractGNSSSystem})`      | Get center frequency                                                               |
 | `get_code_frequency(::Type{<:AbstractGNSSSystem})`        | Get code frequency                                                                 |
 | `get_data_frequency(::Type{<:AbstractGNSSSystem})`        | Get data frequency                                                                 |

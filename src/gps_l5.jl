@@ -118,12 +118,6 @@ $(SIGNATURES)
 
 Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,
 each ⊻ with one bit of the 10bit Neuman-Hofman sequence 0000110101.
-
-# Examples
-```julia-repl
-julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
-julia> l5_code_with_neuman_hofman = add_neuman_hofman_code(gen_l5_code(initial_states_PRN_num_1_I))
-```
 """
 function add_neuman_hofman_code(l5_code, neuman_hofman_code)
     vec(l5_code .* Vector{Int8}(neuman_hofman_code)')
@@ -134,7 +128,13 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-const GPS_L5_CODES = mapreduce(sat -> add_neuman_hofman_code(gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()), hcat, 1:37)::Array{Int8, 2}
+const GPS_L5_CODES = mapreduce(
+    sat -> add_neuman_hofman_code(
+        gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
+    ),
+    hcat,
+    1:37
+)::Array{Int8, 2}
 
 """
 $(SIGNATURES)
@@ -158,19 +158,19 @@ julia> get_code_length(GPSL5)
 ```
 """
 @inline function get_code_length(::Type{GPSL5})
-    102300
+    10230
 end
 
 """
 $(SIGNATURES)
 
-Get shortest code length of GNSS system GPSL5.
+Get secondary code length of GNSS system GPSL5.
 ```julia-repl
-julia> get_shortest_code_length(GPSL5)
+julia> get_secondary_code_length(GPSL5)
 ```
 """
-@inline function get_shortest_code_length(::Type{GPSL5})
-    10230
+@inline function get_secondary_code_length(::Type{GPSL5})
+    10
 end
 
 """
@@ -182,7 +182,7 @@ julia> get_center_frequency(GPSL5)
 ```
 """
 @inline function get_center_frequency(::Type{GPSL5})
-    1.17645e9Hz
+    1_176_450_000Hz
 end
 
 """
@@ -194,7 +194,7 @@ julia> get_code_frequency(GPSL5)
 ```
 """
 @inline function get_code_frequency(::Type{GPSL5})
-    1023e4Hz
+    10_230_000Hz
 end
 
 """
@@ -214,7 +214,7 @@ $(SIGNATURES)
 
 Get code of GNSS system GPSL5 at phase `phase` of prn `prn`.
 The phase will not be wrapped by the code length. The phase has to smaller
-than the code length and must be an integer.
+than the code length incl. secondary code and must be an integer.
 ```julia-repl
 julia> get_code_unsafe(GPSL5, 10, 1)
 ```

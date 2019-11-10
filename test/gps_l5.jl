@@ -1,7 +1,9 @@
 @testset "Shift register" begin
     registers = 8191
     for i = 1:8191
-        output_xb, registers = @inferred GNSSSignals.shift_register(registers, [1, 3, 4, 6, 7, 8, 12, 13])
+        output_xb, registers = @inferred GNSSSignals.shift_register(
+            registers, [1, 3, 4, 6, 7, 8, 12, 13]
+        )
         results = [2788, 2056 , 3322, 2087, 6431]
         if (i in [266, 804, 1559, 3471, 5343])
             @test registers in results
@@ -13,8 +15,8 @@ end
 @testset "GPS L1" begin
 
     @test @inferred(get_center_frequency(GPSL5)) == 1.17645e9Hz
-    @test @inferred(get_code_length(GPSL5)) == 102300
-    @test @inferred(get_shortest_code_length(GPSL5)) == 10230
+    @test @inferred(get_code_length(GPSL5)) == 10230
+    @test @inferred(get_secondary_code_length(GPSL5)) == 10
     @test @inferred(get_code(GPSL5, 0, 1)) == 1
     @test @inferred(get_code(GPSL5, 0.0, 1)) == 1
     @test @inferred(get_code_unsafe(GPSL5, 0.0, 1)) == 1
@@ -29,7 +31,9 @@ end
     satellite_code = code[1:10230]
     neuman_hofman_code = [0,0,0,0,1,1,0,1,0,1]
     for i = 1:10
-        @test code[1+10230*(i-1):10230*i] == (satellite_code .* (Int8(-1)^neuman_hofman_code[i]))
+        @test code[1+10230*(i-1):10230*i] == (
+            satellite_code .* (Int8(-1)^neuman_hofman_code[i])
+        )
     end
     @test code[1:10230] == code[10231:20460]
 end

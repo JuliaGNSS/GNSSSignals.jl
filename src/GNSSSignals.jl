@@ -1,6 +1,6 @@
 module GNSSSignals
 
-    using DocStringExtensions, StaticArrays
+    using DocStringExtensions
     using Unitful: Hz
 
     export
@@ -10,7 +10,7 @@ module GNSSSignals
         GalileoE1B,
         get_codes,
         get_code_length,
-        get_shortest_code_length,
+        get_secondary_code_length,
         get_center_frequency,
         get_code_frequency,
         get_code_unsafe,

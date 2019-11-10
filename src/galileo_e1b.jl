@@ -5,7 +5,11 @@ function read_from_documentation(raw_code)
     map(x -> parse(Int8, x, base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
 end
 
-const GALILEO_E1B_CODES = read_in_codes(joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"), 50, 4092)
+const GALILEO_E1B_CODES = read_in_codes(
+    joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"),
+    50,
+    4092
+)
 
 """
 $(SIGNATURES)
@@ -40,8 +44,8 @@ Get shortest code length of GNSS system GalileoE1B.
 julia> get_shortest_code_length(GalileoE1B)
 ```
 """
-@inline function get_shortest_code_length(::Type{GalileoE1B})
-    get_code_length(GalileoE1B)
+@inline function get_secondary_code_length(::Type{GalileoE1B})
+    1
 end
 
 """
@@ -53,7 +57,7 @@ julia> get_center_frequency(GalileoE1B)
 ```
 """
 @inline function get_center_frequency(::Type{GalileoE1B})
-    1.57542e9Hz
+    1_575_420_000Hz
 end
 
 """
@@ -65,7 +69,7 @@ julia> get_code_frequency(GalileoE1B)
 ```
 """
 @inline function get_code_frequency(::Type{GalileoE1B})
-    1023e3Hz
+    1023_000Hz
 end
 
 """
@@ -83,7 +87,28 @@ end
 """
 $(SIGNATURES)
 
-Get code of type GalileoE1B at phase `phase` of prn `prn`.
+Get code of type GalileoE1B at phase `phase` of PRN `prn`. Includes only BOC(1,1) at the
+moment.
+```julia-repl
+julia> get_code(GalileoE1B, 10.3, 1)
+```
+"""
+Base.@propagate_inbounds function get_code(::Type{GalileoE1B}, phase, prn::Int)
+    floored_2phase = floor(Int, 2 * phase)
+    get_code_unsafe(
+        GalileoE1B,
+        mod(
+            floored_2phase >> 1,
+            get_code_length(GalileoE1B) * get_secondary_code_length(GalileoE1B)
+        ),
+        prn
+    ) * (iseven(floored_2phase) * 2 - 1)
+end
+
+"""
+$(SIGNATURES)
+
+Get code of type GalileoE1B at phase `phase` of PRN `prn`.
 The phase will not be wrapped by the code length. The phase has to smaller
 than the code length. Includes only BOC(1,1) at the moment.
 ```julia-repl
@@ -92,7 +117,7 @@ julia> get_code_unsafe(GalileoE1B, 10.3, 1)
 """
 Base.@propagate_inbounds function get_code_unsafe(::Type{GalileoE1B}, phase, prn::Int)
     floored_2phase = floor(Int, 2 * phase)
-    get_code_unsafe(GalileoE1B, floored_2phase >> 1, prn::Int) *
+    get_code_unsafe(GalileoE1B, floored_2phase >> 1, prn) *
         (iseven(floored_2phase) * 2 - 1)
 end
 

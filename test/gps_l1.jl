@@ -2,7 +2,7 @@
 
     @test @inferred(get_center_frequency(GPSL1)) == 1.57542e9Hz
     @test @inferred(get_code_length(GPSL1)) == 1023
-    @test @inferred(get_shortest_code_length(GPSL1)) == 1023
+    @test @inferred(get_secondary_code_length(GPSL1)) == 1
     @test @inferred(get_code(GPSL1, 0, 1)) == 1
     @test @inferred(get_code(GPSL1, 0.0, 1)) == 1
     @test @inferred(get_code_unsafe(GPSL1, 0.0, 1)) == 1

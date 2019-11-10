@@ -28,13 +28,13 @@ end
 """
 $(SIGNATURES)
 
-Get shortest code length of GNSS system GPSL1.
+Get secondary code length of GNSS system GPSL1.
 ```julia-repl
-julia> get_shortest_code_length(GPSL1)
+julia> get_secondary_code_length(GPSL1)
 ```
 """
-@inline function get_shortest_code_length(::Type{GPSL1})
-    get_code_length(GPSL1)
+@inline function get_secondary_code_length(::Type{GPSL1})
+    1
 end
 
 """
@@ -46,7 +46,7 @@ julia> get_center_frequency(GPSL1)
 ```
 """
 @inline function get_center_frequency(::Type{GPSL1})
-    1.57542e9Hz
+    1_575_420_000Hz
 end
 
 """
@@ -58,7 +58,7 @@ julia> get_code_frequency(GPSL1)
 ```
 """
 @inline function get_code_frequency(::Type{GPSL1})
-    1023e3Hz
+    1_023_000Hz
 end
 
 """

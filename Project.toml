@@ -1,15 +1,16 @@
 name = "GNSSSignals"
 uuid = "52c80523-2a4e-5c38-8979-05588f836870"
 authors = ["Soeren Zorn <soeren.zorn@nav.rwth-aachen.de>"]
-version = "0.10.2"
+version = "0.10.3"
 
 [deps]
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 julia = "1"
+DocStringExtensions = "0.6, 0.7, 0.8"
+Unitful = "0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
