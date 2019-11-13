@@ -1,12 +1,16 @@
 """
 $(SIGNATURES)
 
-Get code of type <: `AbstractGNSSSystem` at phase `phase` of prn `prn`.
+Get code of type <: `AbstractGNSSSystem` at phase `phase` of PRN `prn`.
 ```julia-repl
 julia> get_code(GPSL1, 1200.3, 1)
 ```
 """
-function get_code(::Type{T}, phase, prn::Int) where T <: AbstractGNSSSystem
+Base.@propagate_inbounds function get_code(
+    ::Type{T},
+    phase,
+    prn::Int
+) where T <: AbstractGNSSSystem
     floored_phase = floor(Int, phase)
     get_code_unsafe(
         T,
@@ -18,7 +22,7 @@ end
 """
 $(SIGNATURES)
 
-Get code of type <: `AbstractGNSSSystem` at phase `phase` of prn `prn`.
+Get code of type <: `AbstractGNSSSystem` at phase `phase` of PRN `prn`.
 The phase will not be wrapped by the code length. The phase has to smaller
 than the code length incl. secondary code.
 ```julia-repl

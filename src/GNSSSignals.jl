@@ -31,9 +31,8 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    Reads Int8 encoded codes from a file with filename `filename` (including
-    the path). The code length must be provided by `code_length` and the
-    number of PRNs by `num_prns`.
+    Reads Int8 encoded codes from a file with filename `filename` (including the path). The
+    code length must be provided by `code_length` and the number of PRNs by `num_prns`.
     # Examples
     ```julia-repl
     julia> read_in_codes("/data/gpsl1codes.bin", 32, 1023)

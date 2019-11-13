@@ -124,13 +124,17 @@ end
 """
 $(SIGNATURES)
 
-Get code of GNSS system GalileoE1B at phase `phase` of prn `prn`.
+Get code of GNSS system GalileoE1B at phase `phase` of PRN `prn`.
 The phase will not be wrapped by the code length. The phase has to smaller
 than the code length and must be an integer.
 ```julia-repl
 julia> get_code_unsafe(GalileoE1B, 10, 1)
 ```
 """
-Base.@propagate_inbounds function get_code_unsafe(::Type{GalileoE1B}, phase::Int, prn::Int)
+Base.@propagate_inbounds function get_code_unsafe(
+    ::Type{GalileoE1B},
+    phase::Int,
+    prn::Int
+)
     GALILEO_E1B_CODES[1 + phase, prn]
 end

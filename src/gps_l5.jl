@@ -64,9 +64,8 @@ end
 """
 $(SIGNATURES)
 
-Takes the status of the registers as an Int `registers`, and an array of
-register `indices` to calculate and return the new register values and the
-register output.
+Takes the status of the registers as an Int `registers`, and an array of register `indices`
+to calculate and return the new register values and the register output.
 
 ```julia-repl
 julia> reshape(8190)
@@ -90,7 +89,7 @@ end
 $(SIGNATURES)
 
 Calculate the gps L5 PRN `satellite_code` for the initial XB register states
-'initial_xb_code_states'.
+`initial_xb_code_states`.
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
 julia> prn_code_sat_1_I_signal = gen_l5_code(initial_states_PRN_num_1_I)
@@ -116,8 +115,8 @@ end
 """
 $(SIGNATURES)
 
-Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`,
-each ⊻ with one bit of the 10bit Neuman-Hofman sequence 0000110101.
+Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`, each ⊻ with one bit
+of the 10bit Neuman-Hofman sequence 0000110101.
 """
 function add_neuman_hofman_code(l5_code, neuman_hofman_code)
     vec(l5_code .* Vector{Int8}(neuman_hofman_code)')
@@ -139,8 +138,7 @@ const GPS_L5_CODES = mapreduce(
 """
 $(SIGNATURES)
 
-Get codes of type GPSL5 as a Matrix where each column
-represents a PRN.
+Get codes of type GPSL5 as a Matrix where each column represents a PRN.
 ```julia-repl
 julia> get_code(GPSL5)
 ```
@@ -212,9 +210,9 @@ end
 """
 $(SIGNATURES)
 
-Get code of GNSS system GPSL5 at phase `phase` of prn `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller
-than the code length incl. secondary code and must be an integer.
+Get code of GNSS system GPSL5 at phase `phase` of PRN `prn`.
+The phase will not be wrapped by the code length. The phase has to smaller than the code
+length incl. secondary code and must be an integer.
 ```julia-repl
 julia> get_code_unsafe(GPSL5, 10, 1)
 ```

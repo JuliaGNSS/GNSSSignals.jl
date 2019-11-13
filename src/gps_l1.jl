@@ -1,4 +1,8 @@
-const GPS_CA_CODES = read_in_codes(joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"), 32, 1023)
+const GPS_CA_CODES = read_in_codes(
+    joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
+    32,
+    1023
+)
 
 """
 $(SIGNATURES)
