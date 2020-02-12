@@ -18,7 +18,10 @@ module GNSSSignals
         get_data_frequency,
         get_code_center_frequency_ratio,
         get_carrier_fast_unsafe,
-        get_carrier_vfast_unsafe
+        get_carrier_vfast_unsafe,
+        get_quadrant_size_power,
+        get_carrier_amplitude_power,
+        fpsincos
 
     abstract type AbstractGNSSSystem end
 
@@ -39,9 +42,14 @@ module GNSSSignals
     ```
     """
     function read_in_codes(filename, num_prns, code_length)
-        open(filename) do file_stream
+        code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
+        Int16.(code_int8)
+    end
+
+    function extend_front_and_back(codes)
+        [codes[end, :]'; codes; codes[1,:]'; codes[2,:]']
     end
 
     include("gps_l1.jl")

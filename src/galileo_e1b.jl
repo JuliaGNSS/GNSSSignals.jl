@@ -5,11 +5,11 @@ function read_from_documentation(raw_code)
     map(x -> parse(Int8, x, base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
 end
 
-const GALILEO_E1B_CODES = read_in_codes(
+const GALILEO_E1B_CODES = extend_front_and_back(read_in_codes(
     joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"),
     50,
     4092
-)
+))
 
 """
 $(SIGNATURES)
@@ -21,7 +21,7 @@ julia> get_code(GalileoE1B)
 ```
 """
 function get_codes(::Type{GalileoE1B})
-    GALILEO_E1B_CODES
+    @view GALILEO_E1B_CODES[2:end - 2, :]
 end
 
 """
@@ -136,5 +136,5 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase::Int,
     prn::Int
 )
-    GALILEO_E1B_CODES[1 + phase, prn]
+    GALILEO_E1B_CODES[2 + phase, prn]
 end

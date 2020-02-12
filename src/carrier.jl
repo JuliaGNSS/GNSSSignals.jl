@@ -1,8 +1,5 @@
-#const CIS_LUT = SVector{64}(cis.((0:63) / 64 * 2π))
-#function cis_fast(x)
-#    @inbounds CIS_LUT[(floor(Int, x / 2π * 64) & 63) + 1]
-#end
-
+#const CIS_LUT = SVector{32}(complex.(floor.(Int8, cos.(2π .* (0:31) ./ 32) .* (1 << 4)), floor.(Int8, sin.(2π .* (0:31) ./ 32) .* (1 << 4))))
+#cis_fast(x) = @inbounds CIS_LUT[x & 31 + 1]
 """
 $(SIGNATURES)
 
@@ -105,4 +102,54 @@ julia> get_carrier_vfast_unsafe(π / 4)
 """
 @inline function get_carrier_vfast_unsafe(x)
     cis_vfast(x)
+end
+
+
+get_quadrant_size_power(x::Int16) = 7
+get_carrier_amplitude_power(x::Int16) = 7
+@inline function calc_A(x::Int16)
+    p = 15; r = 1; A = Int16(23170); C = Int16(-425)
+    n = get_quadrant_size_power(x)
+    a = get_carrier_amplitude_power(x)
+    x² = (x * x) >> n
+    rounding = one(x) << (p - a - 1)
+    (A + rounding + (x² * C) >> r) >> (p - a)
+end
+@inline function calc_B(x::Int16)
+    p = 14; r = 3; B = Int16(-17790); D = Int16(351)
+    n = get_quadrant_size_power(x)
+    a = get_carrier_amplitude_power(x)
+    x² = (x * x) >> n
+    rounding = one(x) << (p - a - 1)
+    (rounding + x * (B + (x² * D) >> r) >> n) >> (p - a)
+end
+@inline function get_first_bit_sign(x)
+    n = get_quadrant_size_power(x)
+    mysign(x << (sizeof(x) * 8 - n - 1))
+end
+@inline function get_second_bit_sign(x)
+    n = get_quadrant_size_power(x)
+    mysign(x << (sizeof(x) * 8 - n - 2))
+end
+@inline function get_angle(x)
+    n = get_quadrant_size_power(x)
+    x & (one(x) << n - one(x)) - one(x) << (n - 1)
+end
+@inline mysign(x) = x >= zero(x) ? one(x) : -one(x)
+
+"""
+$(SIGNATURES)
+
+Fixed point sin and cos
+"""
+@inline function fpsincos(x::Union{Int16, Int32, Int64})
+    first_bit_sign = get_first_bit_sign(x)
+    second_bit_sign = get_second_bit_sign(x)
+    angle = get_angle(x)
+    A = calc_A(angle)
+    B = calc_B(angle)
+
+    cos_approx = second_bit_sign * (first_bit_sign * A + B)
+    sin_approx = second_bit_sign * (A - first_bit_sign * B)
+    sin_approx, cos_approx
 end

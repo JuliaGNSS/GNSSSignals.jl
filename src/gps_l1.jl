@@ -1,8 +1,8 @@
-const GPS_CA_CODES = read_in_codes(
+const GPS_CA_CODES = extend_front_and_back(read_in_codes(
     joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
     32,
     1023
-)
+))
 
 """
 $(SIGNATURES)
@@ -14,7 +14,7 @@ julia> get_code(GPSL1)
 ```
 """
 function get_codes(::Type{GPSL1})
-    GPS_CA_CODES
+    @view GPS_CA_CODES[2:end - 2, :]
 end
 
 """
@@ -88,5 +88,5 @@ julia> get_code_unsafe(GPSL1, 10, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(::Type{GPSL1}, phase::Int, prn::Int)
-    GPS_CA_CODES[1 + phase, prn]
+    GPS_CA_CODES[2 + phase, prn]
 end

@@ -127,13 +127,13 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-const GPS_L5_CODES = mapreduce(
+const GPS_L5_CODES = extend_front_and_back(Int16.(mapreduce(
     sat -> add_neuman_hofman_code(
         gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
     ),
     hcat,
     1:37
-)::Array{Int8, 2}
+)))
 
 """
 $(SIGNATURES)
@@ -144,7 +144,7 @@ julia> get_code(GPSL5)
 ```
 """
 function get_codes(::Type{GPSL5})
-    GPS_L5_CODES
+    @view GPS_L5_CODES[2:end - 2, :]
 end
 
 """
@@ -218,5 +218,5 @@ julia> get_code_unsafe(GPSL5, 10, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(::Type{GPSL5}, phase::Int, prn::Int)
-    GPS_L5_CODES[1 + phase, prn]
+    GPS_L5_CODES[2 + phase, prn]
 end
