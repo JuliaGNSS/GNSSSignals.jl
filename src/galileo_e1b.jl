@@ -93,7 +93,7 @@ moment.
 julia> get_code(GalileoE1B, 10.3, 1)
 ```
 """
-Base.@propagate_inbounds function get_code(::Type{GalileoE1B}, phase, prn::Int)
+Base.@propagate_inbounds function get_code(::Type{GalileoE1B}, phase, prn::Integer)
     floored_2phase = floor(Int, 2 * phase)
     get_code_unsafe(
         GalileoE1B,
@@ -115,7 +115,7 @@ than the code length. Includes only BOC(1,1) at the moment.
 julia> get_code_unsafe(GalileoE1B, 10.3, 1)
 ```
 """
-Base.@propagate_inbounds function get_code_unsafe(::Type{GalileoE1B}, phase, prn::Int)
+Base.@propagate_inbounds function get_code_unsafe(::Type{GalileoE1B}, phase, prn::Integer)
     floored_2phase = floor(Int, 2 * phase)
     get_code_unsafe(GalileoE1B, floored_2phase >> 1, prn) *
         (iseven(floored_2phase) * 2 - 1)
@@ -133,8 +133,8 @@ julia> get_code_unsafe(GalileoE1B, 10, 1)
 """
 Base.@propagate_inbounds function get_code_unsafe(
     ::Type{GalileoE1B},
-    phase::Int,
-    prn::Int
+    phase::Integer,
+    prn::Integer
 )
     GALILEO_E1B_CODES[2 + phase, prn]
 end

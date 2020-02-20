@@ -217,6 +217,10 @@ length incl. secondary code and must be an integer.
 julia> get_code_unsafe(GPSL5, 10, 1)
 ```
 """
-Base.@propagate_inbounds function get_code_unsafe(::Type{GPSL5}, phase::Int, prn::Int)
+Base.@propagate_inbounds function get_code_unsafe(
+    ::Type{GPSL5},
+    phase::Integer,
+    prn::Integer
+)
     GPS_L5_CODES[2 + phase, prn]
 end

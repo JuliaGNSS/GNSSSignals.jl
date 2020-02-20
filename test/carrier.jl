@@ -24,3 +24,22 @@
     @test get_carrier_fast_unsafe.(x) == GNSSSignals.cis_fast.(x)
     @test get_carrier_vfast_unsafe.(x) == GNSSSignals.cis_vfast.(x)
 end
+
+@testset "Generate carrier" begin
+
+    carrier = StructArray(zeros(Complex{Int16}, 2500))
+
+    fpcarrier!(
+        carrier,
+        1500Hz,
+        2.5e6Hz,
+        0.25, # π / 2
+        start_sample = 111,
+        num_samples = 2390,
+    )
+
+    @test sqrt(mean(abs2.(carrier.re[111:2500] ./ 1 << 7 .-
+                            cos.(2π * (0:2389) * 1500Hz / 2.5e6Hz .+ π / 2)))) < 5.6e-3
+    @test sqrt(mean(abs2.(carrier.im[111:2500] ./ 1 << 7 .-
+                            sin.(2π * (0:2389) * 1500Hz / 2.5e6Hz .+ π / 2)))) < 5.6e-3
+end
