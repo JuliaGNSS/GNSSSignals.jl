@@ -1,8 +1,13 @@
 module GNSSSignals
 
-    using DocStringExtensions, LoopVectorization, StructArrays, Statistics
+    using
+        DocStringExtensions,
+        LoopVectorization,
+        StructArrays,
+        Statistics,
+        FixedPointSinCosApproximations
+
     using Unitful: Hz
-    using LoopVectorization: SVec, vifelse
 
     export
         AbstractGNSSSystem,
@@ -24,8 +29,6 @@ module GNSSSignals
         get_carrier_amplitude_power,
         fpcarrier_phases!,
         fpcarrier!
-
-    const VInt16 = Union{Int16,SVec{<:Any,Int16}}
 
     abstract type AbstractGNSSSystem end
 

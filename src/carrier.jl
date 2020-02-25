@@ -104,75 +104,6 @@ julia> get_carrier_vfast_unsafe(π / 4)
     cis_vfast(x)
 end
 
-get_quadrant_size_power(x::VInt16) = 7
-get_carrier_amplitude_power(x::VInt16) = 7
-@inline function calc_A(x::VInt16)
-    p = 15; r = 1; A = Int16(23170); C = Int16(-425)
-    n = get_quadrant_size_power(x)
-    a = get_carrier_amplitude_power(x)
-    x² = (x * x) >> n
-    (A + (x² * C) >> r) >> (p - a)
-end
-@inline function calc_B(x::VInt16)
-    p = 14; r = 3; B = Int16(-17790); D = Int16(351)
-    n = get_quadrant_size_power(x)
-    a = get_carrier_amplitude_power(x)
-    x² = (x * x) >> n
-    (x * (B + (x² * D) >> r) >> n) >> (p - a)
-end
-@inline function get_first_bit_sign(x::VInt16)
-    n = get_quadrant_size_power(x)
-    mysign(x << (16 - n - 1))
-end
-@inline function get_second_bit_sign(x::VInt16)
-    n = get_quadrant_size_power(x)
-    mysign(x << (16 - n - 2))
-end
-@inline function get_quarter_angle(x)
-    n = get_quadrant_size_power(x)
-    x & (one(x) << n - one(x)) - one(x) << (n - 1)
-end
-@inline mysign(x) = vifelse(x >= zero(x), one(x), -one(x))
-
-"""
-$(SIGNATURES)
-
-Fixed point cos
-"""
-@inline function fpcos(phase)
-    first_bit_sign = get_first_bit_sign(phase)
-    second_bit_sign = get_second_bit_sign(phase)
-    quarter_angle = get_quarter_angle(phase)
-    A = calc_A(quarter_angle)
-    B = calc_B(quarter_angle)
-
-    second_bit_sign * (first_bit_sign * A + B)
-end
-
-"""
-$(SIGNATURES)
-
-Fixed point sin
-"""
-@inline function fpsin(phase)
-    first_bit_sign = get_first_bit_sign(phase)
-    second_bit_sign = get_second_bit_sign(phase)
-    quarter_angle = get_quarter_angle(phase)
-    A = calc_A(quarter_angle)
-    B = calc_B(quarter_angle)
-
-    second_bit_sign * (A - first_bit_sign * B)
-end
-
-"""
-$(SIGNATURES)
-
-Fixed point sin and cos
-"""
-@inline function fpsincos(x)
-    (fpsin(x), fpcos(x))
-end
-
 """
 $(SIGNATURES)
 
@@ -184,9 +115,10 @@ function fpcarrier_phases!(
     sample_frequency,
     start_phase::AbstractFloat;
     start_sample::Integer = 1,
-    num_samples::Integer = length(phases)
-) where T <: Integer
-    n = get_quadrant_size_power(zero(T)) + 2
+    num_samples::Integer = length(phases),
+    bits::Val{N} = Val(5)
+) where {T <: Integer, N}
+    n = N + 2
     fixed_point = 32 - n - 2
     delta = floor(Int32, carrier_frequency * 1 << (fixed_point + n) / sample_frequency)
     fixed_point_start_phase = floor(Int32, start_phase * 1 << (fixed_point + n))
@@ -207,11 +139,12 @@ function fpcarrier!(
     carrier_cos::VT,
     phases::VT;
     start_sample::Integer = 1,
-    num_samples::Integer = length(phases)
-) where VT <: Vector{Int16}
-    @avx unroll = 8 for i = start_sample:num_samples + start_sample - 1
-        carrier_sin[i] = fpsin(phases[i])
-        carrier_cos[i] = fpcos(phases[i])
+    num_samples::Integer = length(phases),
+    bits::Val{N} = Val(5)
+) where {VT <: Vector{Int16}, N}
+    @avx unroll = 6 for i = start_sample:num_samples + start_sample - 1
+        carrier_sin[i] = fpsin(phases[i], bits)
+        carrier_cos[i] = fpcos(phases[i], bits)
     end
 end
 
@@ -226,21 +159,24 @@ function fpcarrier!(
     sample_frequency,
     start_phase::AbstractFloat;
     start_sample::Integer = 1,
-    num_samples::Integer = length(carrier)
-)
+    num_samples::Integer = length(carrier),
+    bits::Val{N} = Val(5)
+) where N
     fpcarrier_phases!(
         carrier.re,
         carrier_frequency,
         sample_frequency,
         start_phase,
         start_sample = start_sample,
-        num_samples = num_samples
+        num_samples = num_samples,
+        bits = bits
     )
     fpcarrier!(
         carrier.im,
         carrier.re,
         carrier.re,
         start_sample = start_sample,
-        num_samples = num_samples
+        num_samples = num_samples,
+        bits = bits
     )
 end
