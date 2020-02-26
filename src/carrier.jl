@@ -127,6 +127,7 @@ function fpcarrier_phases!(
         fixed_point_phase = fixed_point_phase + delta
         phases[i] = T(fixed_point_phase >> fixed_point)
     end
+    phases
 end
 
 """
@@ -179,4 +180,5 @@ function fpcarrier!(
         num_samples = num_samples,
         bits = bits
     )
+    carrier
 end

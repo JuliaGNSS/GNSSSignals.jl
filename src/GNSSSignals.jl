@@ -28,7 +28,8 @@ module GNSSSignals
         get_quadrant_size_power,
         get_carrier_amplitude_power,
         fpcarrier_phases!,
-        fpcarrier!
+        fpcarrier!,
+        min_bits_for_code_length
 
     abstract type AbstractGNSSSystem end
 
