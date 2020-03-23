@@ -143,7 +143,7 @@ function fpcarrier!(
     num_samples::Integer = length(phases),
     bits::Val{N} = Val(5)
 ) where {VT <: Vector{Int16}, N}
-    @_avx for i = start_sample:num_samples + start_sample - 1
+    @avx unroll = 6 for i = start_sample:num_samples + start_sample - 1
         carrier_sin[i] = fpsin(phases[i], bits)
         carrier_cos[i] = fpcos(phases[i], bits)
     end
