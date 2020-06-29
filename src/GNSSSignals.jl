@@ -54,6 +54,7 @@ module GNSSSignals
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
         Int16.(code_int8)
+        # CuArray{Float32}(code_gpu)
     end
 
     function extend_front_and_back(codes)
