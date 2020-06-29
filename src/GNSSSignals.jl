@@ -5,7 +5,8 @@ module GNSSSignals
         LoopVectorization,
         StructArrays,
         Statistics,
-        FixedPointSinCosApproximations
+        FixedPointSinCosApproximations,
+        CUDA
 
     using Unitful: Hz
 
