@@ -4,6 +4,8 @@ const GPS_CA_CODES = extend_front_and_back(read_in_codes(
     1023
 ))
 
+const GPS_CA_CODES_GPU = CuArray{ComplexF32}(GPS_CA_CODES)
+
 """
 $(SIGNATURES)
 
