@@ -135,8 +135,6 @@ const GPS_L5_CODES = extend_front_and_back(Int16.(mapreduce(
     1:37
 )))
 
-const GPS_L5_CODES_GPU = CuArray{ComplexF32}(GPS_L5_CODES)
-
 """
 $(SIGNATURES)
 

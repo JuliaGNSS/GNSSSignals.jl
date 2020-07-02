@@ -11,8 +11,6 @@ const GALILEO_E1B_CODES = extend_front_and_back(read_in_codes(
     4092
 ))
 
-const GALILEO_E1B_CODES_GPU = CuArray{ComplexF32}(GALILEO_E1B_CODES)
-
 """
 $(SIGNATURES)
 
