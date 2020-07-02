@@ -54,8 +54,7 @@ module GNSSSignals
         code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        Int16.(code_int8)
-        # CuArray{Float32}(code_gpu)
+        use_gpu[] ? CuArray{ComplexF32}(code_int8) : Int16.(code_int8)
     end
 
     function extend_front_and_back(codes)
