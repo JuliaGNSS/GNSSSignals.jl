@@ -1,6 +1,6 @@
 const GPS_CA_CODES = extend_front_and_back(read_in_codes(
     joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
-    32,
+    37,
     1023
 ))
 
