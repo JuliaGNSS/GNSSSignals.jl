@@ -40,7 +40,7 @@ module GNSSSignals
 
     struct GalileoE1B <: AbstractGNSSSystem end
 
-    const use_gpu[] = CUDA.functional()
+    const use_gpu = CUDA.functional()
 
     """
     $(SIGNATURES)
@@ -56,7 +56,7 @@ module GNSSSignals
         code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        use_gpu[] ? CuArray{ComplexF32}(code_int8) : Int16.(code_int8)
+        use_gpu ? CuArray{ComplexF32}(code_int8) : Int16.(code_int8)
     end
 
     function extend_front_and_back(codes)
