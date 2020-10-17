@@ -40,6 +40,8 @@ module GNSSSignals
 
     struct GalileoE1B <: AbstractGNSSSystem end
 
+    const use_gpu[] = CUDA.functional()
+
     """
     $(SIGNATURES)
 
