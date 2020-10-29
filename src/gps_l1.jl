@@ -102,7 +102,3 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     @views gpsl1.codes[2 .+ phases, prn]
 end
-
-function length(gps::GPSL1{CUDA.CuArray{Complex{Float32},2}})
-    length(gps.codes)
-end
