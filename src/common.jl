@@ -7,14 +7,27 @@ julia> get_code(GPSL1, 1200.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code(
-    ::Type{T},
+    system::AbstractGNSSSystem{T},
     phase,
     prn::Integer
-) where T <: AbstractGNSSSystem
+) where T
     floored_phase = floor(Int, phase)
     get_code_unsafe(
-        T,
-        mod(floored_phase, get_code_length(T) * get_secondary_code_length(T)),
+        system::AbstractGNSSSystem,
+        mod(floored_phase, get_code_length(system) * get_secondary_code_length(system)),
+        prn
+    )
+end
+
+Base.@propagate_inbounds function get_code(
+    gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+    phases,
+    prn::Integer
+)
+    floored_phases = floor.(Int, phases)
+    get_code_unsafe(
+        gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+        mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
         prn
     )
 end
@@ -30,11 +43,11 @@ julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    ::Type{T},
+    system::Type{T},
     phase,
     prn::Integer
 ) where T <: AbstractGNSSSystem
-    get_code_unsafe(T, floor(Int, phase), prn)
+    get_code_unsafe(system, floor(Int, phase), prn)
 end
 
 """

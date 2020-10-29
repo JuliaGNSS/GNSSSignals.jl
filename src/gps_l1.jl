@@ -1,8 +1,8 @@
-const GPS_CA_CODES = extend_front_and_back(read_in_codes(
-    joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
-    37,
-    1023
-))
+# const GPS_CA_CODES = extend_front_and_back(read_in_codes(
+#     joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
+#     37,
+#     1023
+# ))
 
 """
 $(SIGNATURES)
@@ -13,8 +13,8 @@ represents a PRN.
 julia> get_code(GPSL1)
 ```
 """
-function get_codes(::Type{GPSL1})
-    @view GPS_CA_CODES[2:end - 2, :]
+function get_codes(system::GPSL1)
+    @view system.codes[2:end - 2, :]
 end
 
 """
@@ -25,7 +25,7 @@ Get code length of GNSS system GPSL1.
 julia> get_code_length(GPSL1)
 ```
 """
-@inline function get_code_length(::Type{GPSL1})
+@inline function get_code_length(system::GPSL1)
     1023
 end
 
@@ -37,7 +37,7 @@ Get secondary code length of GNSS system GPSL1.
 julia> get_secondary_code_length(GPSL1)
 ```
 """
-@inline function get_secondary_code_length(::Type{GPSL1})
+@inline function get_secondary_code_length(system::GPSL1)
     1
 end
 
@@ -49,7 +49,7 @@ Get center frequency of GNSS system GPSL1.
 julia> get_center_frequency(GPSL1)
 ```
 """
-@inline function get_center_frequency(::Type{GPSL1})
+@inline function get_center_frequency(system::GPSL1)
     1_575_420_000Hz
 end
 
@@ -61,7 +61,7 @@ Get code frequency of GNSS system GPSL1.
 julia> get_code_frequency(GPSL1)
 ```
 """
-@inline function get_code_frequency(::Type{GPSL1})
+@inline function get_code_frequency(system::GPSL1)
     1_023_000Hz
 end
 
@@ -73,7 +73,7 @@ Get data frequency of GNSS system GPSL1.
 julia> get_data_frequency(GPSL1)
 ```
 """
-@inline function get_data_frequency(::Type{GPSL1})
+@inline function get_data_frequency(system::GPSL1)
     50Hz
 end
 
@@ -88,9 +88,21 @@ julia> get_code_unsafe(GPSL1, 10, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    ::Type{GPSL1},
+    system::GPSL1,
     phase::Integer,
     prn::Integer
 )
-    GPS_CA_CODES[2 + phase, prn]
+    system.codes[2 + phase, prn]
+end
+
+Base.@propagate_inbounds function get_code_unsafe(
+    gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+    phases,
+    prn::Integer
+)
+    @views gpsl1.codes[2 .+ phases, prn]
+end
+
+function length(gps::GPSL1{CUDA.CuArray{Complex{Float32},2}})
+    length(gps.codes)
 end

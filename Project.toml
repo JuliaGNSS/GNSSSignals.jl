@@ -4,6 +4,7 @@ authors = ["Soeren Zorn <soeren.zorn@nav.rwth-aachen.de>"]
 version = "0.13.0"
 
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 FixedPointSinCosApproximations = "aedcc28f-63b5-4046-b467-b09cfa7c8db7"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
