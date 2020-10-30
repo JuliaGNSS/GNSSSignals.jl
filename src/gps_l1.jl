@@ -95,22 +95,22 @@ Base.@propagate_inbounds function get_code_unsafe(
     system.codes[2 + phase, prn]
 end
 
-Base.@propagate_inbounds function get_code_unsafe(
-    gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
-    phases,
-    prn::Integer
-)
-    @views gpsl1.codes[2 .+ phases, prn]
-end
+# Base.@propagate_inbounds function get_code_unsafe(
+#     gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+#     phases,
+#     prn::Integer
+# )
+#     @views gpsl1.codes[2 .+ phases, prn]
+# end
 
-# benchmarking purposes 
-Base.@propagate_inbounds function get_code_unsafe(
-    gpsl1::GPSL1{Array{Int16,2}},
-    phases,
-    prn::Integer
-)
-    @views gpsl1.codes[2 .+ phases, prn]
-end
+# # benchmarking purposes 
+# Base.@propagate_inbounds function get_code_unsafe(
+#     gpsl1::GPSL1{Array{Int16,2}},
+#     phases,
+#     prn::Integer
+# )
+#     @views gpsl1.codes[2 .+ phases, prn]
+# end
 
 function length(gps::GPSL1{CUDA.CuArray{Complex{Float32},2}})
     length(gps.codes)

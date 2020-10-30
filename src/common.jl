@@ -19,31 +19,31 @@ Base.@propagate_inbounds function get_code(
     )
 end
 
-Base.@propagate_inbounds function get_code(
-    gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
-    phases,
-    prn::Integer
-)
-    floored_phases = floor.(Int, phases)
-    get_code_unsafe(
-        gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
-        mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
-        prn
-    )
-end
+# Base.@propagate_inbounds function get_code(
+#     gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+#     phases,
+#     prn::Integer
+# )
+#     floored_phases = floor.(Int, phases)
+#     get_code_unsafe(
+#         gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
+#         mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
+#         prn
+#     )
+# end
 
-Base.@propagate_inbounds function get_code(
-    gpsl1::GPSL1{Array{Int16,2}},
-    phases,
-    prn::Integer
-)
-    floored_phases = floor.(Int, phases)
-    get_code_unsafe(
-        gpsl1::GPSL1{Array{Int16,2}},
-        mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
-        prn
-    )
-end
+# Base.@propagate_inbounds function get_code(
+#     gpsl1::GPSL1{Array{Int16,2}},
+#     phases,
+#     prn::Integer
+# )
+#     floored_phases = floor.(Int, phases)
+#     get_code_unsafe(
+#         gpsl1::GPSL1{Array{Int16,2}},
+#         mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
+#         prn
+#     )
+# end
 
 """
 $(SIGNATURES)
