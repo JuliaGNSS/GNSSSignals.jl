@@ -71,8 +71,8 @@ Get code to center frequency ratio
 julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
-@inline function get_code_center_frequency_ratio(::Type{T}) where T <: AbstractGNSSSystem
-    get_code_frequency(T) / get_center_frequency(T)
+@inline function get_code_center_frequency_ratio(system)
+    get_code_frequency(system) / get_center_frequency(system)
 end
 
 """
@@ -80,9 +80,9 @@ $(SIGNATURES)
 
 Minimum bits that are needed to represent the code length
 """
-function min_bits_for_code_length(::Type{S}) where S <: AbstractGNSSSystem
+function min_bits_for_code_length(system)
     for i = 1:32
-        if get_code_length(S) * get_secondary_code_length(S) <= 1 << i
+        if get_code_length(system) * get_secondary_code_length(system) <= 1 << i
             return i
         end
     end
