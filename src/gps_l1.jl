@@ -16,6 +16,9 @@ julia> get_code(GPSL1)
 function get_codes(system::GPSL1)
     @view system.codes[2:end - 2, :]
 end
+function get_codes(::Type{GPSL1})
+    @view system.codes[2:end - 2, :]
+end
 
 """
 $(SIGNATURES)
@@ -26,6 +29,9 @@ julia> get_code_length(GPSL1)
 ```
 """
 @inline function get_code_length(system::GPSL1)
+    1023
+end
+@inline function get_code_length(::Type{GPSL1})
     1023
 end
 
@@ -40,6 +46,9 @@ julia> get_secondary_code_length(GPSL1)
 @inline function get_secondary_code_length(system::GPSL1)
     1
 end
+@inline function get_secondary_code_length(::Type{GPSL1})
+    1
+end
 
 """
 $(SIGNATURES)
@@ -50,6 +59,9 @@ julia> get_center_frequency(GPSL1)
 ```
 """
 @inline function get_center_frequency(system::GPSL1)
+    1_575_420_000Hz
+end
+@inline function get_center_frequency(::Type{GPSL1})
     1_575_420_000Hz
 end
 
@@ -64,7 +76,9 @@ julia> get_code_frequency(GPSL1)
 @inline function get_code_frequency(system::GPSL1)
     1_023_000Hz
 end
-
+@inline function get_code_frequency(::Type{GPSL1})
+    1_023_000Hz
+end
 """
 $(SIGNATURES)
 
@@ -74,6 +88,9 @@ julia> get_data_frequency(GPSL1)
 ```
 """
 @inline function get_data_frequency(system::GPSL1)
+    50Hz
+end
+@inline function get_data_frequency(::Type{GPSL1})
     50Hz
 end
 
