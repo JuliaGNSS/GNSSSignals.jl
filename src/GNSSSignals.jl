@@ -45,7 +45,7 @@ module GNSSSignals
     function __init__()
         use_gpu[] = CUDA.functional()
         if use_gpu[]
-            @info "Found CUDA. Activating GPU signal processing. Call GNSSSignals.use_gpu[] = false to override this and reconstruct any created objects."
+            @info "Found CUDA, activating GPU signal processing. Call GNSSSignals.use_gpu[] = false to override this. Beware of any created objects, you may need to reconstruct them for the override to take place."
         else
             @info "CUDA not found. Using solely CPU signal processing."
         end
