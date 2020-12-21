@@ -5,10 +5,12 @@ module GNSSSignals
         LoopVectorization,
         StructArrays,
         Statistics,
-        FixedPointSinCosApproximations,
-        CUDA
+        FixedPointSinCosApproximations
 
     using Unitful: Hz
+
+    using CUDA
+    const use_gpu = Ref(false)
 
     export
         AbstractGNSSSystem,
@@ -33,12 +35,20 @@ module GNSSSignals
         min_bits_for_code_length,
         length
 
-    const use_gpu = CUDA.functional()
 
     abstract type AbstractGNSSSystem{T} end
 
     struct GPSL1{T} <: AbstractGNSSSystem{T} 
         codes::T
+    end
+
+    function __init__()
+        use_gpu[] = CUDA.functional()
+        if use_gpu[]
+            @info "Found CUDA. Activating GPU signal processing. Call GNSSSignals.use_gpu[] = false to override this and reconstruct any created objects."
+        else
+            @info "CUDA not found. Using solely CPU signal processing."
+        end
     end
 
     function GPSL1()
@@ -81,7 +91,7 @@ module GNSSSignals
         code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        use_gpu ? CuArray{Float32}(code_int8) : Int16.(code_int8)
+        use_gpu[] ? CuArray{Float32}(code_int8) : Int16.(code_int8)
     end
 
     function extend_front_and_back(codes)
