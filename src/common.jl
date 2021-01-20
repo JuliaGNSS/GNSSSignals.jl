@@ -62,3 +62,87 @@ function min_bits_for_code_length(::Type{S}) where S <: AbstractGNSSSystem
     end
     return 0
 end
+
+"""
+$(SIGNATURES)
+
+Calculate the baseband spectrum of an BPSK modulated signal
+"""
+function get_code_spectrum_BPSK(code_frequency::Frequency, frequencies)
+    return get_code_spectrum_BPSK(code_frequency/1Hz, frequencies)
+end
+function get_code_spectrum_BPSK(code_frequency, frequencies::Frequency)
+    return get_code_spectrum_BPSK(code_frequency, frequencies/1Hz)
+end
+function get_code_spectrum_BPSK(code_frequency::Frequency, frequencies::Frequency)
+    return get_code_spectrum_BPSK(code_frequency/1Hz, frequencies/1Hz)
+end
+function get_code_spectrum_BPSK(code_frequency, frequencies)
+    return sinc.(frequencies./code_frequency).^2 ./ code_frequency
+end
+
+
+"""
+$(SIGNATURES)
+
+Calculate the baseband spectrum of a sine phased BOC modulated signal
+"""
+function get_code_spectrum_BOCsin(
+    code_frequency::Frequency, 
+    subcarrier_frequency::Frequency, 
+    frequencies
+)
+    return get_code_spectrum_BOCsin(code_frequency/1Hz, subcarrier_frequency/1Hz, frequencies)
+end
+function get_code_spectrum_BOCsin(
+    code_frequency, 
+    subcarrier_frequency, 
+    frequencies::Frequency
+)
+    return get_code_spectrum_BOCsin(code_frequency, subcarrier_frequency, frequencies/1Hz)
+end
+function get_code_spectrum_BOCsin(
+    code_frequency::Frequency, 
+    subcarrier_frequency::Frequency, 
+    frequencies::Frequency
+)
+    return get_code_spectrum_BOCsin(code_frequency/1Hz, subcarrier_frequency/1Hz, frequencies/1Hz)
+end
+function get_code_spectrum_BOCsin(code_frequency, subcarrier_frequency, frequencies)
+    return ((sinc.(frequencies./code_frequency) 
+        .* tan.(pi.*frequencies./(2*subcarrier_frequency))).^2 
+        ./ code_frequency)
+end
+
+"""
+$(SIGNATURES)
+
+Calculate the baseband spectrum of a cosine phased BOC modulated signal
+"""
+function get_code_spectrum_BOCcos(
+    code_frequency::Frequency, 
+    subcarrier_frequency::Frequency, 
+    frequencies
+)
+    return get_code_spectrum_BOCcos(code_frequency/1Hz, subcarrier_frequency/1Hz, frequencies)
+end
+function get_code_spectrum_BOCcos(
+    code_frequency, 
+    subcarrier_frequency, 
+    frequencies::Frequency
+)
+    return get_code_spectrum_BOCcos(code_frequency, subcarrier_frequency, frequencies/1Hz)
+end
+function get_code_spectrum_BOCcos(
+    code_frequency::Frequency, 
+    subcarrier_frequency::Frequency, 
+    frequencies::Frequency
+)
+    return get_code_spectrum_BOCcos(code_frequency/1Hz, subcarrier_frequency/1Hz, frequencies/1Hz)
+end
+function get_code_spectrum_BOCcos(code_frequency, subcarrier_frequency, frequencies)
+    @. return (4*code_frequency
+        * (sinpi(frequencies/code_frequency) * sinpi(frequencies/(4*subcarrier_frequency))^2
+        / (pi * frequencies * cospi(frequencies / (2*subcarrier_frequency))))^2    
+    )
+end

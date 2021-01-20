@@ -224,3 +224,13 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     GPS_L5_CODES[2 + phase, prn]
 end
+
+"""
+$(SIGNATURES)
+
+Get the code spectrum of the GPSL5 code
+"""
+function get_code_spectrum(::Type{T}, frequencies) where T<:GPSL5
+    get_code_spectrum_BPSK(get_code_frequency(T), frequencies)
+end
+

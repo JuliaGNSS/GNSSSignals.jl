@@ -7,7 +7,7 @@ module GNSSSignals
         Statistics,
         FixedPointSinCosApproximations
 
-    using Unitful: Hz
+    using Unitful: Frequency, Hz
 
     export
         AbstractGNSSSystem,
@@ -20,6 +20,8 @@ module GNSSSignals
         get_secondary_code_length,
         get_center_frequency,
         get_code_frequency,
+        get_subcarrier_frequency,
+        get_code_spectrum,
         get_code_unsafe,
         get_code,
         get_data_frequency,

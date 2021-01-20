@@ -94,3 +94,12 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     GPS_CA_CODES[2 + phase, prn]
 end
+
+"""
+$(SIGNATURES)
+
+Get the code spectrum of the GPSL1 CA code
+"""
+function get_code_spectrum(::Type{T}, frequencies) where T<:GPSL1
+    get_code_spectrum_BPSK(get_code_frequency(T), frequencies)
+end

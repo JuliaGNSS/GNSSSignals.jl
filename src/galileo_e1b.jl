@@ -75,6 +75,18 @@ end
 """
 $(SIGNATURES)
 
+Get subcarrier frequency of GNSS system GalileoE1B
+```julia-repl
+julia> get_subcarrier_frequency(GalileoE1B)
+```
+"""
+@inline function get_subcarrier_frequency(::Type{GalileoE1B})
+    1_023_000Hz
+end
+
+"""
+$(SIGNATURES)
+
 Get data frequency of GNSS system GalileoE1B.
 ```julia-repl
 julia> get_data_frequency(GalileoE1B)
@@ -137,4 +149,14 @@ Base.@propagate_inbounds function get_code_unsafe(
     prn::Integer
 )
     GALILEO_E1B_CODES[2 + phase, prn]
+end
+
+"""
+$(SIGNATURES)
+
+Get the code spectrum of the Galileo E1B code. This currently does not respect
+the full CBOC modulation, but only the BOC(1,1) part, which is mainly used.
+"""
+function get_code_spectrum(::Type{T}, frequencies) where T<:GalileoE1B
+    get_code_spectrum_BOCsin(get_code_frequency(T), get_subcarrier_frequency(T), frequencies)
 end

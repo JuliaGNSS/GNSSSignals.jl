@@ -47,6 +47,15 @@ end
 """
 $(SIGNATURES)
 
+Get subcarrier frequency of generic BOC GNSS system
+"""
+function get_subcarrier_frequency(::Type{GenericBOC{T,m,n}}) where {T<:AbstractGNSSSystem, m, n}
+    m * 1_023_000Hz
+end
+
+"""
+$(SIGNATURES)
+
 Get data frequency of base GNSS system for generic BOC.
 """
 function get_data_frequency(::Type{<:GenericBOC{T}}) where T<:AbstractGNSSSystem
@@ -92,4 +101,13 @@ Base.@propagate_inbounds function get_code_unsafe(
     floored_boc_phase = floor(Int, phase*2*m/n)
     get_code_unsafe(T, floored_phase, prn) * 
         (iseven(floored_boc_phase)<<1 - 1)
+end
+
+"""
+$(SIGNATURES)
+
+Get code spectrum of generic BOC GNSS system
+"""
+function get_code_spectrum(::Type{T}, frequencies) where T<:GenericBOC
+    return get_code_spectrum_BOCcos.(get_code_frequency(T), get_subcarrier_frequency(T), frequencies)
 end
