@@ -141,8 +141,9 @@ function get_code_spectrum_BOCcos(
     return get_code_spectrum_BOCcos(code_frequency/1Hz, subcarrier_frequency/1Hz, frequencies/1Hz)
 end
 function get_code_spectrum_BOCcos(code_frequency, subcarrier_frequency, frequencies)
-    @. return (4*code_frequency
-        * (sinpi(frequencies/code_frequency) * sinpi(frequencies/(4*subcarrier_frequency))^2
-        / (pi * frequencies * cospi(frequencies / (2*subcarrier_frequency))))^2    
-    )
+    fs = subcarrier_frequency
+    fc = code_frequency
+    f  = frequencies
+    
+    @. return (2 * sinc(f/fc) * sinpi(f/4fs)^2 / cospi(f/2fs))^2 / fc
 end
