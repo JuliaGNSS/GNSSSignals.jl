@@ -108,6 +108,9 @@ $(SIGNATURES)
 
 Get code spectrum of generic BOC GNSS system
 """
+function get_code_spectrum(::Type{T}, frequencies) where T<:GenericBOC{<:AbstractGNSSSystem,0}
+    return get_code_spectrum_BPSK.(get_code_frequency(T), frequencies)
+end
 function get_code_spectrum(::Type{T}, frequencies) where T<:GenericBOC
     return get_code_spectrum_BOCcos.(get_code_frequency(T), get_subcarrier_frequency(T), frequencies)
 end
