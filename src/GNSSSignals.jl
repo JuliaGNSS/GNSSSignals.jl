@@ -14,7 +14,7 @@ module GNSSSignals
         GPSL1,
         GPSL5,
         GalileoE1B,
-        BOC,
+        BOCcos,
         get_codes,
         get_code_length,
         get_secondary_code_length,
@@ -40,7 +40,7 @@ module GNSSSignals
 
     struct GalileoE1B <: AbstractGNSSSystem end
 
-    struct BOC{T <: AbstractGNSSSystem, M, N} <: AbstractGNSSSystem end
+    struct BOCcos{T <: AbstractGNSSSystem, M, N} <: AbstractGNSSSystem end
 
 
     """
