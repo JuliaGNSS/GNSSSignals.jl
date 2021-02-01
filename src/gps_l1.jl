@@ -1,5 +1,5 @@
-struct GPSL1 <: AbstractGNSS
-    codes::Matrix{Int8}
+struct GPSL1{C <: AbstractMatrix} <: AbstractGNSS
+    codes::C
 end
 
 function GPSL1()

@@ -1,5 +1,5 @@
-struct GPSL5 <: AbstractGNSS
-    codes::Matrix{Int8}
+struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS
+    codes::C
 end
 
 #=These are the initial XB Code States for the I5 code,

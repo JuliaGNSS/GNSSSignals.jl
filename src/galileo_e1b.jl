@@ -1,9 +1,9 @@
-struct GalileoE1BBase <: AbstractGNSS
-    codes::Matrix{Int8}
+struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS
+    codes::C
 end
 
-struct GalileoE1B <: AbstractGNSSBOCcos{1, 1}
-    system::GalileoE1BBase
+struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{1, 1}
+    system::GalileoE1BBase{C}
 end
 
 function read_from_documentation(raw_code)
