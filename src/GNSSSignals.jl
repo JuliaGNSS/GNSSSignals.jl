@@ -10,7 +10,7 @@ module GNSSSignals
     using Unitful: Hz
 
     export
-        AbstractGNSSSystem,
+        AbstractGNSS,
         GPSL1,
         GPSL5,
         GalileoE1B,
@@ -32,16 +32,10 @@ module GNSSSignals
         fpcarrier!,
         min_bits_for_code_length
 
-    abstract type AbstractGNSSSystem end
+    abstract type AbstractGNSS end
+    abstract type AbstractGNSSBOCcos{M, N} <: AbstractGNSS end
 
-    struct GPSL1 <: AbstractGNSSSystem end
-
-    struct GPSL5 <: AbstractGNSSSystem end
-
-    struct GalileoE1B <: AbstractGNSSSystem end
-
-    struct BOCcos{T <: AbstractGNSSSystem, M, N} <: AbstractGNSSSystem end
-
+    Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
     """
     $(SIGNATURES)
@@ -60,8 +54,8 @@ module GNSSSignals
         Int16.(code_int8)
     end
 
-    function extend_front_and_back(codes)
-        [codes[end, :]'; codes; codes[1,:]'; codes[2,:]']
+    function extend_front_and_back(codes, code_length)
+        [codes[end - code_length + 1:end,:]; codes; codes[1:code_length,:]]
     end
 
     include("gps_l1.jl")

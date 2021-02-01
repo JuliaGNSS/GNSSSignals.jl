@@ -1,3 +1,7 @@
+struct GPSL5 <: AbstractGNSS
+    codes::Matrix{Int8}
+end
+
 #=These are the initial XB Code States for the I5 code,
 initial_xb_code_states[1] is a 1 3 chip array which represent the shift
 register values initial_xb_code_states[3][4] represents the 4th shift register
@@ -127,24 +131,15 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-const GPS_L5_CODES = extend_front_and_back(Int16.(mapreduce(
-    sat -> add_neuman_hofman_code(
-        gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
-    ),
-    hcat,
-    1:37
-)))
-
-"""
-$(SIGNATURES)
-
-Get codes of type GPSL5 as a Matrix where each column represents a PRN.
-```julia-repl
-julia> get_code(GPSL5)
-```
-"""
-function get_codes(::Type{GPSL5})
-    @view GPS_L5_CODES[2:end - 2, :]
+function GPSL5()
+    codes = Int8.(mapreduce(
+        sat -> add_neuman_hofman_code(
+            gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
+        ),
+        hcat,
+        1:37
+    ))
+    GPSL5(extend_front_and_back(codes, 10230))
 end
 
 """
@@ -155,7 +150,7 @@ Get code length of GNSS system GPSL5.
 julia> get_code_length(GPSL5)
 ```
 """
-@inline function get_code_length(::Type{GPSL5})
+@inline function get_code_length(gpsl5::GPSL5)
     10230
 end
 
@@ -167,7 +162,7 @@ Get secondary code length of GNSS system GPSL5.
 julia> get_secondary_code_length(GPSL5)
 ```
 """
-@inline function get_secondary_code_length(::Type{GPSL5})
+@inline function get_secondary_code_length(gpsl5::GPSL5)
     10
 end
 
@@ -179,7 +174,7 @@ Get center frequency of GNSS system GPSL5.
 julia> get_center_frequency(GPSL5)
 ```
 """
-@inline function get_center_frequency(::Type{GPSL5})
+@inline function get_center_frequency(gpsl5::GPSL5)
     1_176_450_000Hz
 end
 
@@ -191,7 +186,7 @@ Get code frequency of GNSS system GPSL5.
 julia> get_code_frequency(GPSL5)
 ```
 """
-@inline function get_code_frequency(::Type{GPSL5})
+@inline function get_code_frequency(gpsl5::GPSL5)
     10_230_000Hz
 end
 
@@ -203,24 +198,6 @@ Get data frequency of GNSS system GPSL5.
 julia> get_data_frequency(GPSL5)
 ```
 """
-@inline function get_data_frequency(::Type{GPSL5})
+@inline function get_data_frequency(gpsl5::GPSL5)
     100Hz
-end
-
-"""
-$(SIGNATURES)
-
-Get code of GNSS system GPSL5 at phase `phase` of PRN `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller than the code
-length incl. secondary code and must be an integer.
-```julia-repl
-julia> get_code_unsafe(GPSL5, 10, 1)
-```
-"""
-Base.@propagate_inbounds function get_code_unsafe(
-    ::Type{GPSL5},
-    phase::Integer,
-    prn::Integer
-)
-    GPS_L5_CODES[2 + phase, prn]
 end

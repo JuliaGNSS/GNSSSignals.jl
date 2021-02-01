@@ -14,20 +14,22 @@ end
 
 @testset "GPS L1" begin
 
-    @test @inferred(get_center_frequency(GPSL5)) == 1.17645e9Hz
-    @test @inferred(get_code_length(GPSL5)) == 10230
-    @test @inferred(get_secondary_code_length(GPSL5)) == 10
-    @test @inferred(get_code(GPSL5, 0, 1)) == 1
-    @test @inferred(get_code(GPSL5, 0.0, 1)) == 1
-    @test @inferred(get_code_unsafe(GPSL5, 0.0, 1)) == 1
-    @test @inferred(get_data_frequency(GPSL5)) == 100Hz
-    @test @inferred(get_code_frequency(GPSL5)) == 10230e3Hz
-    @test get_code.(GPSL5, 0:10229, 1) == L5_SAT1_CODE
+    gpsl5 = GPSL5()
+    @test @inferred(get_center_frequency(gpsl5)) == 1.17645e9Hz
+    @test @inferred(get_code_length(gpsl5)) == 10230
+    @test @inferred(get_secondary_code_length(gpsl5)) == 10
+    @test @inferred(get_code(gpsl5, 0, 1)) == 1
+    @test @inferred(get_code(gpsl5, 0.0, 1)) == 1
+    @test @inferred(get_code_unsafe(gpsl5, 0.0, 1)) == 1
+    @test @inferred(get_data_frequency(gpsl5)) == 100Hz
+    @test @inferred(get_code_frequency(gpsl5)) == 10230e3Hz
+    @test get_code.(gpsl5, 0:10229, 1) == L5_SAT1_CODE
 
 end
 
 @testset "Neuman sequence" begin
-    code = get_code.(GPSL5, 0:103199, 1)
+    gpsl5 = GPSL5()
+    code = get_code.(gpsl5, 0:103199, 1)
     satellite_code = code[1:10230]
     neuman_hofman_code = [0,0,0,0,1,1,0,1,0,1]
     for i = 1:10
