@@ -37,8 +37,6 @@ module GNSSSignals
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
-    struct BOCcos{T <: AbstractGNSSSystem, M, N} <: AbstractGNSSSystem end
-
 
     """
     $(SIGNATURES)
