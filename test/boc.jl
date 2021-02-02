@@ -11,6 +11,8 @@
         @test @inferred(get_data_frequency(boc)) == get_data_frequency(system)
         @test @inferred(get_code_frequency(boc)) == n * get_code_frequency(system)
         @test get_code.(boc, 0:1022, 1) == get_code.(system, 0:1022, 1)
+        @test get_code_unsafe.(boc, 0:1022, 1) == get_code.(system, 0:1022, 1)
+        @test get_code_unsafe.(boc, 0.0:1022.0, 1) == get_code.(system, 0.0:1022.0, 1)
     end
 
     @testset "BOCcos(GPSL1, $m, 1) modulation" for m in [1,2,2.5,5,12.5]
