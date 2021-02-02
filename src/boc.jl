@@ -9,7 +9,7 @@ end
 """
 $(SIGNATURES)
 
-Get codes of base GNSS system for BOCcos as a Matrix, where each 
+Get codes of base GNSS system for BOCcos as a Matrix, where each
 column represents a PRN.
 """
 function get_codes(boc::AbstractGNSSBOCcos)
@@ -64,7 +64,7 @@ end
 """
 $(SIGNATURES)
 
-Get code of BOC at 
+Get code of BOC at
 phase `phase` of PRN `prn`.
 """
 Base.@propagate_inbounds function get_code(
@@ -86,8 +86,8 @@ end
 $(SIGNATURES)
 
 Get code of type BOC at
-phase `phase` of PRN `prn`. The phase will not be wrapped by the code 
-length. The phase has to be smaller than the code length. 
+phase `phase` of PRN `prn`. The phase will not be wrapped by the code
+length. The phase has to be smaller than the code length.
 """
 Base.@propagate_inbounds function get_code_unsafe(
     boc::AbstractGNSSBOCcos{M, N},
@@ -96,6 +96,15 @@ Base.@propagate_inbounds function get_code_unsafe(
 ) where {M, N}
     floored_phase = floor(Int, phase)
     floored_BOC_phase = floor(Int, phase * 2 * M / N)
-    get_code_unsafe(boc.system, floored_phase, prn) * 
+    get_code_unsafe(boc.system, floored_phase, prn) *
+        (iseven(floored_BOC_phase) << 1 - 1)
+end
+Base.@propagate_inbounds function get_code_unsafe(
+    boc::AbstractGNSSBOCcos{M, N},
+    phase::Integer,
+    prn::Integer
+) where {M, N}
+    floored_BOC_phase = floor(Integer, phase * 2 * M / N)
+    get_code_unsafe(boc.system, phase, prn) *
         (iseven(floored_BOC_phase) << 1 - 1)
 end
