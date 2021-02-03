@@ -49,10 +49,9 @@ module GNSSSignals
     ```
     """
     function read_in_codes(filename, num_prns, code_length)
-        code_int8 = open(filename) do file_stream
+        open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        Int16.(code_int8)
     end
 
     function extend_front_and_back(codes, code_length)
