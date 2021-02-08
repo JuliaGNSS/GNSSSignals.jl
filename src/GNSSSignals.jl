@@ -2,10 +2,8 @@ module GNSSSignals
 
     using
         DocStringExtensions,
-        LoopVectorization,
         StructArrays,
-        Statistics,
-        FixedPointSinCosApproximations
+        Statistics
 
     using Unitful: Hz
 
@@ -24,12 +22,6 @@ module GNSSSignals
         get_code,
         get_data_frequency,
         get_code_center_frequency_ratio,
-        get_carrier_fast_unsafe,
-        get_carrier_vfast_unsafe,
-        get_quadrant_size_power,
-        get_carrier_amplitude_power,
-        fpcarrier_phases!,
-        fpcarrier!,
         min_bits_for_code_length
 
     abstract type AbstractGNSS end
@@ -62,6 +54,5 @@ module GNSSSignals
     include("gps_l5.jl")
     include("galileo_e1b.jl")
     include("boc.jl")
-    include("carrier.jl")
     include("common.jl")
 end
