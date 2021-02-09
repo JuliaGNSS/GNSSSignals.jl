@@ -2,7 +2,6 @@ module GNSSSignals
 
     using
         DocStringExtensions,
-        StructArrays,
         Statistics
 
     using Unitful: Hz
