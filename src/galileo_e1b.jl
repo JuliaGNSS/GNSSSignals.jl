@@ -1,11 +1,11 @@
-struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS
+struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
 """
 GalileoE1B is in theory CBOC. Here it is approximated as BOCcos.
 """
-struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{1, 1}
+struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{C, 1, 1}
     system::GalileoE1BBase{C}
 end
 

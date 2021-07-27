@@ -1,9 +1,6 @@
 module GNSSSignals
 
-    using
-        DocStringExtensions,
-        Statistics
-
+    using DocStringExtensions, Statistics
     using Unitful: Hz
 
     using CUDA
@@ -34,17 +31,17 @@ module GNSSSignals
         length
 
 
-    abstract type AbstractGNSS end
-    abstract type AbstractGNSSBOCcos{M, N} <: AbstractGNSS end
+    abstract type AbstractGNSS{C} end
+    abstract type AbstractGNSSBOCcos{C, M, N} <: AbstractGNSS{C} end
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
     function __init__()
-        # use_gpu[] = CUDA.functional()
+        use_gpu[] = CUDA.functional()
         if use_gpu[]
-            @info "Found CUDA, activating GPU signal processing. Call GNSSSignals.use_gpu[] = false to override this. Beware of any created objects, you may need to reconstruct them for the override to take place."
+            @info "Found CUDA, activating GPU signal processing. Set GNSSSignals.use_gpu[] = false to override this."
         else
-            @info "CUDA not found. Using solely CPU signal processing."
+            @info "CUDA not found. Using CPU signal processing."
         end
     end
 

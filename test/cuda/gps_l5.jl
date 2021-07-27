@@ -12,18 +12,18 @@
     @test registers == 8191
 end
 
-@testset "GPS L5" begin
+@testset "GPS L1" begin
 
     gpsl5 = GPSL5()
     @test @inferred(get_center_frequency(gpsl5)) == 1.17645e9Hz
     @test @inferred(get_code_length(gpsl5)) == 10230
     @test @inferred(get_secondary_code_length(gpsl5)) == 10
-    @test @inferred(get_code(gpsl5, 0, 1)) == 1
-    @test @inferred(get_code(gpsl5, 0.0, 1)) == 1
-    @test @inferred(get_code_unsafe(gpsl5, 0.0, 1)) == 1
+    CUDA.@allowscalar @test @inferred(get_code(gpsl5, 0, 1)) == 1
+    CUDA.@allowscalar @test @inferred(get_code(gpsl5, 0.0, 1)) == 1
+    CUDA.@allowscalar @test @inferred(get_code_unsafe(gpsl5, 0.0, 1)) == 1
     @test @inferred(get_data_frequency(gpsl5)) == 100Hz
     @test @inferred(get_code_frequency(gpsl5)) == 10230e3Hz
-    @test get_code.(gpsl5, 0:10229, 1) == L5_SAT1_CODE
+    CUDA.@allowscalar gpsl5.codes[:,1] == L5_SAT1_CODE_GPU
 
 end
 

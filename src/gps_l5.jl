@@ -1,4 +1,4 @@
-struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS
+struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
