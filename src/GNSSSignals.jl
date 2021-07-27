@@ -2,10 +2,7 @@ module GNSSSignals
 
     using
         DocStringExtensions,
-        LoopVectorization,
-        StructArrays,
-        Statistics,
-        FixedPointSinCosApproximations
+        Statistics
 
     using Unitful: Hz
 
@@ -13,10 +10,11 @@ module GNSSSignals
     const use_gpu = Ref(false)
 
     export
-        AbstractGNSSSystem,
+        AbstractGNSS,
         GPSL1,
         GPSL5,
         GalileoE1B,
+        BOCcos,
         get_codes,
         get_code_length,
         get_secondary_code_length,
@@ -36,46 +34,19 @@ module GNSSSignals
         length
 
 
-    abstract type AbstractGNSSSystem{T} end
+    abstract type AbstractGNSS end
+    abstract type AbstractGNSSBOCcos{M, N} <: AbstractGNSS end
 
-    struct GPSL1{T} <: AbstractGNSSSystem{T} 
-        codes::T
-    end
+    Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
     function __init__()
-        use_gpu[] = CUDA.functional()
+        # use_gpu[] = CUDA.functional()
         if use_gpu[]
             @info "Found CUDA, activating GPU signal processing. Call GNSSSignals.use_gpu[] = false to override this. Beware of any created objects, you may need to reconstruct them for the override to take place."
         else
             @info "CUDA not found. Using solely CPU signal processing."
         end
     end
-
-    function GPSL1()
-        GPSL1(
-            read_in_codes(
-            joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
-            37,
-            1023
-            )
-        )
-    end
-
-    # temp function for benchmarking
-    function GPSL1(gpsl1::GPSL1)
-        GPSL1(
-            Array(Int16.(gpsl1.codes))
-        )
-    end
-
-    struct GPSL5{T} <: AbstractGNSSSystem{T} 
-        codes::T
-    end
-
-    struct GalileoE1B{T} <: AbstractGNSSSystem{T} 
-        codes::T
-    end
-
 
     """
     $(SIGNATURES)
@@ -91,16 +62,16 @@ module GNSSSignals
         code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        use_gpu[] ? CuArray{Float32}(code_int8) : extend_front_and_back(Int16.(code_int8))
+        use_gpu[] ? CuArray{Float32}(code_int8) : extend_front_and_back(Int16.(code_int8), code_length)
     end
 
-    function extend_front_and_back(codes)
-        [codes[end, :]'; codes; codes[1,:]'; codes[2,:]']
+    function extend_front_and_back(codes, code_length)
+        [codes[end - code_length + 1:end,:]; codes; codes[1:code_length,:]]
     end
 
     include("gps_l1.jl")
     include("gps_l5.jl")
     include("galileo_e1b.jl")
-    include("carrier.jl")
+    include("boc.jl")
     include("common.jl")
 end
