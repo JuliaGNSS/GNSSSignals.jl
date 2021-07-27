@@ -1,4 +1,4 @@
-struct BOCcos{T <: AbstractGNSS, M, N} <: AbstractGNSSBOCcos{M, N}
+struct BOCcos{T <: AbstractGNSS, M, N} <: AbstractGNSSBOCcos{T, M, N}
     system::T
 end
 
