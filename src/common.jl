@@ -1,54 +1,41 @@
 """
 $(SIGNATURES)
 
-Get code of type <: `AbstractGNSSSystem` at phase `phase` of PRN `prn`.
+Get codes of GNSS system as a Matrix where each column
+represents a PRN.
+```julia-repl
+julia> get_code(gpsl1)
+```
+"""
+function get_codes(gnss::AbstractGNSS)
+    @view gnss.codes[get_code_length(gnss) + 1:2 * get_code_length(gnss), :]
+end
+
+"""
+$(SIGNATURES)
+
+Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
 ```julia-repl
 julia> get_code(GPSL1, 1200.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code(
-    system::AbstractGNSSSystem{T},
+    gnss::AbstractGNSS,
     phase,
     prn::Integer
-) where T
+)
     floored_phase = floor(Int, phase)
     get_code_unsafe(
-        system::AbstractGNSSSystem,
-        mod(floored_phase, get_code_length(system) * get_secondary_code_length(system)),
+        gnss,
+        mod(floored_phase, get_code_length(gnss) * get_secondary_code_length(gnss)),
         prn
     )
 end
 
-# Base.@propagate_inbounds function get_code(
-#     gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
-#     phases,
-#     prn::Integer
-# )
-#     floored_phases = floor.(Int, phases)
-#     get_code_unsafe(
-#         gpsl1::GPSL1{CUDA.CuArray{Complex{Float32},2}},
-#         mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
-#         prn
-#     )
-# end
-
-# Base.@propagate_inbounds function get_code(
-#     gpsl1::GPSL1{Array{Int16,2}},
-#     phases,
-#     prn::Integer
-# )
-#     floored_phases = floor.(Int, phases)
-#     get_code_unsafe(
-#         gpsl1::GPSL1{Array{Int16,2}},
-#         mod.(floored_phases, get_code_length(gpsl1) * get_secondary_code_length(gpsl1)),
-#         prn
-#     )
-# end
-
 """
 $(SIGNATURES)
 
-Get code of type <: `AbstractGNSSSystem` at phase `phase` of PRN `prn`.
+Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
 The phase will not be wrapped by the code length. The phase has to smaller
 than the code length incl. secondary code.
 ```julia-repl
@@ -56,12 +43,31 @@ julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    system::Type{T},
+    gnss::AbstractGNSS,
     phase,
     prn::Integer
-) where T <: AbstractGNSSSystem
-    get_code_unsafe(system, floor(Int, phase), prn)
+)
+    get_code_unsafe(gnss, floor(Int, phase), prn)
 end
+
+"""
+$(SIGNATURES)
+
+Get code of GNSS system at phase `phase` of prn `prn`.
+The phase will not be wrapped by the code length. The phase has to smaller
+than the code length and must be an integer.
+```julia-repl
+julia> get_code_unsafe(gpsl1, 10, 1)
+```
+"""
+Base.@propagate_inbounds function get_code_unsafe(
+    gnss::AbstractGNSS,
+    phase::Integer,
+    prn::Integer
+)
+    gnss.codes[get_code_length(gnss) + phase + 1, prn]
+end
+
 
 """
 $(SIGNATURES)
@@ -71,8 +77,8 @@ Get code to center frequency ratio
 julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
-@inline function get_code_center_frequency_ratio(system)
-    get_code_frequency(system) / get_center_frequency(system)
+@inline function get_code_center_frequency_ratio(gnss::AbstractGNSS) 
+    get_code_frequency(gnss) / get_center_frequency(gnss)
 end
 
 """
@@ -80,9 +86,9 @@ $(SIGNATURES)
 
 Minimum bits that are needed to represent the code length
 """
-function min_bits_for_code_length(system)
+function min_bits_for_code_length(gnss::AbstractGNSS)
     for i = 1:32
-        if get_code_length(system) * get_secondary_code_length(system) <= 1 << i
+        if get_code_length(gnss) * get_secondary_code_length(gnss) <= 1 << i
             return i
         end
     end
