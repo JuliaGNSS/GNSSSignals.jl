@@ -36,6 +36,16 @@ module GNSSSignals
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
+    """
+    $(SIGNATURES)
+
+    `GNSSSignals.jl` initializes with a definition of a `use_gpu[]` flag to check whether or not to
+    use GPU for further processing. If the user's system has a functional CUDA installation, this flag 
+    is set to `true` and GNSS spread spectrum codes are loaded into the global memory of the GPU. This
+    action can be reversed at runtime via `GNSSSignals.use_gpu[] = false`, upon which each subsequent
+    constructor call will load the spread spectrum codes into the RAM. For objects constructed before
+    the switch porting will not occur, so beware of any previously created `AbstractGNSS` objects.
+    """
     function __init__()
         use_gpu[] = CUDA.functional()
         if use_gpu[]
