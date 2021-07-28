@@ -48,7 +48,7 @@ $(SIGNATURES)
 
 Get code frequency of base GNSS system for BOCcos.
 """
-function get_code_frequency(boc::AbstractGNSSBOCcos{M, N}) where {M, N}
+function get_code_frequency(boc::AbstractGNSSBOCcos{C, M, N}) where {C, M, N}
     N * get_code_frequency(boc.system)
 end
 
@@ -68,10 +68,10 @@ Get code of BOC at
 phase `phase` of PRN `prn`.
 """
 Base.@propagate_inbounds function get_code(
-    boc::AbstractGNSSBOCcos{M, N},
+    boc::AbstractGNSSBOCcos{C, M, N},
     phase,
     prn::Integer
-) where {M, N}
+) where {C, M, N}
     floored_phase = floor(Int, phase)
     floored_BOC_phase = floor(Int, phase * 2 * M / N)
     modded_floored_phase = mod(
@@ -90,20 +90,20 @@ phase `phase` of PRN `prn`. The phase will not be wrapped by the code
 length. The phase has to be smaller than the code length.
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    boc::AbstractGNSSBOCcos{M, N},
+    boc::AbstractGNSSBOCcos{C, M, N},
     phase,
     prn::Integer
-) where {M, N}
+) where {C, M, N}
     floored_phase = floor(Int, phase)
     floored_BOC_phase = floor(Int, phase * 2 * M / N)
     get_code_unsafe(boc.system, floored_phase, prn) *
         (iseven(floored_BOC_phase) << 1 - 1)
 end
 Base.@propagate_inbounds function get_code_unsafe(
-    boc::AbstractGNSSBOCcos{M, N},
+    boc::AbstractGNSSBOCcos{C, M, N},
     phase::Integer,
     prn::Integer
-) where {M, N}
+) where {C, M, N}
     floored_BOC_phase = floor(Integer, phase * 2 * M / N)
     get_code_unsafe(boc.system, phase, prn) *
         (iseven(floored_BOC_phase) << 1 - 1)
