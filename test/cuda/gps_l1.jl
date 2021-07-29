@@ -1,6 +1,6 @@
 @testset "GPS L1" begin
 
-    gpsl1 = GPSL1()
+    gpsl1 = GPSL1(use_gpu = Val(true))
     @test @inferred(get_center_frequency(gpsl1)) == 1.57542e9Hz
     @test @inferred(get_code_length(gpsl1)) == 1023
     @test @inferred(get_secondary_code_length(gpsl1)) == 1

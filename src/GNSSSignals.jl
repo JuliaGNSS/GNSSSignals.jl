@@ -1,6 +1,7 @@
 module GNSSSignals
 
-    using DocStringExtensions, Statistics
+    using Core: toInt16
+using DocStringExtensions, Statistics
     using Unitful: Hz
 
     using CUDA
@@ -58,18 +59,10 @@ module GNSSSignals
     julia> read_in_codes("/data/gpsl1codes.bin", 32, 1023)
     ```
     """
-    function read_in_codes(filename, num_prns, code_length, use_gpu::Val{false})
-        code_int8 = open(filename) do file_stream
-            read!(file_stream, Array{Int8}(undef, code_length, num_prns))
+    function read_in_codes(type, filename, num_prns, code_length)
+        open(filename) do file_stream
+            read!(file_stream, Array{type}(undef, code_length, num_prns))
         end
-        extend_front_and_back(Int16.(code_int8), code_length)
-    end
-
-    function read_in_codes(filename, num_prns, code_length, use_gpu::Val{true})
-        code_int8 = open(filename) do file_stream
-            read!(file_stream, Array{Int8}(undef, code_length, num_prns))
-        end
-        CuArray{Float32}(code_int8)
     end
 
     function extend_front_and_back(codes, code_length)

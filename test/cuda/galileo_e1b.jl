@@ -1,6 +1,6 @@
 @testset "Galileo E1B" begin
 
-    galileo_e1b = GalileoE1B()
+    galileo_e1b = GalileoE1B(use_gpu = Val(true))
     @test @inferred(get_center_frequency(galileo_e1b)) == 1.57542e9Hz
     @test @inferred(get_code_length(galileo_e1b)) == 4092
     @test @inferred(get_secondary_code_length(galileo_e1b)) == 1
