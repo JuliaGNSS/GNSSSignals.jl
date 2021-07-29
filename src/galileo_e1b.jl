@@ -16,17 +16,18 @@ function read_from_documentation(raw_code)
     map(x -> parse(Int8, x, base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
 end
 
-function GalileoE1BBase()
+function GalileoE1BBase(;use_gpu = Val(false))
     codes = read_in_codes(
         joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"),
         50,
-        4092
+        4092,
+        use_gpu
     )
-    GalileoE1BBase(extend_front_and_back(codes, size(codes, 1)))
+    GalileoE1BBase(codes)
 end
 
-function GalileoE1B()
-    GalileoE1B(GalileoE1BBase())
+function GalileoE1B(;use_gpu = Val(false))
+    GalileoE1B(GalileoE1BBase(use_gpu = use_gpu))
 end
 
 """

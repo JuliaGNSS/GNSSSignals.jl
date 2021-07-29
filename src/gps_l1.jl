@@ -2,12 +2,13 @@ struct GPSL1{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
-function GPSL1()
+function GPSL1(;use_gpu = Val(false))
     GPSL1(
         read_in_codes(
         joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
         37,
-        1023
+        1023,
+        use_gpu
         )
     )
 end

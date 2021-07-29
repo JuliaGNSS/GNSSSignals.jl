@@ -39,19 +39,12 @@ module GNSSSignals
     """
     $(SIGNATURES)
 
-    `GNSSSignals.jl` initializes with a definition of a `use_gpu[]` flag to check whether or not to
-    use GPU for further processing. If the user's system has a functional CUDA installation, this flag 
-    is set to `true` and GNSS spread spectrum codes are loaded into the global memory of the GPU. This
-    action can be reversed at runtime via `GNSSSignals.use_gpu[] = false`, upon which each subsequent
-    constructor call will load the spread spectrum codes into the RAM. For objects constructed before
-    the switch porting will not occur, so beware of any previously created `AbstractGNSS` objects.
+    `GNSSSignals.jl` checks if there is a working installation of CUDA on the system and informs the user
+    to activate GPU acceleration if they wish to do so.
     """
     function __init__()
-        use_gpu[] = CUDA.functional()
-        if use_gpu[]
-            @info "Found CUDA, activating GPU signal processing. Set GNSSSignals.use_gpu[] = false to override this."
-        else
-            @info "CUDA not found. Using CPU signal processing."
+        if CUDA.functional()
+            @info "Found a working CUDA installation. To activate GPU acceleration set use_gpu = Val(true), e.g. GPSL1(use_gpu = Val(true))."
         end
     end
 
@@ -65,11 +58,18 @@ module GNSSSignals
     julia> read_in_codes("/data/gpsl1codes.bin", 32, 1023)
     ```
     """
-    function read_in_codes(filename, num_prns, code_length)
+    function read_in_codes(filename, num_prns, code_length, use_gpu::Val{false})
         code_int8 = open(filename) do file_stream
             read!(file_stream, Array{Int8}(undef, code_length, num_prns))
         end
-        use_gpu[] ? CuArray{Float32}(code_int8) : extend_front_and_back(Int16.(code_int8), code_length)
+        extend_front_and_back(Int16.(code_int8), code_length)
+    end
+
+    function read_in_codes(filename, num_prns, code_length, use_gpu::Val{true})
+        code_int8 = open(filename) do file_stream
+            read!(file_stream, Array{Int8}(undef, code_length, num_prns))
+        end
+        CuArray{Float32}(code_int8)
     end
 
     function extend_front_and_back(codes, code_length)

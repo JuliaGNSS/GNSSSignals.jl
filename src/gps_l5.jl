@@ -131,7 +131,13 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-function GPSL5()
+# parent constructor
+function GPSL5(;use_gpu = Val(false))
+    _GPSL5(use_gpu)
+end
+
+# dispatch constructor CPU
+function _GPSL5(use_gpu::Val{false})
     codes = Int8.(mapreduce(
         sat -> add_neuman_hofman_code(
             gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
@@ -140,6 +146,18 @@ function GPSL5()
         1:37
     ))
     GPSL5(extend_front_and_back(codes, 10230))
+end
+
+# dispatch cosntructor CUDA
+function _GPSL5(use_gpu::Val{true})
+    codes = CuMatrix{Float32}(mapreduce(
+        sat -> add_neuman_hofman_code(
+            gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
+        ),
+        hcat,
+        1:37
+    ))
+    GPSL5(codes)
 end
 
 """
