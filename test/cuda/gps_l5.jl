@@ -12,7 +12,7 @@
     @test registers == 8191
 end
 
-@testset "GPS L1" begin
+@testset "GPS L5" begin
 
     gpsl5 = GPSL5()
     @test @inferred(get_center_frequency(gpsl5)) == 1.17645e9Hz
