@@ -29,6 +29,7 @@ end
 
 @testset "Neuman sequence" begin
     gpsl5 = GPSL5(use_gpu = Val(true))
+    CUDA.@allowscalar begin 
     code = get_code.(gpsl5, 0:103199, 1)
     satellite_code = code[1:10230]
     neuman_hofman_code = [0,0,0,0,1,1,0,1,0,1]
@@ -38,4 +39,5 @@ end
         )
     end
     @test code[1:10230] == code[10231:20460]
+    end
 end

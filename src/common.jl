@@ -70,6 +70,13 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     gnss.codes[get_code_length(gnss) + phase + 1, prn]
 end
+Base.@propagate_inbounds function get_code_unsafe(
+    gnss::AbstractGNSS{C},
+    phase::Integer,
+    prn::Integer
+) where {C <: CuMatrix}
+    gnss.codes[phase + 1, prn]
+end
 
 
 """
