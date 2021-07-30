@@ -7,8 +7,11 @@ represents a PRN.
 julia> get_code(gpsl1)
 ```
 """
-function get_codes(gnss::AbstractGNSS)
+function get_codes(gnss::AbstractGNSS{T}) where T <: AbstractMatrix
     @view gnss.codes[get_code_length(gnss) + 1:2 * get_code_length(gnss), :]
+end
+function get_codes(gnss::AbstractGNSS{T}) where T <: CuMatrix
+    gnss.codes
 end
 
 """
@@ -66,6 +69,13 @@ Base.@propagate_inbounds function get_code_unsafe(
     prn::Integer
 )
     gnss.codes[get_code_length(gnss) + phase + 1, prn]
+end
+Base.@propagate_inbounds function get_code_unsafe(
+    gnss::AbstractGNSS{C},
+    phase::Integer,
+    prn::Integer
+) where {C <: CuMatrix}
+    gnss.codes[phase + 1, prn]
 end
 
 

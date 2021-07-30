@@ -1,11 +1,11 @@
-struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS
+struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
 """
 GalileoE1B is in theory CBOC. Here it is approximated as BOCcos.
 """
-struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{1, 1}
+struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{C, 1, 1}
     system::GalileoE1BBase{C}
 end
 
@@ -16,17 +16,28 @@ function read_from_documentation(raw_code)
     map(x -> parse(Int8, x, base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
 end
 
-function GalileoE1BBase()
-    codes = read_in_codes(
+function read_galileo_e1b_codes()
+    read_in_codes(
+        Int8,
         joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"),
         50,
         4092
     )
-    GalileoE1BBase(extend_front_and_back(codes, size(codes, 1)))
 end
 
-function GalileoE1B()
-    GalileoE1B(GalileoE1BBase())
+function GalileoE1BBase(;use_gpu = Val(false))
+    _GalileoE1BBase(use_gpu)
+end
+
+function _GalileoE1BBase(::Val{false})
+    GalileoE1BBase(extend_front_and_back(Int16.(read_galileo_e1b_codes()), 4092))
+end
+function _GalileoE1BBase(::Val{true})
+    GalileoE1BBase(CuMatrix{Float32}(read_galileo_e1b_codes()))
+end
+
+function GalileoE1B(;use_gpu = Val(false))
+    GalileoE1B(GalileoE1BBase(use_gpu = use_gpu))
 end
 
 """

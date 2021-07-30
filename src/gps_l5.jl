@@ -1,4 +1,4 @@
-struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS
+struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
@@ -131,15 +131,28 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-function GPSL5()
-    codes = Int8.(mapreduce(
+function read_gpsl5_codes()
+    mapreduce(
         sat -> add_neuman_hofman_code(
             gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
         ),
         hcat,
         1:37
-    ))
-    GPSL5(extend_front_and_back(codes, 10230))
+    )
+end
+
+function GPSL5(;use_gpu = Val(false))
+    _GPSL5(use_gpu)
+end
+
+# dispatch constructor CPU
+function _GPSL5(use_gpu::Val{false})
+    GPSL5(extend_front_and_back(Int16.(read_gpsl5_codes()), 10230))
+end
+
+# dispatch cosntructor CUDA
+function _GPSL5(use_gpu::Val{true})
+    GPSL5(CuMatrix{Float32}(read_gpsl5_codes()))
 end
 
 """

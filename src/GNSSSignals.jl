@@ -1,10 +1,11 @@
 module GNSSSignals
 
-    using
-        DocStringExtensions,
-        Statistics
-
+    using Core: toInt16
+using DocStringExtensions, Statistics
     using Unitful: Hz
+
+    using CUDA
+    const use_gpu = Ref(false)
 
     export
         AbstractGNSS,
@@ -21,13 +22,32 @@ module GNSSSignals
         get_code,
         get_data_frequency,
         get_code_center_frequency_ratio,
-        min_bits_for_code_length
+        get_carrier_fast_unsafe,
+        get_carrier_vfast_unsafe,
+        get_quadrant_size_power,
+        get_carrier_amplitude_power,
+        fpcarrier_phases!,
+        fpcarrier!,
+        min_bits_for_code_length,
+        length
 
-    abstract type AbstractGNSS end
-    abstract type AbstractGNSSBOCcos{M, N} <: AbstractGNSS end
+
+    abstract type AbstractGNSS{C} end
+    abstract type AbstractGNSSBOCcos{C, M, N} <: AbstractGNSS{C} end
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
+    """
+    $(SIGNATURES)
+
+    `GNSSSignals.jl` checks if there is a working installation of CUDA on the system and informs the user
+    to activate GPU acceleration if they wish to do so.
+    """
+    function __init__()
+        if CUDA.functional()
+            @info "Found a working CUDA installation. To activate GPU acceleration set use_gpu = Val(true), e.g. GPSL1(use_gpu = Val(true))."
+        end
+    end
 
     """
     $(SIGNATURES)
@@ -39,9 +59,9 @@ module GNSSSignals
     julia> read_in_codes("/data/gpsl1codes.bin", 32, 1023)
     ```
     """
-    function read_in_codes(filename, num_prns, code_length)
+    function read_in_codes(type, filename, num_prns, code_length)
         open(filename) do file_stream
-            read!(file_stream, Array{Int8}(undef, code_length, num_prns))
+            read!(file_stream, Array{type}(undef, code_length, num_prns))
         end
     end
 
