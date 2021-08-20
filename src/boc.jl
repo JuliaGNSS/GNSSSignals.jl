@@ -117,3 +117,14 @@ Base.@propagate_inbounds function get_code_unsafe(
     get_code_unsafe(boc.system, phase, prn) *
         (iseven(floored_BOC_phase) << 1 - 1)
 end
+
+"""
+$(SIGNATURES)
+Get spectral power of generic BOC GNSS system
+"""
+function get_code_spectrum(s::AbstractGNSSBOCcos{<:AbstractGNSS, 0}, f)
+    return get_code_spectrum_BPSK(get_code_frequency(s), f)
+end
+function get_code_spectrum(s::AbstractGNSSBOCcos, f)
+    return get_code_spectrum_BOCcos(get_code_frequency(s), get_subcarrier_frequency(s), f)
+end

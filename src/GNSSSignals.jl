@@ -3,7 +3,7 @@ module GNSSSignals
     using Core: toInt16
     using DocStringExtensions
     using Statistics
-    using Unitful: Hz
+    using Unitful: Frequency, Hz
 
     using CUDA
     const use_gpu = Ref(false)
@@ -28,6 +28,7 @@ module GNSSSignals
         get_quadrant_size_power,
         get_carrier_amplitude_power,
         get_subcarrier_frequency,
+        get_code_spectrum,
         fpcarrier_phases!,
         fpcarrier!,
         min_bits_for_code_length,

@@ -87,7 +87,7 @@ Get code to center frequency ratio
 julia> get_code_unsafe(GPSL1, 10.3, 1)
 ```
 """
-@inline function get_code_center_frequency_ratio(gnss::AbstractGNSS) 
+@inline function get_code_center_frequency_ratio(gnss::AbstractGNSS)
     get_code_frequency(gnss) / get_center_frequency(gnss)
 end
 
@@ -103,4 +103,61 @@ function min_bits_for_code_length(gnss::AbstractGNSS)
         end
     end
     return 0
+end
+
+
+"""
+$(SIGNATURES)
+Calculate the spectral power of a BPSK modulated signal with chiprate `fc`
+at baseband frequency `f`
+"""
+function get_code_spectrum_BPSK(fc::Frequency, f)
+    return get_code_spectrum_BPSK(fc/1Hz, f)
+end
+function get_code_spectrum_BPSK(fc, f::Frequency)
+    return get_code_spectrum_BPSK(fc, f/1Hz)
+end
+function get_code_spectrum_BPSK(fc::Frequency, f::Frequency)
+    return get_code_spectrum_BPSK(fc/1Hz, f/1Hz)
+end
+function get_code_spectrum_BPSK(fc, f)
+    return sinc(f/fc)^2 / fc
+end
+
+
+"""
+$(SIGNATURES)
+Calculate the spectral power of a sine phased BOC modulated signal with chiprate
+`fc` and subcarrier frequency `fs` at baseband frequency `f`
+"""
+function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f)
+    return get_code_spectrum_BOCsin(fc/1Hz, fs/1Hz, f)
+end
+function get_code_spectrum_BOCsin(fc, fs, f::Frequency)
+    return get_code_spectrum_BOCsin(fc, fs, f/1Hz)
+end
+function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f::Frequency)
+    return get_code_spectrum_BOCsin(fc/1Hz, fs/1Hz, f/1Hz)
+end
+function get_code_spectrum_BOCsin(fc, fs, f)
+    return ((sinc(f/fc) * tan(pi*f/(2*fs)))^2/ fc)
+end
+
+
+"""
+$(SIGNATURES)
+Calculate the spectral power of a cosine phased BOC modulated signal with chiprate
+`fc` and subcarrier frequency `fs` at baseband frequency `f`
+"""
+function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f)
+    return get_code_spectrum_BOCcos(fc/1Hz, fs/1Hz, f)
+end
+function get_code_spectrum_BOCcos(fc, fs, f::Frequency)
+    return get_code_spectrum_BOCcos(fc, fs, f/1Hz)
+end
+function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f::Frequency)
+    return get_code_spectrum_BOCcos(fc/1Hz, fs/1Hz, f/1Hz)
+end
+function get_code_spectrum_BOCcos(fc, fs, f)
+    return (2 * sinc(f/fc) * sinpi(f/4fs)^2 / cospi(f/2fs))^2 / fc
 end
