@@ -1,7 +1,8 @@
 module GNSSSignals
 
     using Core: toInt16
-using DocStringExtensions, Statistics
+    using DocStringExtensions
+    using Statistics
     using Unitful: Hz
 
     using CUDA
@@ -26,6 +27,7 @@ using DocStringExtensions, Statistics
         get_carrier_vfast_unsafe,
         get_quadrant_size_power,
         get_carrier_amplitude_power,
+        get_subcarrier_frequency,
         fpcarrier_phases!,
         fpcarrier!,
         min_bits_for_code_length,

@@ -55,6 +55,15 @@ end
 """
 $(SIGNATURES)
 
+Get subcarrier frequency of generic BOC GNSS system
+"""
+function get_subcarrier_frequency(boc::AbstractGNSSBOCcos{C, M, N}) where {C, M, N}
+    M * get_code_frequency(boc.system)
+end
+
+"""
+$(SIGNATURES)
+
 Get data frequency of base GNSS system for BOCcos.
 """
 function get_data_frequency(boc::AbstractGNSSBOCcos)
