@@ -6,6 +6,10 @@ function BOCcos(system::T, m, n) where T <: AbstractGNSS
     BOCcos{T, m, n}(system)
 end
 
+function get_system_string(s::BOCcos{T,M,N}) where {T,M,N}
+    "BOCcos($(get_system_string(s.system)), $M, $N)"
+end
+
 """
 $(SIGNATURES)
 

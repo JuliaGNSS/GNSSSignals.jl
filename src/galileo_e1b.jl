@@ -9,6 +9,8 @@ struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{C, 1, 1}
     system::GalileoE1BBase{C}
 end
 
+get_system_string(s::GalileoE1B) = "GalileoE1B"
+
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
     code_hex_array = map(x -> parse(UInt16, x, base = 16), collect(raw_code_without_spaces))

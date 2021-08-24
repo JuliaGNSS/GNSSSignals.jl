@@ -8,6 +8,8 @@ module GNSSSignals
     using CUDA
     const use_gpu = Ref(false)
 
+    import Base.show
+
     export
         AbstractGNSS,
         GPSL1,
@@ -29,6 +31,7 @@ module GNSSSignals
         get_carrier_amplitude_power,
         get_subcarrier_frequency,
         get_code_spectrum,
+        get_system_string,
         fpcarrier_phases!,
         fpcarrier!,
         min_bits_for_code_length,
@@ -39,6 +42,8 @@ module GNSSSignals
     abstract type AbstractGNSSBOCcos{C, M, N} <: AbstractGNSS{C} end
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
+
+    Base.show(io::IO, x::AbstractGNSS) = print("$(typeof(x))()")
 
     """
     $(SIGNATURES)

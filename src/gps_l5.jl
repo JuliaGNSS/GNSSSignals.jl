@@ -2,6 +2,8 @@ struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
+get_system_string(s::GPSL5) = "GPSL5"
+
 #=These are the initial XB Code States for the I5 code,
 initial_xb_code_states[1] is a 1 3 chip array which represent the shift
 register values initial_xb_code_states[3][4] represents the 4th shift register

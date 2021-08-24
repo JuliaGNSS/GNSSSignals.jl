@@ -1,6 +1,5 @@
 @testset "BOCcos" begin
-
-    @testset "BOCcos($system, 0, $n)" for system in [GPSL1()], n in [1]#[GPSL1(), GPSL5(), GalileoE1B()], n in [1, 5, 10]
+    @testset "BOCCos($(get_system_string(system)), 0, $n)" for system in [GPSL1()], n in [1]#[GPSL1(), GPSL5(), GalileoE1B()], n in [1, 5, 10]
         boc = BOCcos(system, 0, n)
         @test @inferred(get_center_frequency(boc)) == get_center_frequency(system)
         @test @inferred(get_code_length(boc)) == get_code_length(system)
