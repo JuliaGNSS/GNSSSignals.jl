@@ -96,13 +96,8 @@ $(SIGNATURES)
 
 Minimum bits that are needed to represent the code length
 """
-function min_bits_for_code_length(gnss::AbstractGNSS)
-    for i = 1:32
-        if get_code_length(gnss) * get_secondary_code_length(gnss) <= 1 << i
-            return i
-        end
-    end
-    return 0
+@inline function min_bits_for_code_length(gnss::AbstractGNSS)
+    ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base=2)
 end
 
 
