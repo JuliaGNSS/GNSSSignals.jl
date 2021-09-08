@@ -4,7 +4,7 @@ $(SIGNATURES)
 Get codes of GNSS system as a Matrix where each column
 represents a PRN.
 ```julia-repl
-julia> get_code(gpsl1)
+julia> get_code(GPSL1())
 ```
 """
 function get_codes(gnss::AbstractGNSS{T}) where T <: AbstractMatrix
@@ -16,8 +16,11 @@ end
 
 """
 $(SIGNATURES)
-Generate a code signal for PRN-Number `prn` of system `gnss` at chip rate `code_frequency`,
-sampled at sampling rate `sampling_frequency`
+
+Generate the code signal for PRN-Number `prn` of system `gnss` at chip rate
+`code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
+`sampling_frequency` is larger than `code_frequency` to avoid overflows with the
+modulo calculation.
 """
 function gen_code!(
     code::AbstractVector,
@@ -46,7 +49,7 @@ $(SIGNATURES)
 
 Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
 ```julia-repl
-julia> get_code(GPSL1, 1200.3, 1)
+julia> get_code(GPSL1(), 1200.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code(
@@ -66,10 +69,10 @@ end
 $(SIGNATURES)
 
 Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller
+The phase will not be wrapped by the code length. The phase has to be smaller
 than the code length incl. secondary code.
 ```julia-repl
-julia> get_code_unsafe(GPSL1, 10.3, 1)
+julia> get_code_unsafe(GPSL1(), 10.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
@@ -93,7 +96,7 @@ $(SIGNATURES)
 
 Get code to center frequency ratio
 ```julia-repl
-julia> get_code_unsafe(GPSL1, 10.3, 1)
+julia> get_code_center_frequency_ratio(GPSL1())
 ```
 """
 @inline function get_code_center_frequency_ratio(gnss::AbstractGNSS)
@@ -103,7 +106,7 @@ end
 """
 $(SIGNATURES)
 
-Minimum bits that are needed to represent the code length
+Get the minimum number of bits that are needed to represent the code length
 """
 @inline function min_bits_for_code_length(gnss::AbstractGNSS)
     ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base=2)
@@ -112,6 +115,7 @@ end
 
 """
 $(SIGNATURES)
+
 Calculate the spectral power of a BPSK modulated signal with chiprate `fc`
 at baseband frequency `f`
 """
