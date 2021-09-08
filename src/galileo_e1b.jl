@@ -32,7 +32,7 @@ function GalileoE1BBase(;use_gpu = Val(false))
 end
 
 function _GalileoE1BBase(::Val{false})
-    GalileoE1BBase(extend_front_and_back(Int16.(read_galileo_e1b_codes()), 4092))
+    GalileoE1BBase(Int16.(read_galileo_e1b_codes()))
 end
 function _GalileoE1BBase(::Val{true})
     GalileoE1BBase(CuMatrix{Float32}(read_galileo_e1b_codes()))

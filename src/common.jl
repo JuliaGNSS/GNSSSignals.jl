@@ -8,7 +8,7 @@ julia> get_code(GPSL1())
 ```
 """
 function get_codes(gnss::AbstractGNSS{T}) where T <: AbstractMatrix
-    @view gnss.codes[get_code_length(gnss) + 1:2 * get_code_length(gnss), :]
+    @view gnss.codes[1:get_code_length(gnss), :]
 end
 function get_codes(gnss::AbstractGNSS{T}) where T <: CuMatrix
     gnss.codes
@@ -80,7 +80,7 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase,
     prn::Integer
 )
-    gnss.codes[get_code_length(gnss) + floor(Int, phase) + 1, prn]
+    gnss.codes[floor(Int, phase) + 1, prn]
 end
 Base.@propagate_inbounds function get_code_unsafe(
     gnss::AbstractGNSS{C},

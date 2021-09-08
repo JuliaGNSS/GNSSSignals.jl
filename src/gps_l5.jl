@@ -149,7 +149,7 @@ end
 
 # dispatch constructor CPU
 function _GPSL5(use_gpu::Val{false})
-    GPSL5(extend_front_and_back(Int16.(read_gpsl5_codes()), 10230))
+    GPSL5(Int16.(read_gpsl5_codes()))
 end
 
 # dispatch cosntructor CUDA

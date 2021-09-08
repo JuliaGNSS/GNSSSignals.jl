@@ -67,9 +67,6 @@ module GNSSSignals
         end
     end
 
-    function extend_front_and_back(codes, code_length)
-        [codes[end - code_length + 1:end,:]; codes; codes[1:code_length,:]]
-    end
 
     include("gps_l1.jl")
     include("gps_l5.jl")
