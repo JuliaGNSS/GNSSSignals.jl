@@ -2,6 +2,7 @@ module GNSSSignals
 
     using Core: toInt16
     using DocStringExtensions
+    using FixedPointNumbers
     using Statistics
     using Unitful: Frequency, Hz
 

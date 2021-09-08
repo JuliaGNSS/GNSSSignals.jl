@@ -16,6 +16,33 @@ end
 
 """
 $(SIGNATURES)
+Generate a code signal for PRN-Number `prn` of system `gnss` at chip rate `code_frequency`,
+sampled at sampling rate `sampling_frequency`
+"""
+function gen_code!(
+    code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(gnss),
+    start_phase = 0.0
+)
+    num_samples = length(code)
+    fixed_point = sizeof(Int) * 8 - 1 - min_bits_for_code_length(gnss)
+    FP = Fixed{Int, fixed_point}
+    total_code_length = FP(get_code_length(gnss) * get_secondary_code_length(gnss))
+    delta = FP(code_frequency / sampling_frequency)
+    code_phase = FP(mod(start_phase, total_code_length))
+    @inbounds for i ∈ 1:num_samples
+        code[i] = get_code_unsafe(gnss, code_phase, prn)
+        code_phase += delta
+        code_phase -= (code_phase >= total_code_length) * total_code_length
+    end
+    return code
+end
+
+"""
+$(SIGNATURES)
 
 Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
 ```julia-repl
