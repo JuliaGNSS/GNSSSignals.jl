@@ -30,6 +30,7 @@ function gen_code!(
     code_frequency::Frequency = get_code_frequency(gnss),
     start_phase = 0.0
 )
+    code_frequency > sampling_frequency && error("The code freqeuncy must not be larger than the sampling frequency.")
     num_samples = length(code)
     fixed_point = sizeof(Int) * 8 - 1 - min_bits_for_code_length(gnss)
     FP = Fixed{Int, fixed_point}
