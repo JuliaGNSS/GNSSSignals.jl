@@ -77,32 +77,14 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase,
     prn::Integer
 )
-    get_code_unsafe(gnss, floor(Int, phase), prn)
-end
-
-"""
-$(SIGNATURES)
-
-Get code of GNSS system at phase `phase` of prn `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller
-than the code length and must be an integer.
-```julia-repl
-julia> get_code_unsafe(gpsl1, 10, 1)
-```
-"""
-Base.@propagate_inbounds function get_code_unsafe(
-    gnss::AbstractGNSS,
-    phase::Integer,
-    prn::Integer
-)
-    gnss.codes[get_code_length(gnss) + phase + 1, prn]
+    gnss.codes[get_code_length(gnss) + floor(Int, phase) + 1, prn]
 end
 Base.@propagate_inbounds function get_code_unsafe(
     gnss::AbstractGNSS{C},
-    phase::Integer,
+    phase,
     prn::Integer
 ) where {C <: CuMatrix}
-    gnss.codes[phase + 1, prn]
+    gnss.codes[floor(Int, phase) + 1, prn]
 end
 
 
