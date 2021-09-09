@@ -24,6 +24,7 @@ module GNSSSignals
         get_center_frequency,
         get_code_frequency,
         get_code,
+        get_code_unsafe,
         get_data_frequency,
         get_code_center_frequency_ratio,
         get_subcarrier_frequency,
