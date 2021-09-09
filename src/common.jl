@@ -7,10 +7,7 @@ represents a PRN.
 julia> get_code(GPSL1())
 ```
 """
-function get_codes(gnss::AbstractGNSS{T}) where T <: AbstractMatrix
-    @view gnss.codes[1:get_code_length(gnss), :]
-end
-function get_codes(gnss::AbstractGNSS{T}) where T <: CuMatrix
+function get_codes(gnss::AbstractGNSS)
     gnss.codes
 end
 
