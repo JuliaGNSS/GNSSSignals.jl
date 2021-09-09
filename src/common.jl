@@ -4,14 +4,42 @@ $(SIGNATURES)
 Get codes of GNSS system as a Matrix where each column
 represents a PRN.
 ```julia-repl
-julia> get_code(gpsl1)
+julia> get_code(GPSL1())
 ```
 """
-function get_codes(gnss::AbstractGNSS{T}) where T <: AbstractMatrix
-    @view gnss.codes[get_code_length(gnss) + 1:2 * get_code_length(gnss), :]
-end
-function get_codes(gnss::AbstractGNSS{T}) where T <: CuMatrix
+function get_codes(gnss::AbstractGNSS)
     gnss.codes
+end
+
+"""
+$(SIGNATURES)
+
+Generate the code signal for PRN-Number `prn` of system `gnss` at chip rate
+`code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
+`sampling_frequency` is larger than `code_frequency` to avoid overflows with the
+modulo calculation.
+"""
+function gen_code!(
+    code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(gnss),
+    start_phase = 0.0
+)
+    code_frequency > sampling_frequency && error("The code freqeuncy must not be larger than the sampling frequency.")
+    num_samples = length(code)
+    fixed_point = sizeof(Int) * 8 - 1 - min_bits_for_code_length(gnss)
+    FP = Fixed{Int, fixed_point}
+    total_code_length = FP(get_code_length(gnss) * get_secondary_code_length(gnss))
+    delta = FP(code_frequency / sampling_frequency)
+    code_phase = FP(mod(start_phase, total_code_length))
+    @inbounds for i ∈ 1:num_samples
+        code[i] = get_code_unsafe(gnss, code_phase, prn)
+        code_phase += delta
+        code_phase -= (code_phase >= total_code_length) * total_code_length
+    end
+    return code
 end
 
 """
@@ -19,7 +47,7 @@ $(SIGNATURES)
 
 Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
 ```julia-repl
-julia> get_code(GPSL1, 1200.3, 1)
+julia> get_code(GPSL1(), 1200.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code(
@@ -39,10 +67,10 @@ end
 $(SIGNATURES)
 
 Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller
+The phase will not be wrapped by the code length. The phase has to be smaller
 than the code length incl. secondary code.
 ```julia-repl
-julia> get_code_unsafe(GPSL1, 10.3, 1)
+julia> get_code_unsafe(GPSL1(), 10.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
@@ -50,32 +78,14 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase,
     prn::Integer
 )
-    get_code_unsafe(gnss, floor(Int, phase), prn)
-end
-
-"""
-$(SIGNATURES)
-
-Get code of GNSS system at phase `phase` of prn `prn`.
-The phase will not be wrapped by the code length. The phase has to smaller
-than the code length and must be an integer.
-```julia-repl
-julia> get_code_unsafe(gpsl1, 10, 1)
-```
-"""
-Base.@propagate_inbounds function get_code_unsafe(
-    gnss::AbstractGNSS,
-    phase::Integer,
-    prn::Integer
-)
-    gnss.codes[get_code_length(gnss) + phase + 1, prn]
+    gnss.codes[floor(Int, phase) + 1, prn]
 end
 Base.@propagate_inbounds function get_code_unsafe(
     gnss::AbstractGNSS{C},
-    phase::Integer,
+    phase,
     prn::Integer
 ) where {C <: CuMatrix}
-    gnss.codes[phase + 1, prn]
+    gnss.codes[floor(Int, phase) + 1, prn]
 end
 
 
@@ -84,7 +94,7 @@ $(SIGNATURES)
 
 Get code to center frequency ratio
 ```julia-repl
-julia> get_code_unsafe(GPSL1, 10.3, 1)
+julia> get_code_center_frequency_ratio(GPSL1())
 ```
 """
 @inline function get_code_center_frequency_ratio(gnss::AbstractGNSS)
@@ -94,20 +104,16 @@ end
 """
 $(SIGNATURES)
 
-Minimum bits that are needed to represent the code length
+Get the minimum number of bits that are needed to represent the code length
 """
-function min_bits_for_code_length(gnss::AbstractGNSS)
-    for i = 1:32
-        if get_code_length(gnss) * get_secondary_code_length(gnss) <= 1 << i
-            return i
-        end
-    end
-    return 0
+@inline function min_bits_for_code_length(gnss::AbstractGNSS)
+    ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base=2)
 end
 
 
 """
 $(SIGNATURES)
+
 Calculate the spectral power of a BPSK modulated signal with chiprate `fc`
 at baseband frequency `f`
 """

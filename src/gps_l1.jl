@@ -18,7 +18,7 @@ function GPSL1(;use_gpu = Val(false))
 end
 
 function _GPSL1(::Val{false})
-    GPSL1(extend_front_and_back(Int16.(read_gpsl1_codes()), 1023))
+    GPSL1(Int16.(read_gpsl1_codes()))
 end
 function _GPSL1(::Val{true})
     GPSL1(CuMatrix{Float32}(read_gpsl1_codes()))

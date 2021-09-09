@@ -2,6 +2,7 @@ module GNSSSignals
 
     using Core: toInt16
     using DocStringExtensions
+    using FixedPointNumbers
     using Statistics
     using Unitful: Frequency, Hz
 
@@ -16,26 +17,20 @@ module GNSSSignals
         GPSL5,
         GalileoE1B,
         BOCcos,
+        gen_code!,
         get_codes,
         get_code_length,
         get_secondary_code_length,
         get_center_frequency,
         get_code_frequency,
-        get_code_unsafe,
         get_code,
+        get_code_unsafe,
         get_data_frequency,
         get_code_center_frequency_ratio,
-        get_carrier_fast_unsafe,
-        get_carrier_vfast_unsafe,
-        get_quadrant_size_power,
-        get_carrier_amplitude_power,
         get_subcarrier_frequency,
         get_code_spectrum,
         get_system_string,
-        fpcarrier_phases!,
-        fpcarrier!,
-        min_bits_for_code_length,
-        length
+        min_bits_for_code_length
 
 
     abstract type AbstractGNSS{C} end
@@ -73,9 +68,6 @@ module GNSSSignals
         end
     end
 
-    function extend_front_and_back(codes, code_length)
-        [codes[end - code_length + 1:end,:]; codes; codes[1:code_length,:]]
-    end
 
     include("gps_l1.jl")
     include("gps_l5.jl")

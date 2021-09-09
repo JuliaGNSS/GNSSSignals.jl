@@ -112,15 +112,6 @@ Base.@propagate_inbounds function get_code_unsafe(
     get_code_unsafe(boc.system, floored_phase, prn) *
         (iseven(floored_BOC_phase) << 1 - 1)
 end
-Base.@propagate_inbounds function get_code_unsafe(
-    boc::AbstractGNSSBOCcos{C, M, N},
-    phase::Integer,
-    prn::Integer
-) where {C, M, N}
-    floored_BOC_phase = floor(Integer, phase * 2 * M / N)
-    get_code_unsafe(boc.system, phase, prn) *
-        (iseven(floored_BOC_phase) << 1 - 1)
-end
 
 """
 $(SIGNATURES)
