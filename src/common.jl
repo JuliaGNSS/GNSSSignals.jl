@@ -14,7 +14,7 @@ end
 """
 $(SIGNATURES)
 
-Generate the code signal for PRN-Number `prn` of system `gnss` at chip rate
+Generate the code signal inplace for PRN-Number `prn` of system `gnss` at chip rate
 `code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
 `sampling_frequency` is larger than `code_frequency` to avoid overflows with the
 modulo calculation.
@@ -25,7 +25,8 @@ function gen_code!(
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency = get_code_frequency(gnss),
-    start_phase = 0.0
+    start_phase = 0.0,
+    start_index::Integer = 0
 )
     code_frequency > sampling_frequency && error("The code freqeuncy must not be larger than the sampling frequency.")
     num_samples = length(code)
@@ -33,13 +34,42 @@ function gen_code!(
     FP = Fixed{Int, fixed_point}
     total_code_length = FP(get_code_length(gnss) * get_secondary_code_length(gnss))
     delta = FP(code_frequency / sampling_frequency)
-    code_phase = FP(mod(start_phase, total_code_length))
+    code_phase = mod(FP(start_phase) + start_index * delta, total_code_length)
     @inbounds for i ∈ 1:num_samples
         code[i] = get_code_unsafe(gnss, code_phase, prn)
         code_phase += delta
         code_phase -= (code_phase >= total_code_length) * total_code_length
     end
     return code
+end
+
+"""
+$(SIGNATURES)
+
+Generate the code signal for PRN-Number `prn` of system `gnss` at chip rate
+`code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
+`sampling_frequency` is larger than `code_frequency` to avoid overflows with the
+modulo calculation.
+"""
+function gen_code(
+    num_samples::Integer,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(gnss),
+    start_phase = 0.0,
+    start_index::Integer = 0
+)
+    code = zeros(Int16, num_samples)
+    gen_code!(
+        code,
+        gnss,
+        prn,
+        sampling_frequency,
+        code_frequency,
+        start_phase,
+        start_index
+    )
 end
 
 """
@@ -80,14 +110,6 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     gnss.codes[floor(Int, phase) + 1, prn]
 end
-Base.@propagate_inbounds function get_code_unsafe(
-    gnss::AbstractGNSS{C},
-    phase,
-    prn::Integer
-) where {C <: CuMatrix}
-    gnss.codes[floor(Int, phase) + 1, prn]
-end
-
 
 """
 $(SIGNATURES)
