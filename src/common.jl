@@ -32,13 +32,14 @@ function gen_code!(
     num_samples = length(code)
     fixed_point = sizeof(Int) * 8 - 1 - min_bits_for_code_length(gnss)
     FP = Fixed{Int, fixed_point}
-    total_code_length = FP(get_code_length(gnss) * get_secondary_code_length(gnss))
+    total_code_length = get_code_length(gnss) * get_secondary_code_length(gnss)
+    fp_total_code_length = FP(total_code_length)
     delta = FP(code_frequency / sampling_frequency)
-    code_phase = mod(FP(start_phase) + start_index * delta, total_code_length)
+    code_phase = FP(mod(FP(mod(start_phase, total_code_length)) + start_index * delta, total_code_length))
     @inbounds for i ∈ 1:num_samples
         code[i] = get_code_unsafe(gnss, code_phase, prn)
         code_phase += delta
-        code_phase -= (code_phase >= total_code_length) * total_code_length
+        code_phase -= (code_phase >= fp_total_code_length) * fp_total_code_length
     end
     return code
 end
