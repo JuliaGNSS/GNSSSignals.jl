@@ -23,7 +23,8 @@ pkg> add GNSSSignals
 using GNSSSignals
 code_phases = 0:1022
 prn = 1
-sampled_code = get_code.(GPSL1, code_phases, prn)
+gpsl1 = GPSL1()
+sampled_code = get_code.(gpsl1, code_phases, prn)
 ```
 Output:
 ```julia
@@ -38,17 +39,17 @@ In addition to that, there are some auxiliarly functions:
 
 | Function                                                | Description                                                                        |
 |---------------------------------------------------------|------------------------------------------------------------------------------------|
-| `get_code_length(::Type{<:AbstractGNSSSystem})`           | Get code length                                                                    |
-| `get_secondary_code_length(::Type{<:AbstractGNSSSystem})`  | Get secondary code length |
-| `get_center_frequency(::Type{<:AbstractGNSSSystem})`      | Get center frequency                                                               |
-| `get_code_frequency(::Type{<:AbstractGNSSSystem})`        | Get code frequency                                                                 |
-| `get_data_frequency(::Type{<:AbstractGNSSSystem})`        | Get data frequency                                                                 |
-| `get_code(::Type{<:AbstractGNSSSystem}, phase, prn::Integer)` | Get code at phase `phase` from PRN `prn`                                           |
-| `get_code_center_frequency_ratio(::Type{<:AbstractGNSSSystem})` | Get code to center frequency ratio                                           |
+| `get_code_length(::AbstractGNSSSystem)`           | Get code length                                                                    |
+| `get_secondary_code_length(::AbstractGNSSSystem)`  | Get secondary code length |
+| `get_center_frequency(::AbstractGNSSSystem)`      | Get center frequency                                                               |
+| `get_code_frequency(::AbstractGNSSSystem)`        | Get code frequency                                                                 |
+| `get_data_frequency(::AbstractGNSSSystem)`        | Get data frequency                                                                 |
+| `get_code(::AbstractGNSSSystem, phase, prn::Integer)` | Get code at phase `phase` from PRN `prn`                                           |
+| `get_code_center_frequency_ratio(::AbstractGNSSSystem)` | Get code to center frequency ratio                                           |
 
 #### Example
 
 ```julia-repl
-julia> get_code_length(GPSL1)
+julia> get_code_length(gpsl1)
 1023
 ```
