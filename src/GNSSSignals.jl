@@ -18,6 +18,7 @@ module GNSSSignals
         GalileoE1B,
         BOCcos,
         gen_code!,
+        gen_code,
         get_codes,
         get_code_length,
         get_secondary_code_length,
