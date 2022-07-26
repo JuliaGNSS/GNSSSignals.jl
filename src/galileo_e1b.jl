@@ -11,6 +11,10 @@ end
 
 get_system_string(s::GalileoE1B) = "GalileoE1B"
 
+function get_codes(gnss::GalileoE1B)
+    gnss.system.codes
+end
+
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
     code_hex_array = map(x -> parse(UInt16, x, base = 16), collect(raw_code_without_spaces))
