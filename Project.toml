@@ -2,7 +2,7 @@ name = "GNSSSignals"
 uuid = "52c80523-2a4e-5c38-8979-05588f836870"
 authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>",
            "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de"]
-version = "0.15.4"
+version = "0.15.5"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
