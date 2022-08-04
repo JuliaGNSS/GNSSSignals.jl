@@ -75,6 +75,5 @@ module GNSSSignals
     include("gps_l1.jl")
     include("gps_l5.jl")
     include("galileo_e1b.jl")
-#    include("boc.jl")
     include("common.jl")
 end
