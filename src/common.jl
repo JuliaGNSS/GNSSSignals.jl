@@ -33,7 +33,7 @@ function gen_code!(
     fixed_point = sizeof(Int) * 8 - 1 - min_bits_for_code_length(gnss)
     FP = Fixed{Int, fixed_point}
     total_code_length = get_code_length(gnss) * get_secondary_code_length(gnss)
-    fp_total_code_length = FP(total_code_length)
+    fp_total_code_length = FP(total_code_length / get_code_factor(gnss))
     delta = FP(code_frequency / sampling_frequency)
     code_phase = FP(mod(FP(mod(start_phase, total_code_length)) + start_index * delta, total_code_length))
     @inbounds for i ∈ 1:num_samples
@@ -43,6 +43,11 @@ function gen_code!(
     end
     return code
 end
+
+get_code_factor(system::T) where T <: AbstractGNSS = get_code_factor(get_modulation(T))
+get_code_factor(modulation::LOC) = 1
+get_code_factor(modulation::BOC) = modulation.n
+get_code_factor(modulation::CBOC) = modulation.boc1.n
 
 """
 $(SIGNATURES)
@@ -61,7 +66,7 @@ function gen_code(
     start_phase = 0.0,
     start_index::Integer = 0
 )
-    code = zeros(Int16, num_samples)
+    code = zeros(get_code_type(gnss), num_samples)
     gen_code!(
         code,
         gnss,
@@ -71,45 +76,6 @@ function gen_code(
         start_phase,
         start_index
     )
-end
-
-"""
-$(SIGNATURES)
-
-Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
-```julia-repl
-julia> get_code(GPSL1(), 1200.3, 1)
-```
-"""
-Base.@propagate_inbounds function get_code(
-    gnss::AbstractGNSS,
-    phase,
-    prn::Integer
-)
-    floored_phase = floor(Int, phase)
-    get_code_unsafe(
-        gnss,
-        mod(floored_phase, get_code_length(gnss) * get_secondary_code_length(gnss)),
-        prn
-    )
-end
-
-"""
-$(SIGNATURES)
-
-Get code of type <: `AbstractGNSS` at phase `phase` of PRN `prn`.
-The phase will not be wrapped by the code length. The phase has to be smaller
-than the code length incl. secondary code.
-```julia-repl
-julia> get_code_unsafe(GPSL1(), 10.3, 1)
-```
-"""
-Base.@propagate_inbounds function get_code_unsafe(
-    gnss::AbstractGNSS,
-    phase,
-    prn::Integer
-)
-    gnss.codes[floor(Int, phase) + 1, prn]
 end
 
 """

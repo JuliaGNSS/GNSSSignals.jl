@@ -2,6 +2,8 @@ struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
+get_modulation(::Type{<:GPSL5}) = LOC()
+
 get_system_string(s::GPSL5) = "GPSL5"
 
 #=These are the initial XB Code States for the I5 code,

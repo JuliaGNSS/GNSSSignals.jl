@@ -2,6 +2,8 @@ struct GPSL1{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
+get_modulation(::Type{<:GPSL1}) = LOC()
+
 get_system_string(s::GPSL1) = "GPSL1"
 
 function read_gpsl1_codes()

@@ -1,19 +1,13 @@
-struct GalileoE1BBase{C <: AbstractMatrix} <: AbstractGNSS{C}
+"""
+GalileoE1B
+"""
+struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
-"""
-GalileoE1B is in theory CBOC. Here it is approximated as BOCcos.
-"""
-struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSSBOCcos{C, 1, 1}
-    system::GalileoE1BBase{C}
-end
+get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 
 get_system_string(s::GalileoE1B) = "GalileoE1B"
-
-function get_codes(gnss::GalileoE1B)
-    gnss.system.codes
-end
 
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
@@ -31,19 +25,15 @@ function read_galileo_e1b_codes()
     )
 end
 
-function GalileoE1BBase(;use_gpu = Val(false))
-    _GalileoE1BBase(use_gpu)
-end
-
-function _GalileoE1BBase(::Val{false})
-    GalileoE1BBase(Int16.(read_galileo_e1b_codes()))
-end
-function _GalileoE1BBase(::Val{true})
-    GalileoE1BBase(CuMatrix{Float32}(read_galileo_e1b_codes()))
-end
-
 function GalileoE1B(;use_gpu = Val(false))
-    GalileoE1B(GalileoE1BBase(use_gpu = use_gpu))
+    _GalileoE1B(use_gpu)
+end
+
+function _GalileoE1B(::Val{false})
+    GalileoE1B(Int16.(read_galileo_e1b_codes()))
+end
+function _GalileoE1B(::Val{true})
+    GalileoE1B(CuMatrix{Float32}(read_galileo_e1b_codes()))
 end
 
 """
@@ -54,7 +44,7 @@ Get code length of GNSS system GalileoE1B.
 julia> get_code_length(GalileoE1B)
 ```
 """
-@inline function get_code_length(galileo_e1b_base::GalileoE1BBase)
+@inline function get_code_length(galileo_e1b::GalileoE1B)
     4092
 end
 
@@ -66,7 +56,7 @@ Get shortest code length of GNSS system GalileoE1B.
 julia> get_shortest_code_length(GalileoE1B)
 ```
 """
-@inline function get_secondary_code_length(galileo_e1b_base::GalileoE1BBase)
+@inline function get_secondary_code_length(galileo_e1b::GalileoE1B)
     1
 end
 
@@ -78,7 +68,7 @@ Get center frequency of GNSS system GalileoE1B.
 julia> get_center_frequency(GalileoE1B)
 ```
 """
-@inline function get_center_frequency(galileo_e1b_base::GalileoE1BBase)
+@inline function get_center_frequency(galileo_e1b::GalileoE1B)
     1_575_420_000Hz
 end
 
@@ -90,7 +80,7 @@ Get code frequency of GNSS system GalileoE1B.
 julia> get_code_frequency(GalileoE1B)
 ```
 """
-@inline function get_code_frequency(galileo_e1b_base::GalileoE1BBase)
+@inline function get_code_frequency(galileo_e1b::GalileoE1B)
     1023_000Hz
 end
 
@@ -102,6 +92,6 @@ Get data frequency of GNSS system GalileoE1B.
 julia> get_data_frequency(GalileoE1B)
 ```
 """
-@inline function get_data_frequency(galileo_e1b_base::GalileoE1BBase)
+@inline function get_data_frequency(galileo_e1b::GalileoE1B)
     250Hz
 end
