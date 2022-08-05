@@ -44,11 +44,6 @@ function gen_code!(
     return code
 end
 
-get_code_factor(system::T) where T <: AbstractGNSS = get_code_factor(get_modulation(T))
-get_code_factor(modulation::LOC) = 1
-get_code_factor(modulation::BOC) = modulation.n
-get_code_factor(modulation::CBOC) = modulation.boc1.n
-
 """
 $(SIGNATURES)
 

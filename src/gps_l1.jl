@@ -84,11 +84,3 @@ julia> get_data_frequency(gpsl1)
 @inline function get_data_frequency(gpsl1::GPSL1)
     50Hz
 end
-
-"""
-$(SIGNATURES)
-Get the spectral power of the GPSL1 CA code
-"""
-function get_code_spectrum(s::GPSL1, f)
-    get_code_spectrum_BPSK(get_code_frequency(s), f)
-end

@@ -13,4 +13,5 @@
     @test @inferred(get_data_frequency(galileo_e1b)) == 250Hz
     @test @inferred(get_code_frequency(galileo_e1b)) == 1023e3Hz
 
+    @test GNSSSignals.get_code_factor(galileo_e1b) == 1
 end

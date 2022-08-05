@@ -37,6 +37,23 @@ get_code_type(system::LOC) = Int16
 get_code_type(system::BOC) = Int16
 get_code_type(system::CBOC) = Float32
 
+get_code_factor(system::T) where T <: AbstractGNSS = get_code_factor(get_modulation(T))
+get_code_factor(modulation::LOC) = 1
+get_code_factor(modulation::BOC) = modulation.n
+get_code_factor(modulation::CBOC) = modulation.boc1.n
+
+"""
+$(SIGNATURES)
+Get the spectral power of the GPSL1 CA code
+"""
+get_code_spectrum(system::T, f) where T <: AbstractGNSS = get_code_spectrum(get_modulation(T), system, f)
+get_code_spectrum(modulation::LOC, system, f) = get_code_spectrum_BPSK(get_code_frequency(system), f)
+get_code_spectrum(modulation::BOCsin, system, f) =
+    get_code_spectrum_BOCsin(modulation.n * get_code_frequency(system), modulation.m * get_code_frequency(system), f)
+get_code_spectrum(modulation::BOCcos, system, f) =
+    get_code_spectrum_BOCcos(modulation.n * get_code_frequency(system), modulation.m * get_code_frequency(system), f)
+get_code_spectrum(modulation::CBOC, system, f) = error("To be implemented")
+
 function get_subcarrier_code(modulation::BOCsin, phase)
     floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
     iseven(floored_subcarrier_phase) << 1 - 1

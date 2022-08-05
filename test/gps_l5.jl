@@ -25,6 +25,14 @@ end
     @test @inferred(get_code_frequency(gpsl5)) == 10230e3Hz
     @test get_code.(gpsl5, 0:10229, 1) == L5_SAT1_CODE
 
+    @test GNSSSignals.get_code_factor(gpsl5) == 1
+
+    @test get_code_spectrum(gpsl5, 0) ≈ 1.0Hz / get_code_frequency(gpsl5)
+    @testset "Test $(m). zero" for m = 1:10
+        @test get_code_spectrum(gpsl5, m * get_code_frequency(gpsl5)) == 0
+        @test get_code_spectrum(gpsl5, -m * get_code_frequency(gpsl5)) == 0
+    end
+    @test sum(get_code_spectrum.(gpsl5, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
 end
 
 @testset "Neuman sequence" begin

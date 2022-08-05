@@ -33,4 +33,14 @@
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2,2), 2.3) == 4
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2,1), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2,2), 2.3) == 4
+
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2,1)) == 1
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2,2)) == 2
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2,2.5)) == 2.5
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2,1)) == 1
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2,2)) == 2
+    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2,2.5)) == 2.5
+    @test GNSSSignals.get_code_factor(GNSSSignals.CBOC(GNSSSignals.BOCsin(1,1), GNSSSignals.BOCsin(1,1), 1/2)) == 1
+    @test GNSSSignals.get_code_factor(GNSSSignals.CBOC(GNSSSignals.BOCsin(1,2), GNSSSignals.BOCsin(1,2), 1/2)) == 2
+    @test GNSSSignals.get_code_factor(GNSSSignals.CBOC(GNSSSignals.BOCsin(1,2.5), GNSSSignals.BOCsin(1,2.5), 1/2)) == 2.5
 end
