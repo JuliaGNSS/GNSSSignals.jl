@@ -26,9 +26,9 @@ struct CBOC{B1 <: BOC, B2 <: BOC} <: BOC
     boc2::B2
     boc1_power::Float64
     CBOC(boc1, boc2, boc1_power) =
-        boc1_power < 1 && boc1.n == boc2.n ?
+        0 < boc1_power < 1 && boc1.n == boc2.n ?
         new{typeof(boc1), typeof(boc2)}(boc1, boc2, boc1_power) :
-        error("Power of BOC1 must be < 1 and n of both BOCs must match")
+        error("Power of BOC1 must be between 0 and 1 and n of both BOCs must match")
 end
 
 get_code_type(system::T) where T <: AbstractGNSS = get_code_type(get_modulation(T))
