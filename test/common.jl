@@ -1,15 +1,15 @@
-@testset "Common" begin
-    @test get_code_center_frequency_ratio(GPSL1()) ≈ 1/1540
-end
-
-@testset "Code generation $(get_system_string(system))" for system = [GalileoE1B(), GPSL1(), GPSL5()]
-    sampling_rate = 25e6Hz
-    samples = 1000
+@testset "Common functions for $(get_system_string(system))" for system = [GalileoE1B(), GPSL1(), GPSL5()]
     if typeof(system) <: GalileoE1B
         @test get_code_type(system) == Float32
     else
         @test get_code_type(system) == Int16
     end
+    @test get_codes(system) == system.codes
+end
+
+@testset "Code generation $(get_system_string(system))" for system = [GalileoE1B(), GPSL1(), GPSL5()]
+    sampling_rate = 25e6Hz
+    samples = 1000
     code = zeros(get_code_type(system), samples)
     code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0)
     phase = (0:length(code) - 1) * get_code_frequency(system) / sampling_rate

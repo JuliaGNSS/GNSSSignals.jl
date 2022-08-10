@@ -33,6 +33,8 @@ end
         @test get_code_spectrum(gpsl5, -m * get_code_frequency(gpsl5)) == 0
     end
     @test sum(get_code_spectrum.(gpsl5, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
+
+    @test get_code_center_frequency_ratio(gpsl5) ≈ 1/115
 end
 
 @testset "Neuman sequence" begin

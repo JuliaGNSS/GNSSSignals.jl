@@ -19,4 +19,6 @@
         @test get_code_spectrum(gpsl1, -m * get_code_frequency(gpsl1)) == 0
     end
     @test sum(get_code_spectrum.(gpsl1, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
+
+    @test get_code_center_frequency_ratio(gpsl1) ≈ 1/1540
 end
