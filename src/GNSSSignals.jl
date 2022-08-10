@@ -36,7 +36,6 @@ module GNSSSignals
 
 
     abstract type AbstractGNSS{C} end
-    abstract type AbstractGNSSBOCcos{C, M, N} <: AbstractGNSS{C} end
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 

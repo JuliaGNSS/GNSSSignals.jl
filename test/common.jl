@@ -5,6 +5,11 @@ end
 @testset "Code generation $(get_system_string(system))" for system = [GalileoE1B(), GPSL1(), GPSL5()]
     sampling_rate = 25e6Hz
     samples = 1000
+    if typeof(system) <: GalileoE1B
+        @test get_code_type(system) == Float32
+    else
+        @test get_code_type(system) == Int16
+    end
     code = zeros(get_code_type(system), samples)
     code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0)
     phase = (0:length(code) - 1) * get_code_frequency(system) / sampling_rate

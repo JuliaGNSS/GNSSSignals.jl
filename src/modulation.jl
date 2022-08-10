@@ -24,18 +24,17 @@ struct LOC <: Modulation end
 struct CBOC{B1 <: BOC, B2 <: BOC} <: BOC
     boc1::B1
     boc2::B2
-    boc1_power::Float64
+    boc1_power::Float32
     CBOC(boc1, boc2, boc1_power) =
         0 < boc1_power < 1 && boc1.n == boc2.n ?
         new{typeof(boc1), typeof(boc2)}(boc1, boc2, boc1_power) :
         error("Power of BOC1 must be between 0 and 1 and n of both BOCs must match")
 end
 
-get_code_type(system::T) where T <: AbstractGNSS = get_code_type(get_modulation(T))
+get_code_type(system::T) where T <: AbstractGNSS = get_code_type(system, get_modulation(T))
 
-get_code_type(system::LOC) = Int16
-get_code_type(system::BOC) = Int16
-get_code_type(system::CBOC) = Float32
+get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation) where T = T
+get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::CBOC) where T = typeof(modulation.boc1_power)
 
 get_code_factor(system::T) where T <: AbstractGNSS = get_code_factor(get_modulation(T))
 get_code_factor(modulation::LOC) = 1
@@ -44,7 +43,7 @@ get_code_factor(modulation::CBOC) = modulation.boc1.n
 
 """
 $(SIGNATURES)
-Get the spectral power of the GPSL1 CA code
+Get the spectral power
 """
 get_code_spectrum(system::T, f) where T <: AbstractGNSS = get_code_spectrum(get_modulation(T), system, f)
 get_code_spectrum(modulation::LOC, system, f) = get_code_spectrum_BPSK(get_code_frequency(system), f)
@@ -54,21 +53,22 @@ get_code_spectrum(modulation::BOCcos, system, f) =
     get_code_spectrum_BOCcos(modulation.n * get_code_frequency(system), modulation.m * get_code_frequency(system), f)
 get_code_spectrum(modulation::CBOC, system, f) = error("To be implemented")
 
-function get_subcarrier_code(modulation::BOCsin, phase)
+function get_subcarrier_code(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::BOCsin, phase) where T
     floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
-    iseven(floored_subcarrier_phase) << 1 - 1
+    T(iseven(floored_subcarrier_phase)) << true - T(1)
 end
 
-function get_subcarrier_code(modulation::BOCcos, phase)
+function get_subcarrier_code(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::BOCcos, phase) where T
     floored_subcarrier_phase = floor(Int, (phase + 0.25) * 2 * modulation.m)
-    iseven(floored_subcarrier_phase) << 1 - 1
+    T(iseven(floored_subcarrier_phase)) << true - T(1)
 end
 
-function get_subcarrier_code(modulation::CBOC, phase)
-    get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
-        get_subcarrier_code(modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
+function get_subcarrier_code(system, modulation::CBOC, phase)
+    get_subcarrier_code(system, modulation.boc1, phase) * sqrt(modulation.boc1_power) +
+        get_subcarrier_code(system, modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
 end
 
+get_floored_phase(modulation::LOC, phase) = floor(Int, phase)
 get_floored_phase(modulation::BOC, phase) = floor(Int, phase * modulation.n)
 get_floored_phase(modulation::CBOC, phase) = floor(Int, phase * modulation.boc1.n)
 
@@ -106,7 +106,7 @@ function get_code(
         get_code_length(system) * get_secondary_code_length(system)
     )
     get_code_at_index(system, modded_floored_phase, prn) *
-        get_subcarrier_code(modulation, phase)
+        get_subcarrier_code(system, modulation, phase)
 end
 
 """
@@ -121,7 +121,7 @@ function get_code(
     phase,
     prn::Integer
 )
-    floored_phase = floor(Int, phase)
+    floored_phase = get_floored_phase(modulation, phase)
     modded_floored_phase = mod(
         floored_phase,
         get_code_length(system) * get_secondary_code_length(system)
@@ -172,7 +172,7 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     floored_phase = get_floored_phase(modulation, phase)
     get_code_at_index(system, floored_phase, prn) *
-        get_subcarrier_code(modulation, phase)
+        get_subcarrier_code(system, modulation, phase)
 end
 
 """
@@ -189,6 +189,6 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase,
     prn::Integer
 )
-    floored_phase = floor(Int, phase)
+    floored_phase = get_floored_phase(modulation, phase)
     get_code_at_index(system, floored_phase, prn)
 end
