@@ -16,7 +16,6 @@ module GNSSSignals
         GPSL1,
         GPSL5,
         GalileoE1B,
-        BOCcos,
         gen_code!,
         gen_code,
         get_codes,
@@ -32,7 +31,8 @@ module GNSSSignals
         get_subcarrier_frequency,
         get_code_spectrum,
         get_system_string,
-        min_bits_for_code_length
+        min_bits_for_code_length,
+        get_modulation
 
 
     abstract type AbstractGNSS{C} end

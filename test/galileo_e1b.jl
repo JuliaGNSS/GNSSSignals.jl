@@ -15,5 +15,11 @@
 
     @test GNSSSignals.get_code_factor(galileo_e1b) == 1
 
+    @test get_code_spectrum(galileo_e1b, 0) == 0.0
+
+    @test get_code_spectrum(galileo_e1b, 2 * get_code_frequency(galileo_e1b)) == 0.0
+    @test get_code_spectrum(galileo_e1b, -2 * get_code_frequency(galileo_e1b)) == 0.0
+    
+
     @test get_code_center_frequency_ratio(galileo_e1b) ≈ 1/1540
 end

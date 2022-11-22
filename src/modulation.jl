@@ -34,24 +34,30 @@ end
 get_code_type(system::T) where T <: AbstractGNSS = get_code_type(system, get_modulation(T))
 
 get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation) where T = T
-get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::CBOC) where T = typeof(modulation.boc1_power)
+get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::CBOC) where T =
+    promote_type(T, typeof(modulation.boc1_power))
 
 get_code_factor(system::T) where T <: AbstractGNSS = get_code_factor(get_modulation(T))
 get_code_factor(modulation::LOC) = 1
 get_code_factor(modulation::BOC) = modulation.n
 get_code_factor(modulation::CBOC) = modulation.boc1.n
 
+get_modulation(s::T) where T = get_modulation(T)
+
 """
 $(SIGNATURES)
 Get the spectral power
 """
-get_code_spectrum(system::T, f) where T <: AbstractGNSS = get_code_spectrum(get_modulation(T), system, f)
+get_code_spectrum(system, f) = get_code_spectrum(get_modulation(system), system, f)
 get_code_spectrum(modulation::LOC, system, f) = get_code_spectrum_BPSK(get_code_frequency(system), f)
 get_code_spectrum(modulation::BOCsin, system, f) =
     get_code_spectrum_BOCsin(modulation.n * get_code_frequency(system), modulation.m * get_code_frequency(system), f)
 get_code_spectrum(modulation::BOCcos, system, f) =
     get_code_spectrum_BOCcos(modulation.n * get_code_frequency(system), modulation.m * get_code_frequency(system), f)
-get_code_spectrum(modulation::CBOC, system, f) = error("To be implemented")
+function get_code_spectrum(modulation::CBOC, system, f)
+    get_code_spectrum(modulation.boc1, system, f) * modulation.boc1_power +
+        get_code_spectrum(modulation.boc2, system, f) * (1 - modulation.boc1_power)
+end
 
 function get_subcarrier_code(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::BOCsin, phase) where T
     floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
