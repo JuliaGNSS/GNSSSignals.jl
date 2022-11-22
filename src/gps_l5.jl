@@ -2,6 +2,8 @@ struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
+get_modulation(::Type{<:GPSL5}) = LOC()
+
 get_system_string(s::GPSL5) = "GPSL5"
 
 #=These are the initial XB Code States for the I5 code,
@@ -215,12 +217,4 @@ julia> get_data_frequency(GPSL5)
 """
 @inline function get_data_frequency(gpsl5::GPSL5)
     100Hz
-end
-
-"""
-$(SIGNATURES)
-Get the spectral power of the GPSL5 code
-"""
-function get_code_spectrum(s::GPSL5, f)
-    get_code_spectrum_BPSK(get_code_frequency(s), f)
 end

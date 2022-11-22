@@ -18,7 +18,7 @@ end
     if GNSSSignals.use_gpu[]
         GNSSSignals.use_gpu[] = false # if system has CUDA set to false in order to test CPU
     end
-    include("boc.jl")
+    include("modulation.jl")
     include("gps_l1.jl")
     include("gps_l5.jl")
     include("galileo_e1b.jl")

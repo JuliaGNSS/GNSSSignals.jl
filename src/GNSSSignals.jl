@@ -16,10 +16,10 @@ module GNSSSignals
         GPSL1,
         GPSL5,
         GalileoE1B,
-        BOCcos,
         gen_code!,
         gen_code,
         get_codes,
+        get_code_type,
         get_code_length,
         get_secondary_code_length,
         get_center_frequency,
@@ -31,11 +31,11 @@ module GNSSSignals
         get_subcarrier_frequency,
         get_code_spectrum,
         get_system_string,
-        min_bits_for_code_length
+        min_bits_for_code_length,
+        get_modulation
 
 
     abstract type AbstractGNSS{C} end
-    abstract type AbstractGNSSBOCcos{C, M, N} <: AbstractGNSS{C} end
 
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
@@ -70,9 +70,9 @@ module GNSSSignals
     end
 
 
+    include("modulation.jl")
     include("gps_l1.jl")
     include("gps_l5.jl")
     include("galileo_e1b.jl")
-    include("boc.jl")
     include("common.jl")
 end
