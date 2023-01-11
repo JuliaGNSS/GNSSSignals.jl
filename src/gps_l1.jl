@@ -15,15 +15,8 @@ function read_gpsl1_codes()
     )
 end
 
-function GPSL1(;use_gpu = Val(false))
-    _GPSL1(use_gpu)
-end
-
-function _GPSL1(::Val{false})
+function GPSL1()
     GPSL1(Int16.(read_gpsl1_codes()))
-end
-function _GPSL1(::Val{true})
-    GPSL1(CuMatrix{Float32}(read_gpsl1_codes()))
 end
 
 """

@@ -145,18 +145,8 @@ function read_gpsl5_codes()
     )
 end
 
-function GPSL5(;use_gpu = Val(false))
-    _GPSL5(use_gpu)
-end
-
-# dispatch constructor CPU
-function _GPSL5(use_gpu::Val{false})
+function GPSL5()
     GPSL5(Int16.(read_gpsl5_codes()))
-end
-
-# dispatch cosntructor CUDA
-function _GPSL5(use_gpu::Val{true})
-    GPSL5(CuMatrix{Float32}(read_gpsl5_codes()))
 end
 
 """

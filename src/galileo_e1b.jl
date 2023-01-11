@@ -25,15 +25,8 @@ function read_galileo_e1b_codes()
     )
 end
 
-function GalileoE1B(;use_gpu = Val(false))
-    _GalileoE1B(use_gpu)
-end
-
-function _GalileoE1B(::Val{false})
+function GalileoE1B()
     GalileoE1B(Int16.(read_galileo_e1b_codes()))
-end
-function _GalileoE1B(::Val{true})
-    GalileoE1B(CuMatrix{Float32}(read_galileo_e1b_codes()))
 end
 
 """
