@@ -1,19 +1,16 @@
 name = "GNSSSignals"
 uuid = "52c80523-2a4e-5c38-8979-05588f836870"
-authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>",
-           "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de"]
-version = "0.16.0"
+authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de"]
+version = "0.17.0"
 
 [deps]
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
-CUDA = "3"
-DocStringExtensions = "0.6, 0.7, 0.8"
+DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
 FixedPointNumbers = "0.8"
 Unitful = "0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 1.0"
 julia = "1.6"

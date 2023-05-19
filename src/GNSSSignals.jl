@@ -6,9 +6,6 @@ module GNSSSignals
     using Statistics
     using Unitful: Frequency, Hz
 
-    using CUDA
-    const use_gpu = Ref(false)
-
     import Base.show
 
     export
@@ -32,7 +29,8 @@ module GNSSSignals
         get_code_spectrum,
         get_system_string,
         min_bits_for_code_length,
-        get_modulation
+        get_modulation,
+        get_secondary_code
 
 
     abstract type AbstractGNSS{C} end
@@ -40,18 +38,6 @@ module GNSSSignals
     Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
     Base.show(io::IO, x::AbstractGNSS) = print("$(typeof(x))()")
-
-    """
-    $(SIGNATURES)
-
-    `GNSSSignals.jl` checks if there is a working installation of CUDA on the system and informs the user
-    to activate GPU acceleration if they wish to do so.
-    """
-    function __init__()
-        if CUDA.functional()
-            @info "Found a working CUDA installation. To activate GPU acceleration set use_gpu = Val(true), e.g. GPSL1(use_gpu = Val(true))."
-        end
-    end
 
     """
     $(SIGNATURES)
