@@ -60,7 +60,7 @@ function get_code_spectrum(modulation::CBOC, system, f)
 end
 
 function get_subcarrier_code(modulation::BOCsin, phase::T) where T <: Real
-    floored_subcarrier_phase = floor(phase * 2 * modulation.m)
+    floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
     iseven(floored_subcarrier_phase) * 2 - 1
 end
 
