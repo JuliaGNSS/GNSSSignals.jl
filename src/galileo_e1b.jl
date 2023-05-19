@@ -34,7 +34,7 @@ $(SIGNATURES)
 
 Get code length of GNSS system GalileoE1B.
 ```julia-repl
-julia> get_code_length(GalileoE1B)
+julia> get_code_length(GalileoE1B())
 ```
 """
 @inline function get_code_length(galileo_e1b::GalileoE1B)
@@ -44,12 +44,12 @@ end
 """
 $(SIGNATURES)
 
-Get shortest code length of GNSS system GalileoE1B.
+Get secondary code of GNSS system GalileoE1B.
 ```julia-repl
-julia> get_shortest_code_length(GalileoE1B)
+julia> get_secondary_code(GalileoE1B())
 ```
 """
-@inline function get_secondary_code_length(galileo_e1b::GalileoE1B)
+@inline function get_secondary_code(galileo_e1b::GalileoE1B)
     1
 end
 
@@ -58,7 +58,7 @@ $(SIGNATURES)
 
 Get center frequency of GNSS system GalileoE1B.
 ```julia-repl
-julia> get_center_frequency(GalileoE1B)
+julia> get_center_frequency(GalileoE1B())
 ```
 """
 @inline function get_center_frequency(galileo_e1b::GalileoE1B)
@@ -70,7 +70,7 @@ $(SIGNATURES)
 
 Get code frequency of GNSS system GalileoE1B.
 ```julia-repl
-julia> get_code_frequency(GalileoE1B)
+julia> get_code_frequency(GalileoE1B())
 ```
 """
 @inline function get_code_frequency(galileo_e1b::GalileoE1B)
@@ -82,7 +82,7 @@ $(SIGNATURES)
 
 Get data frequency of GNSS system GalileoE1B.
 ```julia-repl
-julia> get_data_frequency(GalileoE1B)
+julia> get_data_frequency(GalileoE1B())
 ```
 """
 @inline function get_data_frequency(galileo_e1b::GalileoE1B)

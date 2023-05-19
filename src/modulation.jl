@@ -59,19 +59,18 @@ function get_code_spectrum(modulation::CBOC, system, f)
         get_code_spectrum(modulation.boc2, system, f) * (1 - modulation.boc1_power)
 end
 
-function get_subcarrier_code(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::BOCsin, phase) where T
-    floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
-    T(iseven(floored_subcarrier_phase)) << true - T(1)
+function get_subcarrier_code(modulation::BOCsin, phase::T) where T <: Real
+    floored_subcarrier_phase = floor(phase * 2 * modulation.m)
+    iseven(floored_subcarrier_phase) * 2 - 1
 end
 
-function get_subcarrier_code(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::BOCcos, phase) where T
-    floored_subcarrier_phase = floor(Int, (phase + 0.25) * 2 * modulation.m)
-    T(iseven(floored_subcarrier_phase)) << true - T(1)
+function get_subcarrier_code(modulation::BOCcos, phase::T) where T <: Real
+    get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + T(0.25))
 end
 
-function get_subcarrier_code(system, modulation::CBOC, phase)
-    get_subcarrier_code(system, modulation.boc1, phase) * sqrt(modulation.boc1_power) +
-        get_subcarrier_code(system, modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
+function get_subcarrier_code(modulation::CBOC, phase::T) where T <: Real
+    get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
+        get_subcarrier_code(modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
 end
 
 get_floored_phase(modulation::LOC, phase) = floor(Int, phase)
@@ -112,7 +111,7 @@ function get_code(
         get_code_length(system) * get_secondary_code_length(system)
     )
     get_code_at_index(system, modded_floored_phase, prn) *
-        get_subcarrier_code(system, modulation, phase)
+        get_subcarrier_code(modulation, phase)
 end
 
 """
@@ -155,11 +154,11 @@ julia> get_code(GPSL1(), 1200.3, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    system::T,
+    system::S,
     phase,
     prn::Integer
-) where T <: AbstractGNSS
-    get_code_unsafe(get_modulation(T), system, phase, prn)
+) where {S <: AbstractGNSS}
+    get_code_unsafe(get_modulation(S), system, phase, prn)
 end
 
 """
@@ -178,7 +177,7 @@ Base.@propagate_inbounds function get_code_unsafe(
 )
     floored_phase = get_floored_phase(modulation, phase)
     get_code_at_index(system, floored_phase, prn) *
-        get_subcarrier_code(system, modulation, phase)
+        get_subcarrier_code(modulation, phase)
 end
 
 """

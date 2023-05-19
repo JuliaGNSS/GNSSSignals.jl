@@ -24,7 +24,7 @@ $(SIGNATURES)
 
 Get code length of GNSS system GPSL1.
 ```julia-repl
-julia> get_code_length(gpsl1)
+julia> get_code_length(GPSL1())
 ```
 """
 @inline function get_code_length(gpsl1::GPSL1)
@@ -34,12 +34,12 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code length of GNSS system GPSL1.
+Get secondary code of GNSS system GPSL1.
 ```julia-repl
-julia> get_secondary_code_length(gpsl1)
+julia> get_secondary_code(GPSL1())
 ```
 """
-@inline function get_secondary_code_length(gpsl1::GPSL1)
+@inline function get_secondary_code(gpsl1::GPSL1)
     1
 end
 
@@ -48,7 +48,7 @@ $(SIGNATURES)
 
 Get center frequency of GNSS system GPSL1.
 ```julia-repl
-julia> get_center_frequency(gpsl1)
+julia> get_center_frequency(GPSL1())
 ```
 """
 @inline function get_center_frequency(gpsl1::GPSL1)
@@ -60,7 +60,7 @@ $(SIGNATURES)
 
 Get code frequency of GNSS system GPSL1.
 ```julia-repl
-julia> get_code_frequency(gpsl1)
+julia> get_code_frequency(GPSL1())
 ```
 """
 @inline function get_code_frequency(gpsl1::GPSL1)
@@ -71,7 +71,7 @@ $(SIGNATURES)
 
 Get data frequency of GNSS system GPSL1.
 ```julia-repl
-julia> get_data_frequency(gpsl1)
+julia> get_data_frequency(GPSL1())
 ```
 """
 @inline function get_data_frequency(gpsl1::GPSL1)

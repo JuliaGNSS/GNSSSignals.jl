@@ -94,6 +94,42 @@ Get the minimum number of bits that are needed to represent the code length
     ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base=2)
 end
 
+"""
+$(SIGNATURES)
+
+Get secondary code length
+"""
+@inline function get_secondary_code_length(gnss::AbstractGNSS)
+    length(get_secondary_code(gnss))
+end
+
+"""
+$(SIGNATURES)
+
+Get secondary code at phase
+"""
+@inline function get_secondary_code(gnss::AbstractGNSS, phase)
+    get_secondary_code(gnss, get_secondary_code(gnss), phase)
+end
+
+"""
+$(SIGNATURES)
+
+Get secondary code at phase
+"""
+@inline function get_secondary_code(gnss::AbstractGNSS, code::Integer, phase)
+    code
+end
+
+"""
+$(SIGNATURES)
+
+Get secondary code at phase
+"""
+@inline function get_secondary_code(gnss::AbstractGNSS, code::Tuple, phase)
+    code[mod(floor(Int, phase / get_code_length(gnss)), get_secondary_code_length(gnss)) + 1]
+end
+
 
 """
 $(SIGNATURES)

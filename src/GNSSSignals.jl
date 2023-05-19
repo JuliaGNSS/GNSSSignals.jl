@@ -29,7 +29,8 @@ module GNSSSignals
         get_code_spectrum,
         get_system_string,
         min_bits_for_code_length,
-        get_modulation
+        get_modulation,
+        get_secondary_code
 
 
     abstract type AbstractGNSS{C} end
