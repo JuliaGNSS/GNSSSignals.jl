@@ -1,5 +1,4 @@
 @testset "GPS L1" begin
-
     gpsl1 = GPSL1()
     @test @inferred(get_center_frequency(gpsl1)) == 1.57542e9Hz
     @test @inferred(get_code_length(gpsl1)) == 1023
@@ -21,5 +20,5 @@
     end
     @test sum(get_code_spectrum.(gpsl1, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
 
-    @test get_code_center_frequency_ratio(gpsl1) ≈ 1/1540
+    @test get_code_center_frequency_ratio(gpsl1) ≈ 1 / 1540
 end

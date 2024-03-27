@@ -1,4 +1,4 @@
-struct GPSL1{C <: AbstractMatrix} <: AbstractGNSS{C}
+struct GPSL1{C<:AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
@@ -11,7 +11,7 @@ function read_gpsl1_codes()
         Int8,
         joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_gps_l1.bin"),
         37,
-        1023
+        1023,
     )
 end
 

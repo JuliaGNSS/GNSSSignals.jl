@@ -1,7 +1,7 @@
 """
 GalileoE1B
 """
-struct GalileoE1B{C <: AbstractMatrix} <: AbstractGNSS{C}
+struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
@@ -11,9 +11,9 @@ get_system_string(s::GalileoE1B) = "GalileoE1B"
 
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
-    code_hex_array = map(x -> parse(UInt16, x, base = 16), collect(raw_code_without_spaces))
+    code_hex_array = map(x -> parse(UInt16, x; base = 16), collect(raw_code_without_spaces))
     code_bit_string = string(string.(code_hex_array, base = 2, pad = 4)...)
-    map(x -> parse(Int8, x, base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
+    map(x -> parse(Int8, x; base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
 end
 
 function read_galileo_e1b_codes()
@@ -21,7 +21,7 @@ function read_galileo_e1b_codes()
         Int8,
         joinpath(dirname(pathof(GNSSSignals)), "..", "data", "codes_galileo_e1b.bin"),
         50,
-        4092
+        4092,
     )
 end
 

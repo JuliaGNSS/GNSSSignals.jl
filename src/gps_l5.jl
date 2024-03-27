@@ -1,4 +1,4 @@
-struct GPSL5{C <: AbstractMatrix} <: AbstractGNSS{C}
+struct GPSL5{C<:AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
 
@@ -47,7 +47,7 @@ const INITIAL_XB_CODE_STATES = [                #sat PRN number
     [1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1],    #34
     [1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0],    #35
     [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0],    #36
-    [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0]     #37
+    [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0],     #37
 ]
 
 """
@@ -63,7 +63,7 @@ julia> reshape(8190)
 function reshape(integer)
     a = zeros(13)
     for i = 1:13
-        b = (integer >> (i-1)) & 1
+        b = (integer >> (i - 1)) & 1
         a[14-i] = b
     end
     a
@@ -112,7 +112,7 @@ function gen_l5_code(initial_xb_code_states)
     for i = 1:10230
         output_xa, XA = shift_register(XA, XA_indices)
         output_xb, XB = shift_register(XB, XB_indices)
-        satellite_code[i] =  2 * (output_xa ⊻ output_xb) - 1
+        satellite_code[i] = 2 * (output_xa ⊻ output_xb) - 1
         if (i == 8190)
             XA = 8191
         end
@@ -130,7 +130,6 @@ function add_neuman_hofman_code(l5_code, neuman_hofman_code)
     vec(l5_code .* Vector{Int8}(neuman_hofman_code)')
 end
 
-
 function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
@@ -138,10 +137,11 @@ end
 function read_gpsl5_codes()
     mapreduce(
         sat -> add_neuman_hofman_code(
-            gen_l5_code(INITIAL_XB_CODE_STATES[sat]), get_neuman_hofman_code()
+            gen_l5_code(INITIAL_XB_CODE_STATES[sat]),
+            get_neuman_hofman_code(),
         ),
         hcat,
-        1:37
+        1:37,
     )
 end
 
