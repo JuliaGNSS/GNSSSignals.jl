@@ -17,5 +17,5 @@ SUITE["code"]["code generation"]["GPSL5"] =
 
 sampled_code_f32 = zeros(Float32, num_samples)
 SUITE["code"]["code generation"]["GalileoE1B"] =
-    @benchmarkable gen_code!($sampled_code_f32, $(GalileoE1B()), $1, $(10e6Hz)) evals = 10 samples =
+    @benchmarkable gen_code!($sampled_code_f32, $(GalileoE1B()), $1, $(15e6Hz)) evals = 10 samples =
         10000
