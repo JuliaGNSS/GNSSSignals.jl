@@ -127,7 +127,7 @@ Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`, each ⊻ 
 of the 10bit Neuman-Hofman sequence 0000110101.
 """
 function add_neuman_hofman_code(l5_code, neuman_hofman_code)
-    vec(l5_code .* Vector{Int8}(neuman_hofman_code)')
+    vec(l5_code .* neuman_hofman_code')
 end
 
 function get_neuman_hofman_code()

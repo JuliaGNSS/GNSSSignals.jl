@@ -1,5 +1,6 @@
 using Test, GNSSSignals, Statistics
-import Unitful: Hz, MHz
+import Unitful: Hz, MHz, Frequency
+import GNSSSignals: BOCsin, BOCcos, CBOC
 
 include("test_codes.jl")
 include("modulation.jl")
