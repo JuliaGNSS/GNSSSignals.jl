@@ -71,6 +71,9 @@ function get_subcarrier_code(modulation::BOCcos, phase::T) where {T<:Real}
     get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + T(0.25))
 end
 
+# The amplitude is the sqrt of the power see
+# https://galileognss.eu/wp-content/uploads/2015/12/Galileo_OS_SIS_ICD_v1.2.pdf
+# Chapter 2.3.3. E1 Signal
 function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
     get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
     get_subcarrier_code(modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
@@ -100,8 +103,7 @@ phase `phase` of PRN `prn`.
 """
 function get_code(modulation::BOC, system::AbstractGNSS, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    modded_floored_phase =
-        mod(floored_phase, get_code_length(system) * get_secondary_code_length(system))
+    modded_floored_phase = mod(floored_phase, size(system.codes, 1))
     get_code_at_index(system, modded_floored_phase, prn) *
     get_subcarrier_code(modulation, phase)
 end
@@ -114,8 +116,7 @@ phase `phase` of PRN `prn`.
 """
 function get_code(modulation::LOC, system::AbstractGNSS, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    modded_floored_phase =
-        mod(floored_phase, get_code_length(system) * get_secondary_code_length(system))
+    modded_floored_phase = mod(floored_phase, size(system.codes, 1))
     get_code_at_index(system, modded_floored_phase, prn)
 end
 
