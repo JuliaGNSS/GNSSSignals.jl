@@ -101,6 +101,19 @@ end
     )
 end
 
+@testset "Failed in Tracking.jl" begin
+    code = zeros(Int16, 2502)
+    gpsl1 = GPSL1()
+    @test_throws "The code frequency 3.069e6 Hz is larger than expected (1031000 Hz)). Please increase the expected maximum Doppler frequency 8000 Hz" gen_code!(
+        code,
+        gpsl1,
+        1,
+        7.5e6Hz,
+        1023e3Hz * 3,
+        2.0,
+    )
+end
+
 @testset "Code generation $(get_system_string(system))" for system in
                                                             [GalileoE1B(), GPSL1(), GPSL5()]
     sampling_rate = 25e6Hz
@@ -110,6 +123,19 @@ end
     phase = (0:length(code)-1) * get_code_frequency(system) / sampling_rate
     @test code ≈ get_code.(system, phase, 1)
     @test code ≈ gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0)
+end
+
+@testset "Small code generation $(get_system_string(system))" for system in [
+    GalileoE1B(),
+    GPSL1(),
+    GPSL5(),
+]
+    sampling_rate = 25e6Hz
+    samples = 100
+    code = zeros(get_code_type(system), samples)
+    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 3.5)
+    phase = (0:length(code)-1) * get_code_frequency(system) / sampling_rate .+ 3.5
+    @test code ≈ get_code.(system, phase, 1)
 end
 
 @testset "Code generation for different units" begin
