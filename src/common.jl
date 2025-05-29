@@ -83,6 +83,10 @@ function sample_code!(
         "The sampling frequency must be larger than the code frequency multiplied by code factor (larger than $modulated_code_frequency, it is $sampling_frequency).",
     )
 
+    code_frequency > (get_code_frequency(gnss) + MED) && error(
+        "The code frequency $code_frequency is larger than expected ($(get_code_frequency(gnss) + MED))). Please increase the expected maximum Doppler frequency $MED",
+    )
+
     fixed_point = sizeof(Int) * 8 - 1 - ndigits(length(sampled_code); base = 2)
 
     frequency_ratio_fixed_point = round(Int, frequency_ratio * 1 << fixed_point)
@@ -100,19 +104,25 @@ function sample_code!(
             frequency_ratio_fixed_point,
         ) + 1 << fixed_point
     prev = 0
-    num_total_iterations =
+    num_code_samples_to_iterate =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
-    total_iteration_end = num_total_iterations + code_start_index
-    num_code_iterations = cld(total_iteration_end, code_length)
+    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
     num_inner_iterations = calculate_num_inner_iterations(
         gnss,
         maximum_expected_sampling_frequency,
         maximum_expected_doppler,
     )
+    processed_code_samples = 0
     @inbounds for k = 0:(num_code_iterations-1)
         iteration_begin = (k == 0 ? code_start_index : 0) + 1
-        iteration_end = min(total_iteration_end - code_length * k - 1, code_length)
-        for i = iteration_begin:iteration_end
+        iteration_end = min(
+            num_code_samples_to_iterate + (k == 0 ? code_start_index : 0) -
+            processed_code_samples - 1,
+            code_length,
+        )
+        iterations = iteration_begin:iteration_end
+        processed_code_samples += length(iterations)
+        for i in iterations
             next_code = gnss.codes[i, prn]
             for j = 1:num_inner_iterations
                 sampled_code[prev+j] = next_code
@@ -122,11 +132,7 @@ function sample_code!(
         end
     end
     @inbounds for i = 0:2
-        next_code_idx =
-            mod(
-                total_iteration_end - code_length * (num_code_iterations - 1) + i - 1,
-                code_length,
-            ) + 1
+        next_code_idx = mod(processed_code_samples + code_start_index + i, code_length) + 1
         next_code = gnss.codes[next_code_idx, prn]
         num_iterations = min(num_inner_iterations, length(sampled_code) - prev)
         for j = 1:num_iterations
