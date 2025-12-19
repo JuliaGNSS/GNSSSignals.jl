@@ -171,8 +171,7 @@ end
     code = zeros(get_code_type(system), samples)
     code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0.0, -1)
     phase = (-1:4000) * get_code_frequency(system) / sampling_rate
-    # TODO: The beginning doesn't seem to be identical -> figure out why
-    @test code[3:end] ≈ get_code.(system, phase, 1)[3:end]
+    @test code ≈ get_code.(system, phase, 1)
     @test code ≈
           gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0.0, -1)
 end
