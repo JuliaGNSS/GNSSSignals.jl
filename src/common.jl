@@ -97,12 +97,16 @@ function sample_code!(
     code_length = get_code_length(gnss) * get_secondary_code_length(gnss)
     floored_code_phase = floor(Int, start_phase_including_shift)
     code_start_index = mod(floored_code_phase, code_length)
+    # The -256 offset handles boundary cases where a sample falls exactly on a chip
+    # boundary (e.g., phase = 2.0). Without this offset, floor(2.0) = 2 would assign
+    # two samples to the first chip when only one belongs there. The offset ensures
+    # samples exactly on boundaries are assigned to the next chip.
     delta_sum =
-        round(
+        floor(
             Int,
             (floored_code_phase - start_phase_including_shift) *
             frequency_ratio_fixed_point,
-        ) + 1 << fixed_point
+        ) + (1 << fixed_point) - 256
     prev = 0
     num_code_samples_to_iterate =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
@@ -134,13 +138,14 @@ function sample_code!(
     @inbounds for i = 0:2
         next_code_idx = mod(processed_code_samples + code_start_index + i, code_length) + 1
         next_code = gnss.codes[next_code_idx, prn]
-        num_iterations = min(num_inner_iterations, length(sampled_code) - prev)
+        delta_sum += frequency_ratio_fixed_point
+        next_prev = delta_sum >> fixed_point
+        num_iterations = min(next_prev - prev, length(sampled_code) - prev)
         for j = 1:num_iterations
             sampled_code[prev+j] = next_code
         end
-        prev + num_iterations == length(sampled_code) && break
-        delta_sum += frequency_ratio_fixed_point
-        prev = delta_sum >> fixed_point
+        prev = next_prev
+        prev >= length(sampled_code) && break
     end
     return sampled_code
 end
