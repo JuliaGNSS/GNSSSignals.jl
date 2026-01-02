@@ -12,6 +12,7 @@ A Julia package for generating GNSS spreading codes and signals.
 * GPS L1 (BPSK)
 * GPS L5 (BPSK with Neuman-Hofman secondary code)
 * Galileo E1B (CBOC modulation)
+* Highly optimized code generation using fixed-point arithmetic for real-time signal processing
 
 ## Installation
 

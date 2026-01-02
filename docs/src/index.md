@@ -62,4 +62,6 @@ GNSSSignals.jl provides functionality to:
 - Query system parameters (code length, frequencies, modulation type)
 - Compute signal spectra for analysis
 
+The [`gen_code`](@ref) and [`gen_code!`](@ref) functions are highly optimized for real-time GNSS signal processing, using fixed-point arithmetic and minimizing memory access by exploiting the fact that consecutive samples often map to the same code chip.
+
 The package is designed to be used as a building block for GNSS receiver implementations and signal processing research.
