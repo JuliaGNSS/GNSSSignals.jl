@@ -1,30 +1,10 @@
 # Usage
 
-## Basic Code Access
+## Generating Sampled Code Signals (Recommended)
 
-The simplest way to get spreading code values is with [`get_code`](@ref):
+For most applications, use [`gen_code`](@ref) or [`gen_code!`](@ref) to generate sampled codes. These functions are highly optimized for real-time GNSS signal processing, using fixed-point arithmetic and minimizing memory access. They are significantly faster than calling [`get_code`](@ref) in a loop.
 
-```julia
-using GNSSSignals
-
-# Create a GNSS system instance
-gpsl1 = GPSL1()
-
-# Get the code value at phase 0 for PRN 1
-code_value = get_code(gpsl1, 0.0, 1)  # Returns 1 or -1
-
-# Get a full code period using broadcasting
-code_phases = 0:1022
-full_code = get_code.(gpsl1, code_phases, 1)
-```
-
-The phase is specified in chips and automatically wraps around the code length.
-
-## Generating Sampled Code Signals
-
-For signal processing applications, you typically need the code sampled at a specific frequency. Use [`gen_code`](@ref) or [`gen_code!`](@ref).
-
-These functions are highly optimized for real-time GNSS signal processing. They use fixed-point arithmetic and minimize memory access by exploiting the fact that consecutive samples often map to the same code chip, avoiding per-sample floating-point operations and modulo calculations.
+These functions exploit the fact that consecutive samples often map to the same code chip, avoiding per-sample floating-point operations and modulo calculations.
 
 ```julia
 using GNSSSignals
@@ -112,6 +92,28 @@ get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 ```
 
 Note that due to CBOC modulation, Galileo E1B code values are floating-point rather than integer.
+
+## Basic Code Access
+
+For accessing individual code values at specific phases (e.g., for analysis or custom resampling), use [`get_code`](@ref):
+
+```julia
+using GNSSSignals
+
+gpsl1 = GPSL1()
+
+# Get a single code value at phase 0 for PRN 1
+code_value = get_code(gpsl1, 0.0, 1)  # Returns 1 or -1
+
+# Get a full code period using broadcasting
+code_phases = 0:1022
+full_code = get_code.(gpsl1, code_phases, 1)
+```
+
+The phase is specified in chips and automatically wraps around the code length.
+
+!!! note
+    Prefer [`gen_code`](@ref) or [`gen_code!`](@ref) for generating sampled codes at a specific sampling frequency, as they are significantly faster.
 
 ## Accessing Raw Codes
 

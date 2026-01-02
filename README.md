@@ -25,13 +25,17 @@ pkg> add GNSSSignals
 
 ```julia
 using GNSSSignals
+using Unitful: MHz
 
 gpsl1 = GPSL1()
 prn = 1
 
-# Get code values at specific phases
-code_phases = 0:1022
-sampled_code = get_code.(gpsl1, code_phases, prn)
+# Generate 1 ms of sampled code at 4 MHz
+sampled_code = gen_code(4000, gpsl1, prn, 4MHz)
+
+# For repeated calls, use the in-place version
+buffer = zeros(Int16, 4000)
+gen_code!(buffer, gpsl1, prn, 4MHz)
 ```
 
 ## Documentation

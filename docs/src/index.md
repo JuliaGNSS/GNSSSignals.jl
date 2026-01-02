@@ -35,17 +35,30 @@ pkg> add GNSSSignals
 
 ## Quick Start
 
+For most applications, use [`gen_code`](@ref) or [`gen_code!`](@ref) to generate sampled codes. These functions are highly optimized and significantly faster than calling [`get_code`](@ref) in a loop.
+
 ```julia
 using GNSSSignals
+using Unitful: MHz
 
-# Create a GPS L1 system instance
 gpsl1 = GPSL1()
-
-# Get code values at specific phases
 prn = 1
+
+# Generate 1 ms of sampled code at 4 MHz (recommended approach)
+sampled_code = gen_code(4000, gpsl1, prn, 4MHz)
+
+# For repeated calls, use the in-place version with a pre-allocated buffer
+buffer = zeros(Int16, 4000)
+gen_code!(buffer, gpsl1, prn, 4MHz)
+```
+
+For accessing individual code values at specific phases, use [`get_code`](@ref):
+
+```julia
+# Get a single code value
 code_value = get_code(gpsl1, 0.0, prn)  # Returns 1 or -1
 
-# Get a full code period
+# Get a full code period (slower than gen_code for large arrays)
 code_phases = 0:1022
 full_code = get_code.(gpsl1, code_phases, prn)
 ```
