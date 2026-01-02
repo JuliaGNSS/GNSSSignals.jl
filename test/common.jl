@@ -11,6 +11,64 @@
     @test get_codes(system) == system.codes
 end
 
+@testset "min_bits_for_code_length" begin
+    @test min_bits_for_code_length(GPSL1()) == 10  # 1023 requires 10 bits
+    @test min_bits_for_code_length(GPSL5()) == 17  # 10230 * 10 = 102300 requires 17 bits
+    @test min_bits_for_code_length(GalileoE1B()) == 12  # 4092 requires 12 bits
+end
+
+@testset "get_system_string" begin
+    @test get_system_string(GPSL1()) == "GPSL1"
+    @test get_system_string(GPSL5()) == "GPSL5"
+    @test get_system_string(GalileoE1B()) == "GalileoE1B"
+end
+
+@testset "get_secondary_code with phase" begin
+    gpsl5 = GPSL5()
+    # GPS L5 has a 10-element secondary code: (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
+    @test get_secondary_code(gpsl5, 0.0) == 1      # First period
+    @test get_secondary_code(gpsl5, 10230.0) == 1  # Second period
+    @test get_secondary_code(gpsl5, 40920.0) == -1 # Fifth period (index 4)
+    @test get_secondary_code(gpsl5, 51150.0) == -1 # Sixth period (index 5)
+
+    # GPS L1 has no secondary code (returns 1)
+    gpsl1 = GPSL1()
+    @test get_secondary_code(gpsl1, 0.0) == 1
+    @test get_secondary_code(gpsl1, 1000.0) == 1
+
+    # Galileo E1B has no secondary code (returns 1)
+    gal_e1b = GalileoE1B()
+    @test get_secondary_code(gal_e1b, 0.0) == 1
+    @test get_secondary_code(gal_e1b, 5000.0) == 1
+end
+
+@testset "Base.show for GNSS systems" begin
+    io = IOBuffer()
+    show(io, GPSL1())
+    @test occursin("GPSL1", String(take!(io)))
+
+    show(io, GPSL5())
+    @test occursin("GPSL5", String(take!(io)))
+
+    show(io, GalileoE1B())
+    @test occursin("GalileoE1B", String(take!(io)))
+end
+
+@testset "Broadcasting GNSS systems" begin
+    gpsl1 = GPSL1()
+    # Test that systems can be broadcast
+    phases = [0.0, 1.0, 2.0]
+    result = get_code.(gpsl1, phases, 1)
+    @test length(result) == 3
+    @test all(x -> x ∈ [-1, 1], result)
+end
+
+@testset "get_modulation type dispatch" begin
+    @test get_modulation(GPSL1) == GNSSSignals.LOC()
+    @test get_modulation(GPSL5) == GNSSSignals.LOC()
+    @test get_modulation(GalileoE1B) isa GNSSSignals.CBOC
+end
+
 function conventional_gen_subcarrier(
     code_length,
     modulation::BOCsin,
@@ -111,6 +169,20 @@ end
         7.5e6Hz,
         1023e3Hz * 3,
         2.0,
+    )
+end
+
+@testset "gen_code! error paths" begin
+    gpsl1 = GPSL1()
+
+    # Test sampling frequency too low error
+    code = zeros(Int16, 100)
+    @test_throws "The sampling frequency must be larger than the code frequency" gen_code!(
+        code,
+        gpsl1,
+        1,
+        500e3Hz,  # Too low - less than code frequency
+        get_code_frequency(gpsl1),
     )
 end
 
