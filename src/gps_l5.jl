@@ -1,3 +1,19 @@
+"""
+    GPSL5{C} <: AbstractGNSS{C}
+
+GPS L5 signal type.
+
+GPS L5 uses BPSK (LOC) modulation with a 10230-chip code at 10.23 Mcps and a
+10-bit Neuman-Hofman secondary code, transmitted on the L5 carrier frequency
+of 1176.45 MHz.
+
+# Example
+```julia
+gpsl5 = GPSL5()
+get_code_length(gpsl5)           # 10230
+get_secondary_code_length(gpsl5) # 10
+```
+"""
 struct GPSL5{C<:AbstractMatrix} <: AbstractGNSS{C}
     codes::C
 end
@@ -156,9 +172,15 @@ end
 """
 $(SIGNATURES)
 
-Get code length of GNSS system GPSL5.
+Get the code length for GPS L5.
+
+# Returns
+- `Int`: 10230 chips
+
+# Examples
 ```julia-repl
 julia> get_code_length(GPSL5())
+10230
 ```
 """
 @inline function get_code_length(gpsl5::GPSL5)
@@ -168,9 +190,15 @@ end
 """
 $(SIGNATURES)
 
-Get center frequency of GNSS system GPSL5.
+Get the center (carrier) frequency for GPS L5.
+
+# Returns
+- `Frequency`: 1176.45 MHz
+
+# Examples
 ```julia-repl
 julia> get_center_frequency(GPSL5())
+1176450000 Hz
 ```
 """
 @inline function get_center_frequency(gpsl5::GPSL5)
@@ -180,9 +208,15 @@ end
 """
 $(SIGNATURES)
 
-Get code frequency of GNSS system GPSL5.
+Get the code chipping rate for GPS L5.
+
+# Returns
+- `Frequency`: 10.23 MHz
+
+# Examples
 ```julia-repl
 julia> get_code_frequency(GPSL5())
+10230000 Hz
 ```
 """
 @inline function get_code_frequency(gpsl5::GPSL5)
@@ -192,9 +226,15 @@ end
 """
 $(SIGNATURES)
 
-Get data frequency of GNSS system GPSL5.
+Get the data bit rate for GPS L5.
+
+# Returns
+- `Frequency`: 100 Hz
+
+# Examples
 ```julia-repl
 julia> get_data_frequency(GPSL5())
+100 Hz
 ```
 """
 @inline function get_data_frequency(gpsl5::GPSL5)

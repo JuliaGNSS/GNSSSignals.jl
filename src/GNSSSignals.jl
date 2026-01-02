@@ -31,20 +31,40 @@ export AbstractGNSS,
     get_modulation,
     get_secondary_code
 
+"""
+    AbstractGNSS{C}
+
+Abstract supertype for all GNSS system types.
+
+Concrete subtypes include [`GPSL1`](@ref), [`GPSL5`](@ref), and [`GalileoE1B`](@ref).
+The type parameter `C` represents the code matrix type.
+"""
 abstract type AbstractGNSS{C} end
 
 Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
 
-Base.show(io::IO, x::AbstractGNSS) = print("$(typeof(x))()")
+Base.show(io::IO, x::AbstractGNSS) = print(io, "$(typeof(x))()")
 
 """
 $(SIGNATURES)
 
-Reads Int8 encoded codes from a file with filename `filename` (including the path). The
-code length must be provided by `code_length` and the number of PRNs by `num_prns`.
+Read codes from a binary file.
+
+Reads codes encoded in the specified type from a file. The code length must be provided
+by `code_length` and the number of PRNs by `num_prns`.
+
+# Arguments
+- `type`: The data type of the codes (e.g., `Int8`)
+- `filename`: Path to the binary file containing the codes
+- `num_prns`: Number of PRN codes in the file
+- `code_length`: Length of each code sequence
+
+# Returns
+- `Matrix{type}`: A matrix of size `(code_length, num_prns)` containing the codes
+
 # Examples
 ```julia-repl
-julia> read_in_codes("/data/gpsl1codes.bin", 32, 1023)
+julia> read_in_codes(Int8, "/data/gpsl1codes.bin", 32, 1023)
 ```
 """
 function read_in_codes(type, filename, num_prns, code_length)

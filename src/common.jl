@@ -1,10 +1,21 @@
 """
 $(SIGNATURES)
 
-Get codes of GNSS system as a Matrix where each column
-represents a PRN.
+Get the full code matrix for a GNSS system.
+
+Returns the codes as a matrix where each column represents a PRN.
+
+# Arguments
+- `gnss`: A GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+
+# Returns
+- `Matrix`: Code matrix of size `(code_length, num_prns)`
+
+# Examples
 ```julia-repl
-julia> get_code(GPSL1())
+julia> codes = get_codes(GPSL1())
+julia> size(codes)
+(1023, 37)
 ```
 """
 function get_codes(gnss::AbstractGNSS)
@@ -26,10 +37,32 @@ end
 """
 $(SIGNATURES)
 
-Generate the code signal inplace for PRN-Number `prn` of system `gnss` at chip rate
-`code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
-`sampling_frequency` is larger than `code_frequency` to avoid overflows with the
-modulo calculation.
+Generate the code signal in-place for a given PRN.
+
+Samples the spreading code at the specified sampling frequency and stores the result
+in the provided buffer. Includes subcarrier modulation for BOC-type signals.
+
+# Arguments
+- `sampled_code`: Pre-allocated output buffer
+- `gnss`: GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `prn`: PRN number of the satellite
+- `sampling_frequency`: Sampling frequency (must be larger than code frequency)
+- `code_frequency`: Code chipping rate (default: system's nominal code frequency)
+- `start_phase`: Initial code phase in chips (default: 0.0)
+- `start_index_shift`: Index offset for the output buffer (default: 0)
+- `maximum_expected_sampling_frequency`: Maximum expected sampling frequency for optimization
+- `maximum_expected_doppler`: Maximum expected Doppler frequency (default: 8000 Hz)
+- `PHASET`: Integer type for phase calculations (default: `Int32`)
+
+# Returns
+- The modified `sampled_code` buffer
+
+# Examples
+```julia-repl
+julia> using Unitful: MHz
+julia> buffer = zeros(Int16, 4000)
+julia> gen_code!(buffer, GPSL1(), 1, 4MHz)
+```
 """
 function gen_code!(
     sampled_code::AbstractVector,
@@ -308,10 +341,30 @@ end
 """
 $(SIGNATURES)
 
-Generate the code signal for PRN-Number `prn` of system `gnss` at chip rate
-`code_frequency`, sampled at sampling rate `sampling_frequency`. Make sure, that
-`sampling_frequency` is larger than `code_frequency` to avoid overflows with the
-modulo calculation.
+Generate a sampled code signal for a given PRN.
+
+Allocates and returns a new buffer containing the spreading code sampled at the
+specified sampling frequency. For in-place operation, use [`gen_code!`](@ref).
+
+# Arguments
+- `num_samples`: Number of samples to generate
+- `gnss`: GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `prn`: PRN number of the satellite
+- `sampling_frequency`: Sampling frequency (must be larger than code frequency)
+- `code_frequency`: Code chipping rate (default: system's nominal code frequency)
+- `start_phase`: Initial code phase in chips (default: 0.0)
+- `start_index`: Index offset (default: 0)
+
+# Returns
+- `Vector`: Sampled code signal
+
+# Examples
+```julia-repl
+julia> using Unitful: MHz
+julia> sampled_code = gen_code(4000, GPSL1(), 1, 4MHz)
+julia> length(sampled_code)
+4000
+```
 """
 function gen_code(
     num_samples::Integer,
@@ -329,9 +382,20 @@ end
 """
 $(SIGNATURES)
 
-Get code to center frequency ratio
+Get the ratio of code frequency to center frequency.
+
+This ratio is used to compute the code Doppler from the carrier Doppler.
+
+# Arguments
+- `gnss`: A GNSS system instance
+
+# Returns
+- `Float64`: The code-to-center frequency ratio
+
+# Examples
 ```julia-repl
 julia> get_code_center_frequency_ratio(GPSL1())
+0.0006493506493506494
 ```
 """
 @inline function get_code_center_frequency_ratio(gnss::AbstractGNSS)
@@ -341,7 +405,24 @@ end
 """
 $(SIGNATURES)
 
-Get the minimum number of bits that are needed to represent the code length
+Get the minimum number of bits needed to represent the code length.
+
+Calculates the number of bits required to represent the full code length,
+including secondary code if present.
+
+# Arguments
+- `gnss`: A GNSS system instance
+
+# Returns
+- `Int`: Number of bits needed
+
+# Examples
+```julia-repl
+julia> min_bits_for_code_length(GPSL1())
+10
+julia> min_bits_for_code_length(GPSL5())
+17
+```
 """
 @inline function min_bits_for_code_length(gnss::AbstractGNSS)
     ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base = 2)
@@ -350,7 +431,21 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code length
+Get the length of the secondary code.
+
+# Arguments
+- `gnss`: A GNSS system instance
+
+# Returns
+- `Int`: Secondary code length (1 if no secondary code)
+
+# Examples
+```julia-repl
+julia> get_secondary_code_length(GPSL1())
+1
+julia> get_secondary_code_length(GPSL5())
+10
+```
 """
 @inline function get_secondary_code_length(gnss::AbstractGNSS)
     length(get_secondary_code(gnss))
@@ -359,7 +454,20 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code at phase
+Get the secondary code value at a given phase.
+
+# Arguments
+- `gnss`: A GNSS system instance
+- `phase`: Code phase in chips
+
+# Returns
+- Secondary code value at the given phase
+
+# Examples
+```julia-repl
+julia> get_secondary_code(GPSL5(), 10230.0)  # Start of second code period
+1
+```
 """
 @inline function get_secondary_code(gnss::AbstractGNSS, phase)
     get_secondary_code(gnss, get_secondary_code(gnss), phase)
@@ -368,7 +476,9 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code at phase
+Get secondary code value when code is a single integer (no secondary code).
+
+Returns the code value unchanged.
 """
 @inline function get_secondary_code(gnss::AbstractGNSS, code::Integer, phase)
     code
@@ -377,7 +487,9 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code at phase
+Get secondary code value at phase when code is a tuple (has secondary code).
+
+Computes the secondary code index from the phase and returns the corresponding value.
 """
 @inline function get_secondary_code(gnss::AbstractGNSS, code::Tuple, phase)
     code[mod(floor(Int, phase / get_code_length(gnss)), get_secondary_code_length(gnss))+1]
@@ -386,8 +498,24 @@ end
 """
 $(SIGNATURES)
 
-Calculate the spectral power of a BPSK modulated signal with chiprate `fc`
-at baseband frequency `f`
+Calculate the spectral power density of a BPSK modulated signal.
+
+Computes the power spectral density at baseband frequency `f` for a BPSK
+signal with chip rate `fc`.
+
+# Arguments
+- `fc`: Code chip rate
+- `f`: Baseband frequency at which to evaluate the spectrum
+
+# Returns
+- Spectral power density value
+
+# Examples
+```julia-repl
+julia> using Unitful: MHz, kHz
+julia> get_code_spectrum_BPSK(1.023MHz, 0kHz)
+9.775171065493646e-7
+```
 """
 function get_code_spectrum_BPSK(fc::Frequency, f)
     return get_code_spectrum_BPSK(fc / 1Hz, f)
@@ -404,8 +532,19 @@ end
 
 """
 $(SIGNATURES)
-Calculate the spectral power of a sine phased BOC modulated signal with chiprate
-`fc` and subcarrier frequency `fs` at baseband frequency `f`
+
+Calculate the spectral power density of a sine-phased BOC modulated signal.
+
+Computes the power spectral density at baseband frequency `f` for a BOC(sin)
+signal with chip rate `fc` and subcarrier frequency `fs`.
+
+# Arguments
+- `fc`: Code chip rate
+- `fs`: Subcarrier frequency
+- `f`: Baseband frequency at which to evaluate the spectrum
+
+# Returns
+- Spectral power density value
 """
 function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f)
     return get_code_spectrum_BOCsin(fc / 1Hz, fs / 1Hz, f)
@@ -422,8 +561,19 @@ end
 
 """
 $(SIGNATURES)
-Calculate the spectral power of a cosine phased BOC modulated signal with chiprate
-`fc` and subcarrier frequency `fs` at baseband frequency `f`
+
+Calculate the spectral power density of a cosine-phased BOC modulated signal.
+
+Computes the power spectral density at baseband frequency `f` for a BOC(cos)
+signal with chip rate `fc` and subcarrier frequency `fs`.
+
+# Arguments
+- `fc`: Code chip rate
+- `fs`: Subcarrier frequency
+- `f`: Baseband frequency at which to evaluate the spectrum
+
+# Returns
+- Spectral power density value
 """
 function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f)
     return get_code_spectrum_BOCcos(fc / 1Hz, fs / 1Hz, f)

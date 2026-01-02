@@ -1,55 +1,38 @@
 [![Test](https://github.com/JuliaGNSS/GNSSSignals.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaGNSS/GNSSSignals.jl/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JuliaGNSS/GNSSSignals.jl/graph/badge.svg?token=QY2T178W3Z)](https://codecov.io/gh/JuliaGNSS/GNSSSignals.jl)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaGNSS.github.io/GNSSSignals.jl/stable)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaGNSS.github.io/GNSSSignals.jl/dev)
 
-# Generate GNSS signals.
+# GNSSSignals.jl
+
+A Julia package for generating GNSS spreading codes and signals.
 
 ## Features
 
-* GPS L1
-* GPS L5
-* Galileo E1B
+* GPS L1 (BPSK)
+* GPS L5 (BPSK with Neuman-Hofman secondary code)
+* Galileo E1B (CBOC modulation)
 
-## Getting started
+## Installation
 
-Install:
 ```julia-repl
 julia> ]
 pkg> add GNSSSignals
 ```
 
-## Usage
+## Quick Start
 
 ```julia
 using GNSSSignals
-code_phases = 0:1022
-prn = 1
+
 gpsl1 = GPSL1()
+prn = 1
+
+# Get code values at specific phases
+code_phases = 0:1022
 sampled_code = get_code.(gpsl1, code_phases, prn)
 ```
-Output:
-```julia
-1023-element Array{Int8,1}:
-  1
-  1
-  ⋮
- -1
- -1
-```
-In addition to that, there are some auxiliarly functions:
 
-| Function                                                | Description                                                                        |
-|---------------------------------------------------------|------------------------------------------------------------------------------------|
-| `get_code_length(::AbstractGNSSSystem)`           | Get code length                                                                    |
-| `get_secondary_code_length(::AbstractGNSSSystem)`  | Get secondary code length |
-| `get_center_frequency(::AbstractGNSSSystem)`      | Get center frequency                                                               |
-| `get_code_frequency(::AbstractGNSSSystem)`        | Get code frequency                                                                 |
-| `get_data_frequency(::AbstractGNSSSystem)`        | Get data frequency                                                                 |
-| `get_code(::AbstractGNSSSystem, phase, prn::Integer)` | Get code at phase `phase` from PRN `prn`                                           |
-| `get_code_center_frequency_ratio(::AbstractGNSSSystem)` | Get code to center frequency ratio                                           |
+## Documentation
 
-#### Example
-
-```julia-repl
-julia> get_code_length(gpsl1)
-1023
-```
+For detailed usage instructions and API reference, see the [documentation](https://JuliaGNSS.github.io/GNSSSignals.jl/stable).

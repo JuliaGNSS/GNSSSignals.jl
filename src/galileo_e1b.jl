@@ -1,5 +1,10 @@
 """
-GalileoE1B
+    GalileoE1B{C} <: AbstractGNSS{C}
+
+Galileo E1B signal type.
+
+Galileo E1B uses CBOC(6,1,1/11) modulation with a 4092 chip code at 1.023 Mcps,
+transmitted on the E1 carrier frequency of 1575.42 MHz.
 """
 struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSS{C}
     codes::C
@@ -32,9 +37,15 @@ end
 """
 $(SIGNATURES)
 
-Get code length of GNSS system GalileoE1B.
+Get the code length for Galileo E1B.
+
+# Returns
+- `Int`: 4092 chips
+
+# Examples
 ```julia-repl
 julia> get_code_length(GalileoE1B())
+4092
 ```
 """
 @inline function get_code_length(galileo_e1b::GalileoE1B)
@@ -44,9 +55,17 @@ end
 """
 $(SIGNATURES)
 
-Get secondary code of GNSS system GalileoE1B.
+Get the secondary code for Galileo E1B.
+
+Galileo E1B has no secondary code, so this returns 1.
+
+# Returns
+- `Int`: 1 (no secondary code)
+
+# Examples
 ```julia-repl
 julia> get_secondary_code(GalileoE1B())
+1
 ```
 """
 @inline function get_secondary_code(galileo_e1b::GalileoE1B)
@@ -56,9 +75,15 @@ end
 """
 $(SIGNATURES)
 
-Get center frequency of GNSS system GalileoE1B.
+Get the center (carrier) frequency for Galileo E1B.
+
+# Returns
+- `Frequency`: 1575.42 MHz
+
+# Examples
 ```julia-repl
 julia> get_center_frequency(GalileoE1B())
+1575420000 Hz
 ```
 """
 @inline function get_center_frequency(galileo_e1b::GalileoE1B)
@@ -68,9 +93,15 @@ end
 """
 $(SIGNATURES)
 
-Get code frequency of GNSS system GalileoE1B.
+Get the code chipping rate for Galileo E1B.
+
+# Returns
+- `Frequency`: 1.023 MHz
+
+# Examples
 ```julia-repl
 julia> get_code_frequency(GalileoE1B())
+1023000 Hz
 ```
 """
 @inline function get_code_frequency(galileo_e1b::GalileoE1B)
@@ -80,9 +111,15 @@ end
 """
 $(SIGNATURES)
 
-Get data frequency of GNSS system GalileoE1B.
+Get the data bit rate for Galileo E1B.
+
+# Returns
+- `Frequency`: 250 Hz
+
+# Examples
 ```julia-repl
 julia> get_data_frequency(GalileoE1B())
+250 Hz
 ```
 """
 @inline function get_data_frequency(galileo_e1b::GalileoE1B)
