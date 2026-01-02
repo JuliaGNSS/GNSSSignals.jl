@@ -4,4 +4,4 @@ GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [sources]
-GNSSSignals = {path = "/home/schoenbrod/Code/GNSSSignals.jl"}
+GNSSSignals = {path = ".."}
