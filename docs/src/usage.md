@@ -22,7 +22,9 @@ The phase is specified in chips and automatically wraps around the code length.
 
 ## Generating Sampled Code Signals
 
-For signal processing applications, you typically need the code sampled at a specific frequency. Use [`gen_code`](@ref) or [`gen_code!`](@ref):
+For signal processing applications, you typically need the code sampled at a specific frequency. Use [`gen_code`](@ref) or [`gen_code!`](@ref).
+
+These functions are highly optimized for real-time GNSS signal processing. They use fixed-point arithmetic and minimize memory access by exploiting the fact that consecutive samples often map to the same code chip, avoiding per-sample floating-point operations and modulo calculations.
 
 ```julia
 using GNSSSignals

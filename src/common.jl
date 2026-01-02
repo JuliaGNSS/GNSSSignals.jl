@@ -39,6 +39,12 @@ $(SIGNATURES)
 
 Generate the code signal in-place for a given PRN.
 
+This is a highly optimized function for generating sampled spreading codes at arbitrary
+sampling rates. It uses fixed-point arithmetic and minimizes memory access by exploiting
+the fact that consecutive samples often map to the same code chip. The algorithm avoids
+per-sample floating-point operations and modulo calculations, making it suitable for
+real-time GNSS signal processing applications.
+
 Samples the spreading code at the specified sampling frequency and stores the result
 in the provided buffer. Includes subcarrier modulation for BOC-type signals.
 
