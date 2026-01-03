@@ -16,6 +16,8 @@ gen_code!(buffer, gpsl1, prn, sampling_frequency)</code></pre><h3 id="With-Doppl
 using Unitful: Hz, MHz
 
 gpsl1 = GPSL1()
+prn = 1
+sampling_frequency = 4MHz
 carrier_doppler = 1000Hz
 
 # Calculate code Doppler from carrier Doppler
@@ -23,8 +25,10 @@ code_doppler = carrier_doppler * get_code_center_frequency_ratio(gpsl1)
 code_frequency = get_code_frequency(gpsl1) + code_doppler
 
 # Generate Doppler-shifted code
-sampled_code = gen_code(4000, gpsl1, 1, 4MHz, code_frequency)</code></pre><h3 id="With-Phase-Offset"><a class="docs-heading-anchor" href="#With-Phase-Offset">With Phase Offset</a><a id="With-Phase-Offset-1"></a><a class="docs-heading-anchor-permalink" href="#With-Phase-Offset" title="Permalink"></a></h3><p>You can specify a starting code phase:</p><pre><code class="language-julia hljs">start_phase = 100.5  # Start at chip 100.5
-sampled_code = gen_code(4000, gpsl1, 1, 4MHz, get_code_frequency(gpsl1), start_phase)</code></pre><h2 id="Working-with-Different-GNSS-Systems"><a class="docs-heading-anchor" href="#Working-with-Different-GNSS-Systems">Working with Different GNSS Systems</a><a id="Working-with-Different-GNSS-Systems-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-Different-GNSS-Systems" title="Permalink"></a></h2><h3 id="GPS-L1"><a class="docs-heading-anchor" href="#GPS-L1">GPS L1</a><a id="GPS-L1-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1" title="Permalink"></a></h3><p>GPS L1 uses BPSK modulation with a 1023-chip C/A code:</p><pre><code class="language-julia hljs">gpsl1 = GPSL1()
+sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, code_frequency)</code></pre><h3 id="With-Phase-Offset"><a class="docs-heading-anchor" href="#With-Phase-Offset">With Phase Offset</a><a id="With-Phase-Offset-1"></a><a class="docs-heading-anchor-permalink" href="#With-Phase-Offset" title="Permalink"></a></h3><p>You can specify a starting code phase:</p><pre><code class="language-julia hljs">start_phase = 100.5  # Start at chip 100.5
+prn = 1
+sampling_frequency = 4MHz
+sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, get_code_frequency(gpsl1), start_phase)</code></pre><h2 id="Working-with-Different-GNSS-Systems"><a class="docs-heading-anchor" href="#Working-with-Different-GNSS-Systems">Working with Different GNSS Systems</a><a id="Working-with-Different-GNSS-Systems-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-Different-GNSS-Systems" title="Permalink"></a></h2><h3 id="GPS-L1"><a class="docs-heading-anchor" href="#GPS-L1">GPS L1</a><a id="GPS-L1-1"></a><a class="docs-heading-anchor-permalink" href="#GPS-L1" title="Permalink"></a></h3><p>GPS L1 uses BPSK modulation with a 1023-chip C/A code:</p><pre><code class="language-julia hljs">gpsl1 = GPSL1()
 get_code_length(gpsl1)           # 1023
 get_center_frequency(gpsl1)      # 1575420000 Hz
 get_code_frequency(gpsl1)        # 1023000 Hz
@@ -41,13 +45,14 @@ get_code_frequency(gal_e1b)      # 1023000 Hz
 get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)</code></pre><p>Note that due to CBOC modulation, Galileo E1B code values are floating-point rather than integer.</p><h2 id="Basic-Code-Access"><a class="docs-heading-anchor" href="#Basic-Code-Access">Basic Code Access</a><a id="Basic-Code-Access-1"></a><a class="docs-heading-anchor-permalink" href="#Basic-Code-Access" title="Permalink"></a></h2><p>For accessing individual code values at specific phases (e.g., for analysis or custom resampling), use <a href="../api/#GNSSSignals.get_code"><code>get_code</code></a>:</p><pre><code class="language-julia hljs">using GNSSSignals
 
 gpsl1 = GPSL1()
+prn = 1
 
-# Get a single code value at phase 0 for PRN 1
-code_value = get_code(gpsl1, 0.0, 1)  # Returns 1 or -1
+# Get a single code value at phase 0.0 for PRN = prn
+code_value = get_code(gpsl1, 0.0, prn)  # Returns 1 or -1
 
 # Get a full code period using broadcasting
 code_phases = 0:1022
-full_code = get_code.(gpsl1, code_phases, 1)</code></pre><p>The phase is specified in chips and automatically wraps around the code length.</p><div class="admonition is-info" id="Note-d0f81aa431f020bc"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-d0f81aa431f020bc" title="Permalink"></a></header><div class="admonition-body"><p>Prefer <a href="../api/#GNSSSignals.gen_code"><code>gen_code</code></a> or <a href="../api/#GNSSSignals.gen_code!"><code>gen_code!</code></a> for generating sampled codes at a specific sampling frequency, as they are significantly faster.</p></div></div><h2 id="Accessing-Raw-Codes"><a class="docs-heading-anchor" href="#Accessing-Raw-Codes">Accessing Raw Codes</a><a id="Accessing-Raw-Codes-1"></a><a class="docs-heading-anchor-permalink" href="#Accessing-Raw-Codes" title="Permalink"></a></h2><p>To get the full code matrix directly:</p><pre><code class="language-julia hljs">gpsl1 = GPSL1()
+full_code = get_code.(gpsl1, code_phases, prn)</code></pre><p>The phase is specified in chips and automatically wraps around the code length.</p><div class="admonition is-info" id="Note-d0f81aa431f020bc"><header class="admonition-header">Note<a class="admonition-anchor" href="#Note-d0f81aa431f020bc" title="Permalink"></a></header><div class="admonition-body"><p>Prefer <a href="../api/#GNSSSignals.gen_code"><code>gen_code</code></a> or <a href="../api/#GNSSSignals.gen_code!"><code>gen_code!</code></a> for generating sampled codes at a specific sampling frequency, as they are significantly faster.</p></div></div><h2 id="Accessing-Raw-Codes"><a class="docs-heading-anchor" href="#Accessing-Raw-Codes">Accessing Raw Codes</a><a id="Accessing-Raw-Codes-1"></a><a class="docs-heading-anchor-permalink" href="#Accessing-Raw-Codes" title="Permalink"></a></h2><p>To get the full code matrix directly:</p><pre><code class="language-julia hljs">gpsl1 = GPSL1()
 codes = get_codes(gpsl1)  # Matrix of size (code_length, num_prns)
 size(codes)               # (1023, 37)</code></pre><p>Each column represents a different PRN.</p><h2 id="Signal-Spectrum"><a class="docs-heading-anchor" href="#Signal-Spectrum">Signal Spectrum</a><a id="Signal-Spectrum-1"></a><a class="docs-heading-anchor-permalink" href="#Signal-Spectrum" title="Permalink"></a></h2><p>To compute the power spectral density at a given frequency:</p><pre><code class="language-julia hljs">using GNSSSignals
 using Unitful: kHz
@@ -57,11 +62,12 @@ psd = get_code_spectrum(gpsl1, 0kHz)  # PSD at DC</code></pre><p>For custom spec
 using Unitful: MHz, kHz
 
 # BPSK spectrum
-psd_bpsk = get_code_spectrum_BPSK(1.023MHz, 500kHz)
+psd_bpsk = GNSSSignals.get_code_spectrum_BPSK(1.023MHz, 500kHz)
 
 # BOC spectrum
-psd_boc = get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)</code></pre><h2 id="Performance-Tips"><a class="docs-heading-anchor" href="#Performance-Tips">Performance Tips</a><a id="Performance-Tips-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-Tips" title="Permalink"></a></h2><ol><li><p><strong>Use <code>gen_code!</code></strong> instead of <code>gen_code</code> when generating codes repeatedly to avoid allocations.</p></li><li><p><strong>Pre-allocate buffers</strong> for signal generation:</p><pre><code class="language-julia hljs">buffer = zeros(Int16, num_samples)
+psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)</code></pre><h2 id="Performance-Tips"><a class="docs-heading-anchor" href="#Performance-Tips">Performance Tips</a><a id="Performance-Tips-1"></a><a class="docs-heading-anchor-permalink" href="#Performance-Tips" title="Permalink"></a></h2><ol><li><p><strong>Use <code>gen_code!</code></strong> instead of <code>gen_code</code> when generating codes repeatedly to avoid allocations.</p></li><li><p><strong>Pre-allocate buffers</strong> for signal generation:</p><pre><code class="language-julia hljs">num_iterations = 1000
+buffer = zeros(Int16, num_samples)
 for i in 1:num_iterations
     gen_code!(buffer, gpsl1, prn, sampling_frequency)
     # process buffer...
-end</code></pre></li></ol></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 2 January 2026 12:32">Friday 2 January 2026</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre></li></ol></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../api/">API Reference »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Saturday 3 January 2026 10:11">Saturday 3 January 2026</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
