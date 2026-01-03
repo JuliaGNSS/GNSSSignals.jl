@@ -32,6 +32,8 @@ using GNSSSignals
 using Unitful: Hz, MHz
 
 gpsl1 = GPSL1()
+prn = 1
+sampling_frequency = 4MHz
 carrier_doppler = 1000Hz
 
 # Calculate code Doppler from carrier Doppler
@@ -39,7 +41,7 @@ code_doppler = carrier_doppler * get_code_center_frequency_ratio(gpsl1)
 code_frequency = get_code_frequency(gpsl1) + code_doppler
 
 # Generate Doppler-shifted code
-sampled_code = gen_code(4000, gpsl1, 1, 4MHz, code_frequency)
+sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, code_frequency)
 ```
 
 ### With Phase Offset
@@ -48,7 +50,9 @@ You can specify a starting code phase:
 
 ```julia
 start_phase = 100.5  # Start at chip 100.5
-sampled_code = gen_code(4000, gpsl1, 1, 4MHz, get_code_frequency(gpsl1), start_phase)
+prn = 1
+sampling_frequency = 4MHz
+sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, get_code_frequency(gpsl1), start_phase)
 ```
 
 ## Working with Different GNSS Systems
@@ -101,13 +105,14 @@ For accessing individual code values at specific phases (e.g., for analysis or c
 using GNSSSignals
 
 gpsl1 = GPSL1()
+prn = 1
 
-# Get a single code value at phase 0 for PRN 1
-code_value = get_code(gpsl1, 0.0, 1)  # Returns 1 or -1
+# Get a single code value at phase 0.0 for PRN = prn
+code_value = get_code(gpsl1, 0.0, prn)  # Returns 1 or -1
 
 # Get a full code period using broadcasting
 code_phases = 0:1022
-full_code = get_code.(gpsl1, code_phases, 1)
+full_code = get_code.(gpsl1, code_phases, prn)
 ```
 
 The phase is specified in chips and automatically wraps around the code length.
@@ -146,10 +151,10 @@ using GNSSSignals
 using Unitful: MHz, kHz
 
 # BPSK spectrum
-psd_bpsk = get_code_spectrum_BPSK(1.023MHz, 500kHz)
+psd_bpsk = GNSSSignals.get_code_spectrum_BPSK(1.023MHz, 500kHz)
 
 # BOC spectrum
-psd_boc = get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
+psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
 ```
 
 ## Performance Tips
@@ -158,6 +163,7 @@ psd_boc = get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
 
 2. **Pre-allocate buffers** for signal generation:
    ```julia
+   num_iterations = 1000
    buffer = zeros(Int16, num_samples)
    for i in 1:num_iterations
        gen_code!(buffer, gpsl1, prn, sampling_frequency)
