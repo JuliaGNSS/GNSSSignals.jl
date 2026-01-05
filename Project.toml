@@ -1,6 +1,6 @@
 name = "GNSSSignals"
 uuid = "52c80523-2a4e-5c38-8979-05588f836870"
-version = "0.17.4"
+version = "1.0.0"
 authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de"]
 
 [deps]
