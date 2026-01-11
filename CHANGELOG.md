@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.0...v1.0.1) (2026-01-11)
+
+
+### Bug Fixes
+
+* prevent integer overflow in sample_code! fixed-point arithmetic ([64a5e8d](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/64a5e8d6b29072f1ba954ec932d2b694ae9070c0))
+
 ## [0.17.4](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v0.17.3...v0.17.4) (2025-12-24)
 
 
