@@ -126,7 +126,11 @@ function sample_code!(
         "The code frequency $code_frequency is larger than expected ($(get_code_frequency(gnss) + MED))). Please increase the expected maximum Doppler frequency $MED",
     )
 
-    fixed_point = sizeof(Int) * 8 - 1 - ndigits(length(sampled_code); base = 2)
+    # The -2 (instead of -1) reserves an extra bit for overflow headroom.
+    # delta_sum accumulates (num_samples * frequency_ratio) in fixed-point representation.
+    # With -1, delta_sum uses nearly the full Int range and can overflow when combined
+    # with the (1 << fixed_point) offset in the initial delta_sum calculation.
+    fixed_point = sizeof(Int) * 8 - 2 - ndigits(length(sampled_code); base = 2)
 
     frequency_ratio_fixed_point = round(Int, frequency_ratio * 1 << fixed_point)
 
@@ -134,18 +138,17 @@ function sample_code!(
         start_phase + start_index_shift * code_frequency / sampling_frequency
 
     code_length = get_code_length(gnss) * get_secondary_code_length(gnss)
+    # Compute fractional part before any normalization to preserve exact floating-point value
     floored_code_phase = floor(Int, start_phase_including_shift)
+    frac_part = floored_code_phase - start_phase_including_shift  # Always in (-1, 0]
+    # Normalize only the integer part for array indexing
     code_start_index = mod(floored_code_phase, code_length)
     # The -256 offset handles boundary cases where a sample falls exactly on a chip
     # boundary (e.g., phase = 2.0). Without this offset, floor(2.0) = 2 would assign
     # two samples to the first chip when only one belongs there. The offset ensures
     # samples exactly on boundaries are assigned to the next chip.
     delta_sum =
-        floor(
-            Int,
-            (floored_code_phase - start_phase_including_shift) *
-            frequency_ratio_fixed_point,
-        ) + (1 << fixed_point) - 256
+        floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
     prev = 0
     num_code_samples_to_iterate =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
