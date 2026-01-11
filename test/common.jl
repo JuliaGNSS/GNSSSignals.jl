@@ -247,3 +247,66 @@ end
     @test code ≈
           gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0.0, -1)
 end
+
+@testset "Code generation with large start_phase (overflow bug fix)" begin
+    # Bug: Large start_phase values cause integer overflow in fixed-point arithmetic,
+    # resulting in negative array indices and memory corruption.
+    # This was discovered during GPS tracking after ~60 seconds when start_phase
+    # accumulates to ~14000 chips.
+
+    system = GPSL1()
+    sampling_freq = 5.0e6Hz
+    code_frequency = 1.0230022937236385e6Hz  # Actual value from tracking crash
+    start_phase = 14113.513288791713  # Large value that caused overflow
+    start_index_shift = -2
+
+    sampled_code = Vector{Int16}(undef, 1023)
+
+    # This should not throw a BoundsError
+    @test_nowarn gen_code!(
+        sampled_code,
+        system,
+        1,
+        sampling_freq,
+        code_frequency,
+        start_phase,
+        start_index_shift,
+        Val(sampling_freq),
+        Val(8000Hz),
+    )
+
+    # Verify the result is correct by comparing with BigFloat reference implementation
+    phase = (start_index_shift:start_index_shift+length(sampled_code)-1) *
+            BigFloat(code_frequency / sampling_freq) .+ BigFloat(start_phase)
+    @test sampled_code == get_code.(system, phase, 1)
+end
+
+@testset "Code generation with negative start_phase (overflow bug fix)" begin
+    # Bug: Negative start_phase also causes integer overflow in fixed-point arithmetic.
+
+    system = GPSL1()
+    sampling_freq = 5.0e6Hz
+    code_frequency = get_code_frequency(system) + 4000Hz * get_code_center_frequency_ratio(system)
+    start_phase = -1000.0  # Negative value that caused overflow
+    start_index_shift = 0
+
+    sampled_code = Vector{Int16}(undef, 1023)
+
+    # This should not throw a BoundsError
+    @test_nowarn gen_code!(
+        sampled_code,
+        system,
+        1,
+        sampling_freq,
+        code_frequency,
+        start_phase,
+        start_index_shift,
+        Val(sampling_freq),
+        Val(8000Hz),
+    )
+
+    # Verify the result is correct by comparing with BigFloat reference implementation
+    phase = (start_index_shift:start_index_shift+length(sampled_code)-1) *
+            BigFloat(code_frequency / sampling_freq) .+ BigFloat(start_phase)
+    @test sampled_code == get_code.(system, phase, 1)
+end
