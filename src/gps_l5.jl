@@ -19,6 +19,7 @@ struct GPSL5{C<:AbstractMatrix} <: AbstractGNSS{C}
 end
 
 get_modulation(::Type{<:GPSL5}) = LOC()
+@inline get_modulation(::GPSL5) = LOC()
 
 get_system_string(s::GPSL5) = "GPSL5"
 

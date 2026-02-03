@@ -143,7 +143,7 @@ julia> get_modulation(GalileoE1B())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
-get_modulation(s::T) where {T} = get_modulation(T)
+get_modulation(s::T) where {T<:AbstractGNSS} = get_modulation(T)
 
 """
 $(SIGNATURES)
