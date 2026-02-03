@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.1...v1.0.2) (2026-02-03)
+
+
+### Bug Fixes
+
+* add instance methods for get_modulation to fix type instability ([76b3f13](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/76b3f13191e08f4e48ac33764f26d11c172ff5fe))
+
 ## [1.0.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.0...v1.0.1) (2026-01-11)
 
 
