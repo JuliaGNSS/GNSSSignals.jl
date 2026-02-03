@@ -11,6 +11,7 @@ struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSS{C}
 end
 
 get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
+@inline get_modulation(::GalileoE1B) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 
 get_system_string(s::GalileoE1B) = "GalileoE1B"
 
