@@ -159,19 +159,6 @@ end
     )
 end
 
-@testset "Failed in Tracking.jl" begin
-    code = zeros(Int16, 2502)
-    gpsl1 = GPSL1()
-    @test_throws "The code frequency 3.069e6 Hz is larger than expected (1031000 Hz)). Please increase the expected maximum Doppler frequency 8000 Hz" gen_code!(
-        code,
-        gpsl1,
-        1,
-        7.5e6Hz,
-        1023e3Hz * 3,
-        2.0,
-    )
-end
-
 @testset "gen_code! error paths" begin
     gpsl1 = GPSL1()
 
@@ -271,8 +258,6 @@ end
         code_frequency,
         start_phase,
         start_index_shift,
-        Val(sampling_freq),
-        Val(8000Hz),
     )
 
     # Verify the result is correct by comparing with BigFloat reference implementation
@@ -301,8 +286,6 @@ end
         code_frequency,
         start_phase,
         start_index_shift,
-        Val(sampling_freq),
-        Val(8000Hz),
     )
 
     # Verify the result is correct by comparing with BigFloat reference implementation
