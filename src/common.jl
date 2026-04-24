@@ -34,6 +34,12 @@ function calculate_num_inner_iterations(
     )
 end
 
+# Maximum num_inner_iterations for which we generate a Val-specialized variant.
+# Covers oversampling ratios up to 64, which is enough for virtually all GNSS
+# receiver sampling rates. Above this, a @simd fallback is used; it remains
+# within a few percent of the specialized version.
+const SAMPLE_CODE_INNER_THRESHOLD = 64
+
 """
 $(SIGNATURES)
 
@@ -56,8 +62,6 @@ in the provided buffer. Includes subcarrier modulation for BOC-type signals.
 - `code_frequency`: Code chipping rate (default: system's nominal code frequency)
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index_shift`: Index offset for the output buffer (default: 0)
-- `maximum_expected_sampling_frequency`: Maximum expected sampling frequency for optimization
-- `maximum_expected_doppler`: Maximum expected Doppler frequency (default: 8000 Hz)
 - `PHASET`: Integer type for phase calculations (default: `Int32`)
 
 # Returns
@@ -78,10 +82,8 @@ function gen_code!(
     code_frequency::Frequency = get_code_frequency(gnss),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
-    maximum_expected_sampling_frequency::Val{MESF} = Val(sampling_frequency),
-    maximum_expected_doppler::Val{MED} = Val(8000Hz),
     PHASET = Int32,
-) where {MED,MESF}
+)
     sample_code!(
         sampled_code,
         gnss,
@@ -90,8 +92,6 @@ function gen_code!(
         code_frequency,
         start_phase,
         start_index_shift,
-        maximum_expected_sampling_frequency,
-        maximum_expected_doppler,
     )
     multiply_with_subcarrier!(
         sampled_code,
@@ -105,6 +105,57 @@ function gen_code!(
     sampled_code
 end
 
+# Deprecated: `maximum_expected_sampling_frequency` and `maximum_expected_doppler`
+# Val arguments are no longer needed; the algorithm dispatches internally on the
+# runtime-computed inner-loop count. These methods are kept for source
+# compatibility and will be removed in the next major release.
+function gen_code!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase,
+    start_index_shift::Integer,
+    ::Val,
+    PHASET = Int32,
+)
+    gen_code!(
+        sampled_code,
+        gnss,
+        prn,
+        sampling_frequency,
+        code_frequency,
+        start_phase,
+        start_index_shift,
+        PHASET,
+    )
+end
+
+function gen_code!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase,
+    start_index_shift::Integer,
+    ::Val,
+    ::Val,
+    PHASET = Int32,
+)
+    gen_code!(
+        sampled_code,
+        gnss,
+        prn,
+        sampling_frequency,
+        code_frequency,
+        start_phase,
+        start_index_shift,
+        PHASET,
+    )
+end
+
 function sample_code!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSS,
@@ -113,17 +164,11 @@ function sample_code!(
     code_frequency::Frequency = get_code_frequency(gnss),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
-    maximum_expected_sampling_frequency::Val{MESF} = Val(sampling_frequency),
-    maximum_expected_doppler::Val{MED} = Val(8000Hz),
-) where {MED,MESF}
+)
     modulated_code_frequency = code_frequency * get_code_factor(gnss)
     frequency_ratio = sampling_frequency / modulated_code_frequency
     modulated_code_frequency > sampling_frequency && error(
         "The sampling frequency must be larger than the code frequency multiplied by code factor (larger than $modulated_code_frequency, it is $sampling_frequency).",
-    )
-
-    code_frequency > (get_code_frequency(gnss) + MED) && error(
-        "The code frequency $code_frequency is larger than expected ($(get_code_frequency(gnss) + MED))). Please increase the expected maximum Doppler frequency $MED",
     )
 
     # The -2 (instead of -1) reserves an extra bit for overflow headroom.
@@ -149,15 +194,68 @@ function sample_code!(
     # samples exactly on boundaries are assigned to the next chip.
     delta_sum =
         floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
-    prev = 0
     num_code_samples_to_iterate =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
-    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
-    num_inner_iterations = calculate_num_inner_iterations(
+    num_inner_iterations = ceil(Int, frequency_ratio)
+    dispatch_sample_code_worker!(
+        sampled_code,
         gnss,
-        maximum_expected_sampling_frequency,
-        maximum_expected_doppler,
+        prn,
+        frequency_ratio_fixed_point,
+        fixed_point,
+        code_start_index,
+        delta_sum,
+        num_code_samples_to_iterate,
+        code_length,
+        num_inner_iterations,
     )
+    return sampled_code
+end
+
+# Deprecated Val-accepting methods — see gen_code! for rationale.
+function sample_code!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase,
+    start_index_shift::Integer,
+    ::Val,
+)
+    sample_code!(sampled_code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index_shift)
+end
+
+function sample_code!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase,
+    start_index_shift::Integer,
+    ::Val,
+    ::Val,
+)
+    sample_code!(sampled_code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index_shift)
+end
+
+# Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
+# gets fully unrolled and vectorized by LLVM.
+function sample_code_worker!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    frequency_ratio_fixed_point::Int,
+    fixed_point::Int,
+    code_start_index::Int,
+    delta_sum::Int,
+    num_code_samples_to_iterate::Int,
+    code_length::Int,
+    ::Val{NUM_INNER},
+) where {NUM_INNER}
+    prev = 0
+    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
     processed_code_samples = 0
     @inbounds for k = 0:(num_code_iterations-1)
         iteration_begin = (k == 0 ? code_start_index : 0) + 1
@@ -170,7 +268,7 @@ function sample_code!(
         processed_code_samples += length(iterations)
         for i in iterations
             next_code = gnss.codes[i, prn]
-            for j = 1:num_inner_iterations
+            for j = 1:NUM_INNER
                 sampled_code[prev+j] = next_code
             end
             delta_sum += frequency_ratio_fixed_point
@@ -190,6 +288,100 @@ function sample_code!(
         prev >= length(sampled_code) && break
     end
     return sampled_code
+end
+
+# Fallback for oversampling ratios above SAMPLE_CODE_INNER_THRESHOLD.
+function sample_code_worker_generic!(
+    sampled_code::AbstractVector,
+    gnss::AbstractGNSS,
+    prn::Integer,
+    frequency_ratio_fixed_point::Int,
+    fixed_point::Int,
+    code_start_index::Int,
+    delta_sum::Int,
+    num_code_samples_to_iterate::Int,
+    code_length::Int,
+    num_inner_iterations::Int,
+)
+    prev = 0
+    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
+    processed_code_samples = 0
+    @inbounds for k = 0:(num_code_iterations-1)
+        iteration_begin = (k == 0 ? code_start_index : 0) + 1
+        iteration_end = min(
+            num_code_samples_to_iterate + (k == 0 ? code_start_index : 0) -
+            processed_code_samples - 1,
+            code_length,
+        )
+        iterations = iteration_begin:iteration_end
+        processed_code_samples += length(iterations)
+        for i in iterations
+            next_code = gnss.codes[i, prn]
+            @simd ivdep for j = 1:num_inner_iterations
+                sampled_code[prev+j] = next_code
+            end
+            delta_sum += frequency_ratio_fixed_point
+            prev = delta_sum >> fixed_point
+        end
+    end
+    @inbounds for i = 0:2
+        next_code_idx = mod(processed_code_samples + code_start_index + i, code_length) + 1
+        next_code = gnss.codes[next_code_idx, prn]
+        delta_sum += frequency_ratio_fixed_point
+        next_prev = delta_sum >> fixed_point
+        num_iterations = min(next_prev - prev, length(sampled_code) - prev)
+        for j = 1:num_iterations
+            sampled_code[prev+j] = next_code
+        end
+        prev = next_prev
+        prev >= length(sampled_code) && break
+    end
+    return sampled_code
+end
+
+@generated function dispatch_sample_code_worker!(
+    sampled_code,
+    gnss,
+    prn,
+    frequency_ratio_fixed_point,
+    fixed_point,
+    code_start_index,
+    delta_sum,
+    num_code_samples_to_iterate,
+    code_length,
+    num_inner_iterations,
+)
+    branches = [
+        :(
+            num_inner_iterations == $i && return sample_code_worker!(
+                sampled_code,
+                gnss,
+                prn,
+                frequency_ratio_fixed_point,
+                fixed_point,
+                code_start_index,
+                delta_sum,
+                num_code_samples_to_iterate,
+                code_length,
+                Val($i),
+            )
+        ) for i = 1:SAMPLE_CODE_INNER_THRESHOLD
+    ]
+    quote
+        $(branches...)
+        return sample_code_worker_generic!(
+            sampled_code,
+            gnss,
+            prn,
+            frequency_ratio_fixed_point,
+            fixed_point,
+            code_start_index,
+            delta_sum,
+            num_code_samples_to_iterate,
+            code_length,
+            num_inner_iterations,
+        )
+    end
 end
 
 @inline function calc_subcarrier_phase_and_delta(
@@ -230,6 +422,15 @@ function calc_subcarrier_bit(
     true + true
 end
 
+# Compute the subcarrier bit directly as ±1.0f0 by splicing the sign bit of the
+# phase accumulator into the bit pattern of +1.0f0 (0x3F800000). This lets LLVM
+# vectorize the CBOC multiply loop, which the integer-shift form blocks due to
+# the reinterpret chain.
+@inline function calc_subcarrier_bit_f32(i::UInt32, subcarrier_phase::UInt32, delta_subcarrier_phase::UInt32)
+    phase = delta_subcarrier_phase * i + subcarrier_phase
+    reinterpret(Float32, (phase & 0x80000000) | 0x3F800000)
+end
+
 function multiply_with_subcarrier!(
     sampled_code::AbstractVector{T},
     modulation::BOCsin,
@@ -263,6 +464,50 @@ function multiply_with_subcarrier!(
     sampled_code
 end
 
+function multiply_with_subcarrier!(
+    sampled_code::AbstractVector{Float32},
+    modulation::CBOC,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase = 0.0,
+    start_index::Integer = 0,
+    PHASET = Int32,
+)
+    _, subcarrier_phase_boc1, delta_subcarrier_phase_boc1 =
+        calc_subcarrier_phase_and_delta(
+            modulation.boc1,
+            sampling_frequency,
+            code_frequency,
+            start_phase,
+            Int32,
+        )
+
+    _, subcarrier_phase_boc2, delta_subcarrier_phase_boc2 =
+        calc_subcarrier_phase_and_delta(
+            modulation.boc2,
+            sampling_frequency,
+            code_frequency,
+            start_phase,
+            Int32,
+        )
+
+    boc1_amplitude = Float32(sqrt(modulation.boc1_power))
+    boc2_amplitude = Float32(sqrt(1 - modulation.boc1_power))
+
+    N = length(sampled_code)
+    # Reinterpret as UInt32 so negative start_index values wrap correctly; the
+    # integer phase accumulator is modular.
+    si = reinterpret(UInt32, Int32(start_index))
+    @inbounds @simd ivdep for index = 1:N
+        i = UInt32(index - 1) + si
+        b1 = calc_subcarrier_bit_f32(i, subcarrier_phase_boc1, delta_subcarrier_phase_boc1)
+        b2 = calc_subcarrier_bit_f32(i, subcarrier_phase_boc2, delta_subcarrier_phase_boc2)
+        sampled_code[index] *= boc1_amplitude * b1 + boc2_amplitude * b2
+    end
+    sampled_code
+end
+
+# Fallback for non-Float32 output types: same algorithm, integer subcarrier bits.
 function multiply_with_subcarrier!(
     sampled_code::AbstractVector{T},
     modulation::CBOC,
