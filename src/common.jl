@@ -105,10 +105,10 @@ function gen_code!(
     sampled_code
 end
 
-# Deprecated: `maximum_expected_sampling_frequency` and `maximum_expected_doppler`
-# Val arguments are no longer needed; the algorithm dispatches internally on the
-# runtime-computed inner-loop count. These methods are kept for source
-# compatibility and will be removed in the next major release.
+# TODO(v2): remove these Val-accepting shims and the matching sample_code!
+# methods below. Val{MESF}/Val{MED} are no longer needed — the algorithm
+# dispatches internally on the runtime-computed inner-loop count. Tracked in
+# https://github.com/JuliaGNSS/GNSSSignals.jl/issues/53.
 function gen_code!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSS,
@@ -212,7 +212,7 @@ function sample_code!(
     return sampled_code
 end
 
-# Deprecated Val-accepting methods — see gen_code! for rationale.
+# TODO(v2): remove these Val-accepting shims — see gen_code! above for rationale.
 function sample_code!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSS,
