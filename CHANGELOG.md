@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.2...v1.0.3) (2026-04-27)
+
+
+### Performance Improvements
+
+* drop Val{MESF}/Val{MED} args and vectorize CBOC subcarrier ([e4ab80f](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/e4ab80f5fd33d468e314ff887d9338021f499286))
+
 ## [1.0.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.1...v1.0.2) (2026-02-03)
 
 
