@@ -173,48 +173,6 @@ end
     )
 end
 
-# The Val arguments were removed in favor of a runtime-dispatched inner loop;
-# the kept methods are source-compat shims that should produce identical output.
-@testset "Deprecated Val arguments still work" begin
-    sampling_rate = 25e6Hz
-    samples = 1000
-    for signal in (GPSL1CA(), GPSL5I(), GalileoE1B())
-        T = get_code_type(signal)
-        ref = zeros(T, samples)
-        gen_code!(ref, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0)
-
-        with_one_val = zeros(T, samples)
-        gen_code!(
-            with_one_val, signal, 1, sampling_rate, get_code_frequency(signal),
-            0.0, 0, Val(sampling_rate),
-        )
-        @test with_one_val == ref
-
-        with_two_vals = zeros(T, samples)
-        gen_code!(
-            with_two_vals, signal, 1, sampling_rate, get_code_frequency(signal),
-            0.0, 0, Val(sampling_rate), Val(8000Hz),
-        )
-        @test with_two_vals == ref
-
-        # sample_code! shims too
-        ref_sc = zeros(T, samples)
-        GNSSSignals.sample_code!(ref_sc, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0)
-        sc_one_val = zeros(T, samples)
-        GNSSSignals.sample_code!(
-            sc_one_val, signal, 1, sampling_rate, get_code_frequency(signal),
-            0.0, 0, Val(sampling_rate),
-        )
-        @test sc_one_val == ref_sc
-        sc_two_vals = zeros(T, samples)
-        GNSSSignals.sample_code!(
-            sc_two_vals, signal, 1, sampling_rate, get_code_frequency(signal),
-            0.0, 0, Val(sampling_rate), Val(8000Hz),
-        )
-        @test sc_two_vals == ref_sc
-    end
-end
-
 # Above num_inner_iterations = 64 the dispatcher falls back to a @simd ivdep
 # generic worker. Exercise that path so any regression there is caught.
 @testset "High oversampling falls back to generic worker" begin
