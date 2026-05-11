@@ -1,12 +1,21 @@
 # API Reference
 
-## GNSS System Types
+## GNSS Signal Types
 
 ```@docs
-GNSSSignals.AbstractGNSS
-GNSSSignals.GPSL1
-GNSSSignals.GPSL5
+GNSSSignals.AbstractGNSSSignal
+GNSSSignals.GPSL1CA
+GNSSSignals.GPSL5I
 GNSSSignals.GalileoE1B
+```
+
+## Bands
+
+```@docs
+GNSSSignals.Band
+GNSSSignals.L1
+GNSSSignals.L5
+GNSSSignals.get_band
 ```
 
 ## Modulation Types
@@ -33,7 +42,7 @@ GNSSSignals.get_code_unsafe
 GNSSSignals.get_codes
 ```
 
-## System Properties
+## Signal Properties
 
 ```@docs
 GNSSSignals.get_code_length
@@ -44,7 +53,7 @@ GNSSSignals.get_code_frequency
 GNSSSignals.get_data_frequency
 GNSSSignals.get_code_center_frequency_ratio
 GNSSSignals.get_modulation
-GNSSSignals.get_system_string
+GNSSSignals.get_signal_name
 GNSSSignals.min_bits_for_code_length
 GNSSSignals.get_code_type
 ```

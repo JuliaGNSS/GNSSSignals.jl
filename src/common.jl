@@ -6,24 +6,24 @@ Get the full code matrix for a GNSS system.
 Returns the codes as a matrix where each column represents a PRN.
 
 # Arguments
-- `gnss`: A GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `gnss`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 
 # Returns
 - `Matrix`: Code matrix of size `(code_length, num_prns)`
 
 # Examples
 ```julia-repl
-julia> codes = get_codes(GPSL1())
+julia> codes = get_codes(GPSL1CA())
 julia> size(codes)
 (1023, 37)
 ```
 """
-function get_codes(gnss::AbstractGNSS)
+function get_codes(gnss::AbstractGNSSSignal)
     gnss.codes
 end
 
 function calculate_num_inner_iterations(
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     maximum_expected_sampling_frequency::Val{MESF},
     maximum_expected_doppler::Val{MED} = Val(8000Hz),
 ) where {MESF,MED}
@@ -56,10 +56,10 @@ in the provided buffer. Includes subcarrier modulation for BOC-type signals.
 
 # Arguments
 - `sampled_code`: Pre-allocated output buffer
-- `gnss`: GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `gnss`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be larger than code frequency)
-- `code_frequency`: Code chipping rate (default: system's nominal code frequency)
+- `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index_shift`: Index offset for the output buffer (default: 0)
 - `PHASET`: Integer type for phase calculations (default: `Int32`)
@@ -71,12 +71,12 @@ in the provided buffer. Includes subcarrier modulation for BOC-type signals.
 ```julia-repl
 julia> using Unitful: MHz
 julia> buffer = zeros(Int16, 4000)
-julia> gen_code!(buffer, GPSL1(), 1, 4MHz)
+julia> gen_code!(buffer, GPSL1CA(), 1, 4MHz)
 ```
 """
 function gen_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency = get_code_frequency(gnss),
@@ -111,7 +111,7 @@ end
 # https://github.com/JuliaGNSS/GNSSSignals.jl/issues/53.
 function gen_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency,
@@ -134,7 +134,7 @@ end
 
 function gen_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency,
@@ -158,7 +158,7 @@ end
 
 function sample_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency = get_code_frequency(gnss),
@@ -215,7 +215,7 @@ end
 # TODO(v2): remove these Val-accepting shims — see gen_code! above for rationale.
 function sample_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency,
@@ -228,7 +228,7 @@ end
 
 function sample_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency,
@@ -244,7 +244,7 @@ end
 # gets fully unrolled and vectorized by LLVM.
 function sample_code_worker!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
     fixed_point::Int,
@@ -293,7 +293,7 @@ end
 # Fallback for oversampling ratios above SAMPLE_CODE_INNER_THRESHOLD.
 function sample_code_worker_generic!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
     fixed_point::Int,
@@ -602,10 +602,10 @@ specified sampling frequency. For in-place operation, use [`gen_code!`](@ref).
 
 # Arguments
 - `num_samples`: Number of samples to generate
-- `gnss`: GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `gnss`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be larger than code frequency)
-- `code_frequency`: Code chipping rate (default: system's nominal code frequency)
+- `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index`: Index offset (default: 0)
 
@@ -615,14 +615,14 @@ specified sampling frequency. For in-place operation, use [`gen_code!`](@ref).
 # Examples
 ```julia-repl
 julia> using Unitful: MHz
-julia> sampled_code = gen_code(4000, GPSL1(), 1, 4MHz)
+julia> sampled_code = gen_code(4000, GPSL1CA(), 1, 4MHz)
 julia> length(sampled_code)
 4000
 ```
 """
 function gen_code(
     num_samples::Integer,
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
     code_frequency::Frequency = get_code_frequency(gnss),
@@ -641,18 +641,18 @@ Get the ratio of code frequency to center frequency.
 This ratio is used to compute the code Doppler from the carrier Doppler.
 
 # Arguments
-- `gnss`: A GNSS system instance
+- `gnss`: A GNSS signal instance
 
 # Returns
 - `Float64`: The code-to-center frequency ratio
 
 # Examples
 ```julia-repl
-julia> get_code_center_frequency_ratio(GPSL1())
+julia> get_code_center_frequency_ratio(GPSL1CA())
 0.0006493506493506494
 ```
 """
-@inline function get_code_center_frequency_ratio(gnss::AbstractGNSS)
+@inline function get_code_center_frequency_ratio(gnss::AbstractGNSSSignal)
     get_code_frequency(gnss) / get_center_frequency(gnss)
 end
 
@@ -665,20 +665,20 @@ Calculates the number of bits required to represent the full code length,
 including secondary code if present.
 
 # Arguments
-- `gnss`: A GNSS system instance
+- `gnss`: A GNSS signal instance
 
 # Returns
 - `Int`: Number of bits needed
 
 # Examples
 ```julia-repl
-julia> min_bits_for_code_length(GPSL1())
+julia> min_bits_for_code_length(GPSL1CA())
 10
-julia> min_bits_for_code_length(GPSL5())
+julia> min_bits_for_code_length(GPSL5I())
 17
 ```
 """
-@inline function min_bits_for_code_length(gnss::AbstractGNSS)
+@inline function min_bits_for_code_length(gnss::AbstractGNSSSignal)
     ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base = 2)
 end
 
@@ -688,20 +688,20 @@ $(SIGNATURES)
 Get the length of the secondary code.
 
 # Arguments
-- `gnss`: A GNSS system instance
+- `gnss`: A GNSS signal instance
 
 # Returns
 - `Int`: Secondary code length (1 if no secondary code)
 
 # Examples
 ```julia-repl
-julia> get_secondary_code_length(GPSL1())
+julia> get_secondary_code_length(GPSL1CA())
 1
-julia> get_secondary_code_length(GPSL5())
+julia> get_secondary_code_length(GPSL5I())
 10
 ```
 """
-@inline function get_secondary_code_length(gnss::AbstractGNSS)
+@inline function get_secondary_code_length(gnss::AbstractGNSSSignal)
     length(get_secondary_code(gnss))
 end
 
@@ -711,7 +711,7 @@ $(SIGNATURES)
 Get the secondary code value at a given phase.
 
 # Arguments
-- `gnss`: A GNSS system instance
+- `gnss`: A GNSS signal instance
 - `phase`: Code phase in chips
 
 # Returns
@@ -719,11 +719,11 @@ Get the secondary code value at a given phase.
 
 # Examples
 ```julia-repl
-julia> get_secondary_code(GPSL5(), 10230.0)  # Start of second code period
+julia> get_secondary_code(GPSL5I(), 10230.0)  # Start of second code period
 1
 ```
 """
-@inline function get_secondary_code(gnss::AbstractGNSS, phase)
+@inline function get_secondary_code(gnss::AbstractGNSSSignal, phase)
     get_secondary_code(gnss, get_secondary_code(gnss), phase)
 end
 
@@ -734,7 +734,7 @@ Get secondary code value when code is a single integer (no secondary code).
 
 Returns the code value unchanged.
 """
-@inline function get_secondary_code(gnss::AbstractGNSS, code::Integer, phase)
+@inline function get_secondary_code(gnss::AbstractGNSSSignal, code::Integer, phase)
     code
 end
 
@@ -745,7 +745,7 @@ Get secondary code value at phase when code is a tuple (has secondary code).
 
 Computes the secondary code index from the phase and returns the corresponding value.
 """
-@inline function get_secondary_code(gnss::AbstractGNSS, code::Tuple, phase)
+@inline function get_secondary_code(gnss::AbstractGNSSSignal, code::Tuple, phase)
     code[mod(floor(Int, phase / get_code_length(gnss)), get_secondary_code_length(gnss))+1]
 end
 

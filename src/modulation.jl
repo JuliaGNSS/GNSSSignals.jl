@@ -107,19 +107,19 @@ this is typically `Int16`. For CBOC signals, this is a floating-point type.
 
 # Examples
 ```julia-repl
-julia> get_code_type(GPSL1())
+julia> get_code_type(GPSL1CA())
 Int16
 julia> get_code_type(GalileoE1B())
 Float32
 ```
 """
-get_code_type(system::T) where {T<:AbstractGNSS} = get_code_type(system, get_modulation(T))
+get_code_type(system::T) where {T<:AbstractGNSSSignal} = get_code_type(system, get_modulation(T))
 
-get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation) where {T} = T
-get_code_type(system::AbstractGNSS{<:AbstractMatrix{T}}, modulation::CBOC) where {T} =
+get_code_type(system::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation) where {T} = T
+get_code_type(system::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation::CBOC) where {T} =
     promote_type(T, typeof(modulation.boc1_power))
 
-get_code_factor(system::T) where {T<:AbstractGNSS} = get_code_factor(get_modulation(T))
+get_code_factor(system::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
 get_code_factor(modulation::LOC) = 1
 get_code_factor(modulation::BOC) = modulation.n
 get_code_factor(modulation::CBOC) = modulation.boc1.n
@@ -137,13 +137,13 @@ Get the modulation type for a GNSS system.
 
 # Examples
 ```julia-repl
-julia> get_modulation(GPSL1())
+julia> get_modulation(GPSL1CA())
 LOC()
 julia> get_modulation(GalileoE1B())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
-get_modulation(s::T) where {T<:AbstractGNSS} = get_modulation(T)
+get_modulation(s::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
 
 """
 $(SIGNATURES)
@@ -162,7 +162,7 @@ Computes the power spectral density based on the system's modulation type.
 # Examples
 ```julia-repl
 julia> using Unitful: kHz
-julia> get_code_spectrum(GPSL1(), 0kHz)
+julia> get_code_spectrum(GPSL1CA(), 0kHz)
 9.775171065493646e-7
 ```
 """
@@ -214,7 +214,7 @@ Returns the spreading code value (including subcarrier modulation for BOC signal
 at the specified code phase. The phase is automatically wrapped to the code length.
 
 # Arguments
-- `system`: A GNSS system instance (e.g., `GPSL1()`, `GPSL5()`, `GalileoE1B()`)
+- `system`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `phase`: Code phase in chips
 - `prn`: PRN number of the satellite
 
@@ -223,14 +223,14 @@ at the specified code phase. The phase is automatically wrapped to the code leng
 
 # Examples
 ```julia-repl
-julia> get_code(GPSL1(), 0.0, 1)
+julia> get_code(GPSL1CA(), 0.0, 1)
 1
-julia> get_code(GPSL1(), 1200.3, 1)
+julia> get_code(GPSL1CA(), 1200.3, 1)
 -1
-julia> get_code.(GPSL1(), 0:1022, 1)  # Full code period
+julia> get_code.(GPSL1CA(), 0:1022, 1)  # Full code period
 ```
 """
-function get_code(system::T, phase, prn::Integer) where {T<:AbstractGNSS}
+function get_code(system::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
     get_code(get_modulation(T), system, phase, prn)
 end
 
@@ -241,7 +241,7 @@ Get code value for BOC-modulated signals at a given phase.
 
 Internal method that handles BOC modulation (sine or cosine phased).
 """
-function get_code(modulation::BOC, system::AbstractGNSS, phase, prn::Integer)
+function get_code(modulation::BOC, system::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
     modded_floored_phase = mod(floored_phase, size(system.codes, 1))
     get_code_at_index(system, modded_floored_phase, prn) *
@@ -255,14 +255,14 @@ Get code value for LOC (BPSK) signals at a given phase.
 
 Internal method that handles legacy/BPSK modulation without subcarrier.
 """
-function get_code(modulation::LOC, system::AbstractGNSS, phase, prn::Integer)
+function get_code(modulation::LOC, system::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
     modded_floored_phase = mod(floored_phase, size(system.codes, 1))
     get_code_at_index(system, modded_floored_phase, prn)
 end
 
 Base.@propagate_inbounds function get_code_at_index(
-    gnss::AbstractGNSS,
+    gnss::AbstractGNSSSignal,
     phase::Integer,
     prn::Integer,
 )
@@ -290,14 +290,14 @@ The phase must be within `[0, code_length * secondary_code_length)`.
 
 # Examples
 ```julia-repl
-julia> get_code_unsafe(GPSL1(), 500.0, 1)
+julia> get_code_unsafe(GPSL1CA(), 500.0, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
     system::S,
     phase,
     prn::Integer,
-) where {S<:AbstractGNSS}
+) where {S<:AbstractGNSSSignal}
     get_code_unsafe(get_modulation(S), system, phase, prn)
 end
 
@@ -310,7 +310,7 @@ Internal method for BOC modulation without phase wrapping.
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::BOC,
-    system::AbstractGNSS,
+    system::AbstractGNSSSignal,
     phase,
     prn::Integer,
 )
@@ -327,7 +327,7 @@ Internal method for BPSK modulation without phase wrapping.
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::LOC,
-    system::AbstractGNSS,
+    system::AbstractGNSSSignal,
     phase,
     prn::Integer,
 )
