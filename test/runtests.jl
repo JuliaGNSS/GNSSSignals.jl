@@ -7,8 +7,9 @@ import GNSSSignals: BOCsin, BOCcos, CBOC
 end
 
 include("test_codes.jl")
+include("bands.jl")
 include("modulation.jl")
-include("gps_l1.jl")
-include("gps_l5.jl")
-include("galileo_e1b.jl")
+include("gps/l1ca.jl")
+include("gps/l5i.jl")
+include("galileo/e1b.jl")
 include("common.jl")

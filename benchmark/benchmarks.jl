@@ -7,9 +7,9 @@ const SUITE = BenchmarkGroup()
 num_samples = 2000
 sampled_code = zeros(Int16, num_samples)
 
-SUITE["code"]["code generation"]["GPSL1"] = @benchmarkable gen_code!(
+SUITE["code"]["code generation"]["GPSL1CA"] = @benchmarkable gen_code!(
     $sampled_code,
-    $(GPSL1()),
+    $(GPSL1CA()),
     $1,
     $(2e6Hz),
     $(1023e3Hz),
@@ -18,9 +18,9 @@ SUITE["code"]["code generation"]["GPSL1"] = @benchmarkable gen_code!(
     $(Val(2e6Hz)),
 ) evals = 10 samples = 10000
 
-SUITE["code"]["code generation"]["GPSL5"] = @benchmarkable gen_code!(
+SUITE["code"]["code generation"]["GPSL5I"] = @benchmarkable gen_code!(
     $sampled_code,
-    $(GPSL5()),
+    $(GPSL5I()),
     $1,
     $(20e6Hz),
     $(10230e3Hz),

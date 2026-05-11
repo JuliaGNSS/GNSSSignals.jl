@@ -1,5 +1,6 @@
 @testset "Galileo E1B" begin
     galileo_e1b = GalileoE1B()
+    @test @inferred(get_band(galileo_e1b)) == L1()
     @test @inferred(get_center_frequency(galileo_e1b)) == 1.57542e9Hz
     @test @inferred(get_code_length(galileo_e1b)) == 4092
     @test @inferred(get_secondary_code_length(galileo_e1b)) == 1
@@ -12,6 +13,7 @@
           1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(get_data_frequency(galileo_e1b)) == 250Hz
     @test @inferred(get_code_frequency(galileo_e1b)) == 1023e3Hz
+    @test get_signal_name(galileo_e1b) == "Galileo E1B"
 
     @test GNSSSignals.get_code_factor(galileo_e1b) == 1
 

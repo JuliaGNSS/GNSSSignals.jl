@@ -1,27 +1,52 @@
 """
-    GPSL5{C} <: AbstractGNSS{C}
+    GPSL5I{C} <: AbstractGNSSSignal{C}
 
-GPS L5 signal type.
+GPS L5-I signal (the in-phase, data-carrying component of GPS L5).
 
-GPS L5 uses BPSK (LOC) modulation with a 10230-chip code at 10.23 Mcps and a
-10-bit Neuman-Hofman secondary code, transmitted on the L5 carrier frequency
-of 1176.45 MHz.
+BPSK-modulated 10230-chip primary code at 10.23 Mcps on the L5 band
+(1176.45 MHz), with a 10-bit Neuman-Hofman secondary code (NH10) overlaying
+the data channel.
 
 # Example
 ```julia
-gpsl5 = GPSL5()
-get_code_length(gpsl5)           # 10230
-get_secondary_code_length(gpsl5) # 10
+gpsl5i = GPSL5I()
+get_code_length(gpsl5i)            # 10230
+get_secondary_code_length(gpsl5i)  # 10
+get_band(gpsl5i)                   # L5()
 ```
 """
-struct GPSL5{C<:AbstractMatrix} <: AbstractGNSS{C}
+struct GPSL5I{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
 end
 
-get_modulation(::Type{<:GPSL5}) = LOC()
-@inline get_modulation(::GPSL5) = LOC()
+get_modulation(::Type{<:GPSL5I}) = LOC()
+@inline get_modulation(::GPSL5I) = LOC()
 
-get_system_string(s::GPSL5) = "GPSL5"
+"""
+$(SIGNATURES)
+
+Get the band the signal is transmitted on.
+
+# Examples
+```julia-repl
+julia> get_band(GPSL5I())
+L5()
+```
+"""
+@inline get_band(::GPSL5I) = L5()
+
+"""
+$(SIGNATURES)
+
+Get the human-readable signal name.
+
+# Examples
+```julia-repl
+julia> get_signal_name(GPSL5I())
+"GPS L5-I"
+```
+"""
+get_signal_name(::GPSL5I) = "GPS L5-I"
 
 #=These are the initial XB Code States for the I5 code,
 initial_xb_code_states[1] is a 1 3 chip array which represent the shift
@@ -113,14 +138,14 @@ end
 """
 $(SIGNATURES)
 
-Calculate the gps L5 PRN `satellite_code` for the initial XB register states
+Calculate the GPS L5-I PRN `satellite_code` for the initial XB register states
 `initial_xb_code_states`.
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
-julia> prn_code_sat_1_I_signal = gen_l5_code(initial_states_PRN_num_1_I)
+julia> prn_code_sat_1_I_signal = gen_l5i_code(initial_states_PRN_num_1_I)
 ```
 """
-function gen_l5_code(initial_xb_code_states)
+function gen_l5i_code(initial_xb_code_states)
     XA = 8191 # int with 3 leading zeros and then 13*1
     XB = initial_xb_code_states' * [4096, 2048, 1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1]
     satellite_code = zeros(Int8, 10230)
@@ -140,7 +165,7 @@ end
 """
 $(SIGNATURES)
 
-Generate 10 periods of the PRN L5 code, with `initial_xb_code_states`, each ⊻ with one bit
+Generate 10 periods of the PRN L5-I code, with `initial_xb_code_states`, each ⊻ with one bit
 of the 10bit Neuman-Hofman sequence 0000110101.
 """
 function add_neuman_hofman_code(l5_code, neuman_hofman_code)
@@ -151,10 +176,10 @@ function get_neuman_hofman_code()
     [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
 end
 
-function read_gpsl5_codes()
+function read_gpsl5i_codes()
     mapreduce(
         sat -> add_neuman_hofman_code(
-            gen_l5_code(INITIAL_XB_CODE_STATES[sat]),
+            gen_l5i_code(INITIAL_XB_CODE_STATES[sat]),
             get_neuman_hofman_code(),
         ),
         hcat,
@@ -162,82 +187,64 @@ function read_gpsl5_codes()
     )
 end
 
-function GPSL5()
-    GPSL5(Int16.(read_gpsl5_codes()))
+function GPSL5I()
+    GPSL5I(Int16.(read_gpsl5i_codes()))
 end
 
-function get_secondary_code(gpsl5::GPSL5)
+function get_secondary_code(::GPSL5I)
     (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 end
 
 """
 $(SIGNATURES)
 
-Get the code length for GPS L5.
+Get the code length for GPS L5-I.
 
 # Returns
 - `Int`: 10230 chips
 
 # Examples
 ```julia-repl
-julia> get_code_length(GPSL5())
+julia> get_code_length(GPSL5I())
 10230
 ```
 """
-@inline function get_code_length(gpsl5::GPSL5)
+@inline function get_code_length(::GPSL5I)
     10230
 end
 
 """
 $(SIGNATURES)
 
-Get the center (carrier) frequency for GPS L5.
-
-# Returns
-- `Frequency`: 1176.45 MHz
-
-# Examples
-```julia-repl
-julia> get_center_frequency(GPSL5())
-1176450000 Hz
-```
-"""
-@inline function get_center_frequency(gpsl5::GPSL5)
-    1_176_450_000Hz
-end
-
-"""
-$(SIGNATURES)
-
-Get the code chipping rate for GPS L5.
+Get the code chipping rate for GPS L5-I.
 
 # Returns
 - `Frequency`: 10.23 MHz
 
 # Examples
 ```julia-repl
-julia> get_code_frequency(GPSL5())
+julia> get_code_frequency(GPSL5I())
 10230000 Hz
 ```
 """
-@inline function get_code_frequency(gpsl5::GPSL5)
+@inline function get_code_frequency(::GPSL5I)
     10_230_000Hz
 end
 
 """
 $(SIGNATURES)
 
-Get the data bit rate for GPS L5.
+Get the data bit rate for GPS L5-I.
 
 # Returns
 - `Frequency`: 100 Hz
 
 # Examples
 ```julia-repl
-julia> get_data_frequency(GPSL5())
+julia> get_data_frequency(GPSL5I())
 100 Hz
 ```
 """
-@inline function get_data_frequency(gpsl5::GPSL5)
+@inline function get_data_frequency(::GPSL5I)
     100Hz
 end

@@ -1,40 +1,40 @@
-@testset "Common functions for $(get_system_string(system))" for system in [
+@testset "Common functions for $(get_signal_name(signal))" for signal in [
     GalileoE1B(),
-    GPSL1(),
-    GPSL5(),
+    GPSL1CA(),
+    GPSL5I(),
 ]
-    if typeof(system) <: GalileoE1B
-        @test get_code_type(system) == Float32
+    if typeof(signal) <: GalileoE1B
+        @test get_code_type(signal) == Float32
     else
-        @test get_code_type(system) == Int16
+        @test get_code_type(signal) == Int16
     end
-    @test get_codes(system) == system.codes
+    @test get_codes(signal) == signal.codes
 end
 
 @testset "min_bits_for_code_length" begin
-    @test min_bits_for_code_length(GPSL1()) == 10  # 1023 requires 10 bits
-    @test min_bits_for_code_length(GPSL5()) == 17  # 10230 * 10 = 102300 requires 17 bits
+    @test min_bits_for_code_length(GPSL1CA()) == 10  # 1023 requires 10 bits
+    @test min_bits_for_code_length(GPSL5I()) == 17  # 10230 * 10 = 102300 requires 17 bits
     @test min_bits_for_code_length(GalileoE1B()) == 12  # 4092 requires 12 bits
 end
 
-@testset "get_system_string" begin
-    @test get_system_string(GPSL1()) == "GPSL1"
-    @test get_system_string(GPSL5()) == "GPSL5"
-    @test get_system_string(GalileoE1B()) == "GalileoE1B"
+@testset "get_signal_name" begin
+    @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
+    @test get_signal_name(GPSL5I()) == "GPS L5-I"
+    @test get_signal_name(GalileoE1B()) == "Galileo E1B"
 end
 
 @testset "get_secondary_code with phase" begin
-    gpsl5 = GPSL5()
-    # GPS L5 has a 10-element secondary code: (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
-    @test get_secondary_code(gpsl5, 0.0) == 1      # First period
-    @test get_secondary_code(gpsl5, 10230.0) == 1  # Second period
-    @test get_secondary_code(gpsl5, 40920.0) == -1 # Fifth period (index 4)
-    @test get_secondary_code(gpsl5, 51150.0) == -1 # Sixth period (index 5)
+    gpsl5i = GPSL5I()
+    # GPS L5-I has a 10-element secondary code: (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
+    @test get_secondary_code(gpsl5i, 0.0) == 1      # First period
+    @test get_secondary_code(gpsl5i, 10230.0) == 1  # Second period
+    @test get_secondary_code(gpsl5i, 40920.0) == -1 # Fifth period (index 4)
+    @test get_secondary_code(gpsl5i, 51150.0) == -1 # Sixth period (index 5)
 
-    # GPS L1 has no secondary code (returns 1)
-    gpsl1 = GPSL1()
-    @test get_secondary_code(gpsl1, 0.0) == 1
-    @test get_secondary_code(gpsl1, 1000.0) == 1
+    # GPS L1 C/A has no secondary code (returns 1)
+    gpsl1ca = GPSL1CA()
+    @test get_secondary_code(gpsl1ca, 0.0) == 1
+    @test get_secondary_code(gpsl1ca, 1000.0) == 1
 
     # Galileo E1B has no secondary code (returns 1)
     gal_e1b = GalileoE1B()
@@ -42,30 +42,30 @@ end
     @test get_secondary_code(gal_e1b, 5000.0) == 1
 end
 
-@testset "Base.show for GNSS systems" begin
+@testset "Base.show for GNSS signals" begin
     io = IOBuffer()
-    show(io, GPSL1())
-    @test occursin("GPSL1", String(take!(io)))
+    show(io, GPSL1CA())
+    @test occursin("GPSL1CA", String(take!(io)))
 
-    show(io, GPSL5())
-    @test occursin("GPSL5", String(take!(io)))
+    show(io, GPSL5I())
+    @test occursin("GPSL5I", String(take!(io)))
 
     show(io, GalileoE1B())
     @test occursin("GalileoE1B", String(take!(io)))
 end
 
-@testset "Broadcasting GNSS systems" begin
-    gpsl1 = GPSL1()
-    # Test that systems can be broadcast
+@testset "Broadcasting GNSS signals" begin
+    gpsl1ca = GPSL1CA()
+    # Test that signals can be broadcast
     phases = [0.0, 1.0, 2.0]
-    result = get_code.(gpsl1, phases, 1)
+    result = get_code.(gpsl1ca, phases, 1)
     @test length(result) == 3
     @test all(x -> x ∈ [-1, 1], result)
 end
 
 @testset "get_modulation type dispatch" begin
-    @test get_modulation(GPSL1) == GNSSSignals.LOC()
-    @test get_modulation(GPSL5) == GNSSSignals.LOC()
+    @test get_modulation(GPSL1CA) == GNSSSignals.LOC()
+    @test get_modulation(GPSL5I) == GNSSSignals.LOC()
     @test get_modulation(GalileoE1B) isa GNSSSignals.CBOC
 end
 
@@ -160,16 +160,16 @@ end
 end
 
 @testset "gen_code! error paths" begin
-    gpsl1 = GPSL1()
+    gpsl1ca = GPSL1CA()
 
     # Test sampling frequency too low error
     code = zeros(Int16, 100)
     @test_throws "The sampling frequency must be larger than the code frequency" gen_code!(
         code,
-        gpsl1,
+        gpsl1ca,
         1,
         500e3Hz,  # Too low - less than code frequency
-        get_code_frequency(gpsl1),
+        get_code_frequency(gpsl1ca),
     )
 end
 
@@ -178,37 +178,37 @@ end
 @testset "Deprecated Val arguments still work" begin
     sampling_rate = 25e6Hz
     samples = 1000
-    for system in (GPSL1(), GPSL5(), GalileoE1B())
-        T = get_code_type(system)
+    for signal in (GPSL1CA(), GPSL5I(), GalileoE1B())
+        T = get_code_type(signal)
         ref = zeros(T, samples)
-        gen_code!(ref, system, 1, sampling_rate, get_code_frequency(system), 0.0, 0)
+        gen_code!(ref, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0)
 
         with_one_val = zeros(T, samples)
         gen_code!(
-            with_one_val, system, 1, sampling_rate, get_code_frequency(system),
+            with_one_val, signal, 1, sampling_rate, get_code_frequency(signal),
             0.0, 0, Val(sampling_rate),
         )
         @test with_one_val == ref
 
         with_two_vals = zeros(T, samples)
         gen_code!(
-            with_two_vals, system, 1, sampling_rate, get_code_frequency(system),
+            with_two_vals, signal, 1, sampling_rate, get_code_frequency(signal),
             0.0, 0, Val(sampling_rate), Val(8000Hz),
         )
         @test with_two_vals == ref
 
         # sample_code! shims too
         ref_sc = zeros(T, samples)
-        GNSSSignals.sample_code!(ref_sc, system, 1, sampling_rate, get_code_frequency(system), 0.0, 0)
+        GNSSSignals.sample_code!(ref_sc, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0)
         sc_one_val = zeros(T, samples)
         GNSSSignals.sample_code!(
-            sc_one_val, system, 1, sampling_rate, get_code_frequency(system),
+            sc_one_val, signal, 1, sampling_rate, get_code_frequency(signal),
             0.0, 0, Val(sampling_rate),
         )
         @test sc_one_val == ref_sc
         sc_two_vals = zeros(T, samples)
         GNSSSignals.sample_code!(
-            sc_two_vals, system, 1, sampling_rate, get_code_frequency(system),
+            sc_two_vals, signal, 1, sampling_rate, get_code_frequency(signal),
             0.0, 0, Val(sampling_rate), Val(8000Hz),
         )
         @test sc_two_vals == ref_sc
@@ -218,76 +218,76 @@ end
 # Above num_inner_iterations = 64 the dispatcher falls back to a @simd ivdep
 # generic worker. Exercise that path so any regression there is caught.
 @testset "High oversampling falls back to generic worker" begin
-    system = GPSL1()
+    signal = GPSL1CA()
     # frequency_ratio = 200e6 / 1.023e6 ≈ 195 → num_inner = 196 → generic path
     sampling_rate = 200e6Hz
     samples = 2000
     code = zeros(Int16, samples)
-    gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0.0, 0)
-    phase = (0:samples-1) * get_code_frequency(system) / sampling_rate
-    @test code == get_code.(system, phase, 1)
+    gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0)
+    phase = (0:samples-1) * get_code_frequency(signal) / sampling_rate
+    @test code == get_code.(signal, phase, 1)
 end
 
-@testset "Code generation $(get_system_string(system))" for system in
-                                                            [GalileoE1B(), GPSL1(), GPSL5()]
+@testset "Code generation $(get_signal_name(signal))" for signal in
+                                                          [GalileoE1B(), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
-    code = zeros(get_code_type(system), samples)
-    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0)
-    phase = (0:length(code)-1) * get_code_frequency(system) / sampling_rate
-    @test code ≈ get_code.(system, phase, 1)
-    @test code ≈ gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0)
+    code = zeros(get_code_type(signal), samples)
+    code = gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 0)
+    phase = (0:length(code)-1) * get_code_frequency(signal) / sampling_rate
+    @test code ≈ get_code.(signal, phase, 1)
+    @test code ≈ gen_code(samples, signal, 1, sampling_rate, get_code_frequency(signal), 0)
 end
 
-@testset "Small code generation $(get_system_string(system))" for system in [
+@testset "Small code generation $(get_signal_name(signal))" for signal in [
     GalileoE1B(),
-    GPSL1(),
-    GPSL5(),
+    GPSL1CA(),
+    GPSL5I(),
 ]
     sampling_rate = 25e6Hz
     samples = 100
-    code = zeros(get_code_type(system), samples)
-    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 3.5)
-    phase = (0:length(code)-1) * get_code_frequency(system) / sampling_rate .+ 3.5
-    @test code ≈ get_code.(system, phase, 1)
+    code = zeros(get_code_type(signal), samples)
+    code = gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 3.5)
+    phase = (0:length(code)-1) * get_code_frequency(signal) / sampling_rate .+ 3.5
+    @test code ≈ get_code.(signal, phase, 1)
 end
 
 @testset "Code generation for different units" begin
     sampling_rate = 25MHz
-    system = GPSL1()
+    signal = GPSL1CA()
     samples = 1000
-    code = zeros(get_code_type(system), samples)
-    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0)
-    phase = (0:length(code)-1) * get_code_frequency(system) / sampling_rate
-    @test code ≈ get_code.(system, phase, 1)
-    @test code ≈ gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0)
+    code = zeros(get_code_type(signal), samples)
+    code = gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 0)
+    phase = (0:length(code)-1) * get_code_frequency(signal) / sampling_rate
+    @test code ≈ get_code.(signal, phase, 1)
+    @test code ≈ gen_code(samples, signal, 1, sampling_rate, get_code_frequency(signal), 0)
 end
 
 @testset "Code generation with start_phase bigger than code_length" begin
-    system = GPSL1()
+    signal = GPSL1CA()
     sampling_rate = 2.5e6Hz
     num_samples = 4000
     code = zeros(Int16, num_samples)
-    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 2065)
-    phase = (0:num_samples-1) * get_code_frequency(system) / sampling_rate .+ 2065
-    @test code == get_code.(system, phase, 1)
+    code = gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 2065)
+    phase = (0:num_samples-1) * get_code_frequency(signal) / sampling_rate .+ 2065
+    @test code == get_code.(signal, phase, 1)
     @test code ==
-          gen_code(num_samples, system, 1, sampling_rate, get_code_frequency(system), 2065)
+          gen_code(num_samples, signal, 1, sampling_rate, get_code_frequency(signal), 2065)
 end
 
-@testset "Code generation $(get_system_string(system)) with different index" for system in [
+@testset "Code generation $(get_signal_name(signal)) with different index" for signal in [
     GalileoE1B(),
-    GPSL1(),
-    GPSL5(),
+    GPSL1CA(),
+    GPSL5I(),
 ]
     sampling_rate = 25e6Hz
     samples = 4002
-    code = zeros(get_code_type(system), samples)
-    code = gen_code!(code, system, 1, sampling_rate, get_code_frequency(system), 0.0, -1)
-    phase = (-1:4000) * get_code_frequency(system) / sampling_rate
-    @test code ≈ get_code.(system, phase, 1)
+    code = zeros(get_code_type(signal), samples)
+    code = gen_code!(code, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, -1)
+    phase = (-1:4000) * get_code_frequency(signal) / sampling_rate
+    @test code ≈ get_code.(signal, phase, 1)
     @test code ≈
-          gen_code(samples, system, 1, sampling_rate, get_code_frequency(system), 0.0, -1)
+          gen_code(samples, signal, 1, sampling_rate, get_code_frequency(signal), 0.0, -1)
 end
 
 @testset "Code generation with large start_phase (overflow bug fix)" begin
@@ -296,7 +296,7 @@ end
     # This was discovered during GPS tracking after ~60 seconds when start_phase
     # accumulates to ~14000 chips.
 
-    system = GPSL1()
+    signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
     code_frequency = 1.0230022937236385e6Hz  # Actual value from tracking crash
     start_phase = 14113.513288791713  # Large value that caused overflow
@@ -307,7 +307,7 @@ end
     # This should not throw a BoundsError
     @test_nowarn gen_code!(
         sampled_code,
-        system,
+        signal,
         1,
         sampling_freq,
         code_frequency,
@@ -318,15 +318,15 @@ end
     # Verify the result is correct by comparing with BigFloat reference implementation
     phase = (start_index_shift:start_index_shift+length(sampled_code)-1) *
             BigFloat(code_frequency / sampling_freq) .+ BigFloat(start_phase)
-    @test sampled_code == get_code.(system, phase, 1)
+    @test sampled_code == get_code.(signal, phase, 1)
 end
 
 @testset "Code generation with negative start_phase (overflow bug fix)" begin
     # Bug: Negative start_phase also causes integer overflow in fixed-point arithmetic.
 
-    system = GPSL1()
+    signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
-    code_frequency = get_code_frequency(system) + 4000Hz * get_code_center_frequency_ratio(system)
+    code_frequency = get_code_frequency(signal) + 4000Hz * get_code_center_frequency_ratio(signal)
     start_phase = -1000.0  # Negative value that caused overflow
     start_index_shift = 0
 
@@ -335,7 +335,7 @@ end
     # This should not throw a BoundsError
     @test_nowarn gen_code!(
         sampled_code,
-        system,
+        signal,
         1,
         sampling_freq,
         code_frequency,
@@ -346,5 +346,5 @@ end
     # Verify the result is correct by comparing with BigFloat reference implementation
     phase = (start_index_shift:start_index_shift+length(sampled_code)-1) *
             BigFloat(code_frequency / sampling_freq) .+ BigFloat(start_phase)
-    @test sampled_code == get_code.(system, phase, 1)
+    @test sampled_code == get_code.(signal, phase, 1)
 end

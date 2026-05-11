@@ -10,17 +10,17 @@ These functions exploit the fact that consecutive samples often map to the same 
 using GNSSSignals
 using Unitful: Hz, kHz, MHz
 
-gpsl1 = GPSL1()
+gpsl1ca = GPSL1CA()
 prn = 1
 sampling_frequency = 4MHz
 num_samples = 4000  # 1 ms at 4 MHz
 
 # Allocating version
-sampled_code = gen_code(num_samples, gpsl1, prn, sampling_frequency)
+sampled_code = gen_code(num_samples, gpsl1ca, prn, sampling_frequency)
 
 # In-place version (more efficient for repeated calls)
 buffer = zeros(Int16, num_samples)
-gen_code!(buffer, gpsl1, prn, sampling_frequency)
+gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
 ```
 
 ### With Doppler Shift
@@ -31,17 +31,17 @@ To generate code with a Doppler-shifted code frequency:
 using GNSSSignals
 using Unitful: Hz, MHz
 
-gpsl1 = GPSL1()
+gpsl1ca = GPSL1CA()
 prn = 1
 sampling_frequency = 4MHz
 carrier_doppler = 1000Hz
 
 # Calculate code Doppler from carrier Doppler
-code_doppler = carrier_doppler * get_code_center_frequency_ratio(gpsl1)
-code_frequency = get_code_frequency(gpsl1) + code_doppler
+code_doppler = carrier_doppler * get_code_center_frequency_ratio(gpsl1ca)
+code_frequency = get_code_frequency(gpsl1ca) + code_doppler
 
 # Generate Doppler-shifted code
-sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, code_frequency)
+sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, code_frequency)
 ```
 
 ### With Phase Offset
@@ -52,50 +52,69 @@ You can specify a starting code phase:
 start_phase = 100.5  # Start at chip 100.5
 prn = 1
 sampling_frequency = 4MHz
-sampled_code = gen_code(4000, gpsl1, prn, sampling_frequency, get_code_frequency(gpsl1), start_phase)
+sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, get_code_frequency(gpsl1ca), start_phase)
 ```
 
-## Working with Different GNSS Systems
+## Working with Different GNSS Signals
 
-### GPS L1
+### GPS L1 C/A
 
-GPS L1 uses BPSK modulation with a 1023-chip C/A code:
+GPS L1 C/A uses BPSK modulation with a 1023-chip C/A code:
 
 ```julia
-gpsl1 = GPSL1()
-get_code_length(gpsl1)           # 1023
-get_center_frequency(gpsl1)      # 1575420000 Hz
-get_code_frequency(gpsl1)        # 1023000 Hz
-get_secondary_code_length(gpsl1) # 1 (no secondary code)
-get_modulation(gpsl1)            # LOC()
+gpsl1ca = GPSL1CA()
+get_code_length(gpsl1ca)           # 1023
+get_band(gpsl1ca)                  # L1()
+get_center_frequency(gpsl1ca)      # 1575420000 Hz
+get_code_frequency(gpsl1ca)        # 1023000 Hz
+get_secondary_code_length(gpsl1ca) # 1 (no secondary code)
+get_modulation(gpsl1ca)            # LOC()
+get_signal_name(gpsl1ca)           # "GPS L1 C/A"
 ```
 
-### GPS L5
+### GPS L5-I
 
-GPS L5 uses BPSK modulation with a 10230-chip code and 10-bit Neuman-Hofman secondary code:
+GPS L5-I (the data-carrying component of GPS L5) uses BPSK modulation with a 10230-chip code and a 10-bit Neuman-Hofman secondary code:
 
 ```julia
-gpsl5 = GPSL5()
-get_code_length(gpsl5)           # 10230
-get_center_frequency(gpsl5)      # 1176450000 Hz
-get_code_frequency(gpsl5)        # 10230000 Hz
-get_secondary_code_length(gpsl5) # 10
-get_secondary_code(gpsl5)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
+gpsl5i = GPSL5I()
+get_code_length(gpsl5i)           # 10230
+get_band(gpsl5i)                  # L5()
+get_center_frequency(gpsl5i)      # 1176450000 Hz
+get_code_frequency(gpsl5i)        # 10230000 Hz
+get_secondary_code_length(gpsl5i) # 10
+get_secondary_code(gpsl5i)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 ```
 
 ### Galileo E1B
 
-Galileo E1B uses CBOC(6,1,1/11) modulation:
+Galileo E1B (the data-carrying component of Galileo E1 OS) uses CBOC(6,1,1/11) modulation. It is transmitted on the same RF carrier as GPS L1 C/A — [`get_band`](@ref) returns [`L1`](@ref GNSSSignals.L1) for both:
 
 ```julia
 gal_e1b = GalileoE1B()
 get_code_length(gal_e1b)         # 4092
+get_band(gal_e1b)                # L1()
 get_center_frequency(gal_e1b)    # 1575420000 Hz
 get_code_frequency(gal_e1b)      # 1023000 Hz
 get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 ```
 
 Note that due to CBOC modulation, Galileo E1B code values are floating-point rather than integer.
+
+## Bands
+
+A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two signals with the same band can be driven by a single carrier NCO in a receiver — that is the architectural reason this abstraction exists.
+
+```julia
+get_band(GPSL1CA())            # L1()
+get_band(GalileoE1B())         # L1()
+get_band(GPSL5I())             # L5()
+
+get_center_frequency(L1())     # 1575420000 Hz
+get_center_frequency(L5())     # 1176450000 Hz
+```
+
+Band identity here is by RF frequency, not by ICD label: Galileo E1 returns `L1()` because it shares 1575.42 MHz with GPS L1.
 
 ## Basic Code Access
 
@@ -104,15 +123,15 @@ For accessing individual code values at specific phases (e.g., for analysis or c
 ```julia
 using GNSSSignals
 
-gpsl1 = GPSL1()
+gpsl1ca = GPSL1CA()
 prn = 1
 
 # Get a single code value at phase 0.0 for PRN = prn
-code_value = get_code(gpsl1, 0.0, prn)  # Returns 1 or -1
+code_value = get_code(gpsl1ca, 0.0, prn)  # Returns 1 or -1
 
 # Get a full code period using broadcasting
 code_phases = 0:1022
-full_code = get_code.(gpsl1, code_phases, prn)
+full_code = get_code.(gpsl1ca, code_phases, prn)
 ```
 
 The phase is specified in chips and automatically wraps around the code length.
@@ -125,9 +144,9 @@ The phase is specified in chips and automatically wraps around the code length.
 To get the full code matrix directly:
 
 ```julia
-gpsl1 = GPSL1()
-codes = get_codes(gpsl1)  # Matrix of size (code_length, num_prns)
-size(codes)               # (1023, 37)
+gpsl1ca = GPSL1CA()
+codes = get_codes(gpsl1ca)  # Matrix of size (code_length, num_prns)
+size(codes)                 # (1023, 37)
 ```
 
 Each column represents a different PRN.
@@ -140,8 +159,8 @@ To compute the power spectral density at a given frequency:
 using GNSSSignals
 using Unitful: kHz
 
-gpsl1 = GPSL1()
-psd = get_code_spectrum(gpsl1, 0kHz)  # PSD at DC
+gpsl1ca = GPSL1CA()
+psd = get_code_spectrum(gpsl1ca, 0kHz)  # PSD at DC
 ```
 
 For custom spectrum calculations:
@@ -166,7 +185,7 @@ psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
    num_iterations = 1000
    buffer = zeros(Int16, num_samples)
    for i in 1:num_iterations
-       gen_code!(buffer, gpsl1, prn, sampling_frequency)
+       gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
        # process buffer...
    end
    ```

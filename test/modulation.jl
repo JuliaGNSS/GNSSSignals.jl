@@ -125,19 +125,19 @@ end
 
 @testset "get_code_spectrum for different modulations" begin
     # Test spectrum through get_code_spectrum interface
-    gpsl1 = GPSL1()
-    gpsl5 = GPSL5()
+    gpsl1ca = GPSL1CA()
+    gpsl5i = GPSL5I()
     gal_e1b = GalileoE1B()
 
-    # BPSK systems should have peak at DC
-    @test get_code_spectrum(gpsl1, 0) ≈ 1.0Hz / get_code_frequency(gpsl1)
-    @test get_code_spectrum(gpsl5, 0) ≈ 1.0Hz / get_code_frequency(gpsl5)
+    # BPSK signals should have peak at DC
+    @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_code_frequency(gpsl1ca)
+    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_code_frequency(gpsl5i)
 
     # CBOC has zero at DC
     @test get_code_spectrum(gal_e1b, 0) == 0.0
 
     # All spectra should be non-negative at non-zero frequencies
-    @test get_code_spectrum(gpsl1, 100e3) >= 0
-    @test get_code_spectrum(gpsl5, 100e3) >= 0
+    @test get_code_spectrum(gpsl1ca, 100e3) >= 0
+    @test get_code_spectrum(gpsl5i, 100e3) >= 0
     @test get_code_spectrum(gal_e1b, 100e3) >= 0
 end

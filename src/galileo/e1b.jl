@@ -1,19 +1,54 @@
 """
-    GalileoE1B{C} <: AbstractGNSS{C}
+    GalileoE1B{C} <: AbstractGNSSSignal{C}
 
-Galileo E1B signal type.
+Galileo E1B signal (the data-carrying component of Galileo E1 OS).
 
-Galileo E1B uses CBOC(6,1,1/11) modulation with a 4092 chip code at 1.023 Mcps,
-transmitted on the E1 carrier frequency of 1575.42 MHz.
+CBOC(6,1,1/11) modulation with a 4092-chip code at 1.023 Mcps, transmitted on
+the E1 band — which shares the L1 carrier at 1575.42 MHz, so [`get_band`](@ref)
+returns [`L1`](@ref) here.
+
+# Example
+```julia
+e1b = GalileoE1B()
+get_code_length(e1b)   # 4092
+get_band(e1b)          # L1()
+```
 """
-struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSS{C}
+struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
 end
 
 get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 @inline get_modulation(::GalileoE1B) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 
-get_system_string(s::GalileoE1B) = "GalileoE1B"
+"""
+$(SIGNATURES)
+
+Get the band the signal is transmitted on.
+
+Galileo E1 shares the L1 carrier frequency (1575.42 MHz), so this returns
+[`L1`](@ref) — band identity is by RF, not by ICD label.
+
+# Examples
+```julia-repl
+julia> get_band(GalileoE1B())
+L1()
+```
+"""
+@inline get_band(::GalileoE1B) = L1()
+
+"""
+$(SIGNATURES)
+
+Get the human-readable signal name.
+
+# Examples
+```julia-repl
+julia> get_signal_name(GalileoE1B())
+"Galileo E1B"
+```
+"""
+get_signal_name(::GalileoE1B) = "Galileo E1B"
 
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
@@ -49,7 +84,7 @@ julia> get_code_length(GalileoE1B())
 4092
 ```
 """
-@inline function get_code_length(galileo_e1b::GalileoE1B)
+@inline function get_code_length(::GalileoE1B)
     4092
 end
 
@@ -69,26 +104,8 @@ julia> get_secondary_code(GalileoE1B())
 1
 ```
 """
-@inline function get_secondary_code(galileo_e1b::GalileoE1B)
+@inline function get_secondary_code(::GalileoE1B)
     1
-end
-
-"""
-$(SIGNATURES)
-
-Get the center (carrier) frequency for Galileo E1B.
-
-# Returns
-- `Frequency`: 1575.42 MHz
-
-# Examples
-```julia-repl
-julia> get_center_frequency(GalileoE1B())
-1575420000 Hz
-```
-"""
-@inline function get_center_frequency(galileo_e1b::GalileoE1B)
-    1_575_420_000Hz
 end
 
 """
@@ -105,7 +122,7 @@ julia> get_code_frequency(GalileoE1B())
 1023000 Hz
 ```
 """
-@inline function get_code_frequency(galileo_e1b::GalileoE1B)
+@inline function get_code_frequency(::GalileoE1B)
     1023_000Hz
 end
 
@@ -123,6 +140,6 @@ julia> get_data_frequency(GalileoE1B())
 250 Hz
 ```
 """
-@inline function get_data_frequency(galileo_e1b::GalileoE1B)
+@inline function get_data_frequency(::GalileoE1B)
     250Hz
 end

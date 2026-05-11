@@ -9,8 +9,8 @@ A Julia package for generating GNSS spreading codes and signals.
 
 ## Features
 
-* GPS L1 (BPSK)
-* GPS L5 (BPSK with Neuman-Hofman secondary code)
+* GPS L1 C/A (BPSK)
+* GPS L5-I (BPSK with Neuman-Hofman secondary code)
 * Galileo E1B (CBOC modulation)
 * Highly optimized code generation using fixed-point arithmetic for real-time signal processing
 
@@ -27,15 +27,15 @@ pkg> add GNSSSignals
 using GNSSSignals
 using Unitful: MHz
 
-gpsl1 = GPSL1()
+gpsl1ca = GPSL1CA()
 prn = 1
 
 # Generate 1 ms of sampled code at 4 MHz
-sampled_code = gen_code(4000, gpsl1, prn, 4MHz)
+sampled_code = gen_code(4000, gpsl1ca, prn, 4MHz)
 
 # For repeated calls, use the in-place version
 buffer = zeros(Int16, 4000)
-gen_code!(buffer, gpsl1, prn, 4MHz)
+gen_code!(buffer, gpsl1ca, prn, 4MHz)
 ```
 
 ## Documentation

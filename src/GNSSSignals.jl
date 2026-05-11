@@ -1,6 +1,5 @@
 module GNSSSignals
 
-using Core: toInt16
 using DocStringExtensions
 using FixedPointNumbers
 using Statistics
@@ -8,9 +7,12 @@ using Unitful: Frequency, Hz, upreferred
 
 import Base.show
 
-export AbstractGNSS,
-    GPSL1,
-    GPSL5,
+export AbstractGNSSSignal,
+    Band,
+    L1,
+    L5,
+    GPSL1CA,
+    GPSL5I,
     GalileoE1B,
     gen_code!,
     gen_code,
@@ -25,24 +27,34 @@ export AbstractGNSS,
     get_data_frequency,
     get_code_center_frequency_ratio,
     get_code_spectrum,
-    get_system_string,
+    get_band,
+    get_signal_name,
     min_bits_for_code_length,
     get_modulation,
     get_secondary_code
 
 """
-    AbstractGNSS{C}
+    AbstractGNSSSignal{C}
 
-Abstract supertype for all GNSS system types.
+Abstract supertype for a GNSS signal.
 
-Concrete subtypes include [`GPSL1`](@ref), [`GPSL5`](@ref), and [`GalileoE1B`](@ref).
-The type parameter `C` represents the code matrix type.
+A *signal* here means a specific transmission such as GPS L1 C/A, GPS L5-I,
+or Galileo E1B — the thing with one spreading code, one modulation, one
+nominal chip rate, and one RF carrier. This is the level the SIS-ICDs
+define: e.g. "GPS L1 C/A Signal Specification".
+
+Concrete subtypes include [`GPSL1CA`](@ref), [`GPSL5I`](@ref), and
+[`GalileoE1B`](@ref). The type parameter `C` is the code matrix type.
+
+Signals that share an RF carrier expose the same [`Band`](@ref) via
+[`get_band`](@ref); this is what lets a receiver share a carrier NCO
+between them (e.g. GPS L1 C/A and Galileo E1B both on 1575.42 MHz).
 """
-abstract type AbstractGNSS{C} end
+abstract type AbstractGNSSSignal{C} end
 
-Base.Broadcast.broadcastable(system::AbstractGNSS) = Ref(system)
+Base.Broadcast.broadcastable(s::AbstractGNSSSignal) = Ref(s)
 
-Base.show(io::IO, x::AbstractGNSS) = print(io, "$(typeof(x))()")
+Base.show(io::IO, x::AbstractGNSSSignal) = print(io, "$(typeof(x))()")
 
 """
 $(SIGNATURES)
@@ -63,7 +75,7 @@ by `code_length` and the number of PRNs by `num_prns`.
 
 # Examples
 ```julia-repl
-julia> read_in_codes(Int8, "/data/gpsl1codes.bin", 32, 1023)
+julia> read_in_codes(Int8, "/data/gpsl1cacodes.bin", 32, 1023)
 ```
 """
 function read_in_codes(type, filename, num_prns, code_length)
@@ -73,8 +85,9 @@ function read_in_codes(type, filename, num_prns, code_length)
 end
 
 include("modulation.jl")
-include("gps_l1.jl")
-include("gps_l5.jl")
-include("galileo_e1b.jl")
+include("bands.jl")
+include("gps/l1ca.jl")
+include("gps/l5i.jl")
+include("galileo/e1b.jl")
 include("common.jl")
 end
