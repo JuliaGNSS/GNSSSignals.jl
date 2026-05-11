@@ -22,18 +22,6 @@ function get_codes(gnss::AbstractGNSSSignal)
     gnss.codes
 end
 
-function calculate_num_inner_iterations(
-    gnss::AbstractGNSSSignal,
-    maximum_expected_sampling_frequency::Val{MESF},
-    maximum_expected_doppler::Val{MED} = Val(8000Hz),
-) where {MESF,MED}
-    ceil(
-        Int,
-        MESF / get_code_factor(gnss) /
-        (get_code_frequency(gnss) - MED * get_code_center_frequency_ratio(gnss)),
-    )
-end
-
 # Maximum num_inner_iterations for which we generate a Val-specialized variant.
 # Covers oversampling ratios up to 64, which is enough for virtually all GNSS
 # receiver sampling rates. Above this, a @simd fallback is used; it remains
@@ -105,57 +93,6 @@ function gen_code!(
     sampled_code
 end
 
-# TODO(v2): remove these Val-accepting shims and the matching sample_code!
-# methods below. Val{MESF}/Val{MED} are no longer needed — the algorithm
-# dispatches internally on the runtime-computed inner-loop count. Tracked in
-# https://github.com/JuliaGNSS/GNSSSignals.jl/issues/53.
-function gen_code!(
-    sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
-    prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase,
-    start_index_shift::Integer,
-    ::Val,
-    PHASET = Int32,
-)
-    gen_code!(
-        sampled_code,
-        gnss,
-        prn,
-        sampling_frequency,
-        code_frequency,
-        start_phase,
-        start_index_shift,
-        PHASET,
-    )
-end
-
-function gen_code!(
-    sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
-    prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase,
-    start_index_shift::Integer,
-    ::Val,
-    ::Val,
-    PHASET = Int32,
-)
-    gen_code!(
-        sampled_code,
-        gnss,
-        prn,
-        sampling_frequency,
-        code_frequency,
-        start_phase,
-        start_index_shift,
-        PHASET,
-    )
-end
-
 function sample_code!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSSSignal,
@@ -210,34 +147,6 @@ function sample_code!(
         num_inner_iterations,
     )
     return sampled_code
-end
-
-# TODO(v2): remove these Val-accepting shims — see gen_code! above for rationale.
-function sample_code!(
-    sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
-    prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase,
-    start_index_shift::Integer,
-    ::Val,
-)
-    sample_code!(sampled_code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index_shift)
-end
-
-function sample_code!(
-    sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
-    prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase,
-    start_index_shift::Integer,
-    ::Val,
-    ::Val,
-)
-    sample_code!(sampled_code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index_shift)
 end
 
 # Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
