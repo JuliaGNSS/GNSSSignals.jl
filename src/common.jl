@@ -203,6 +203,28 @@ function sample_code!(
     return sampled_code
 end
 
+"""
+$(SIGNATURES)
+
+Select which code matrix the inner store loop should read from, given
+the current primary-period's secondary-chip value.
+
+Returns a `(codes, multiplier)` tuple. The inner loop reads
+`codes[i, prn] * multiplier` per chip.
+
+The default implementation returns `(gnss.codes, sec_val)` — the inner
+loop multiplies each chip by the secondary value as usual. Per-signal
+specializations can pre-negate the codes matrix at construction time
+and return `(positive_or_negated_codes, true)`; the `* true` then
+elides at compile time, hoisting the per-chip multiply out of the hot
+loop. See [`GPSL5I`](@ref) for an example.
+
+This is an internal helper for the `sample_code_worker!` /
+`sample_code_worker_generic!` hot path. `get_code` does its own
+straightforward lookup and does not use this dispatch.
+"""
+@inline _select_codes_for(gnss::AbstractGNSSSignal, sec_val) = (gnss.codes, sec_val)
+
 # Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
 # gets fully unrolled and vectorized by LLVM.
 #
@@ -241,8 +263,14 @@ function sample_code_worker!(
         processed_code_samples += length(iterations)
         sec_val = secondary_value(
             sec, prn, mod(secondary_start_index + k, secondary_length))
+        # `_select_codes_for` lets signals with a ±1 SharedSecondaryCode
+        # swap between a precomputed positive/negated code matrix here,
+        # hoisting the per-chip multiply out of the inner loop. The
+        # default returns (gnss.codes, sec_val), preserving the original
+        # behaviour for signals without that specialization.
+        codes_view, code_mul = _select_codes_for(gnss, sec_val)
         for i in iterations
-            next_code = gnss.codes[i, prn] * sec_val
+            next_code = codes_view[i, prn] * code_mul
             for j = 1:NUM_INNER
                 sampled_code[prev+j] = next_code
             end
@@ -262,7 +290,8 @@ function sample_code_worker!(
         next_code_idx = mod(absolute_chip, primary_length) + 1
         sec_idx = div(absolute_chip, primary_length)
         sec_val = secondary_value(sec, prn, sec_idx)
-        next_code = gnss.codes[next_code_idx, prn] * sec_val
+        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        next_code = codes_view[next_code_idx, prn] * code_mul
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
         num_iterations = min(next_prev - prev, length(sampled_code) - prev)
@@ -307,8 +336,9 @@ function sample_code_worker_generic!(
         processed_code_samples += length(iterations)
         sec_val = secondary_value(
             sec, prn, mod(secondary_start_index + k, secondary_length))
+        codes_view, code_mul = _select_codes_for(gnss, sec_val)
         for i in iterations
-            next_code = gnss.codes[i, prn] * sec_val
+            next_code = codes_view[i, prn] * code_mul
             @simd ivdep for j = 1:num_inner_iterations
                 sampled_code[prev+j] = next_code
             end
@@ -324,7 +354,8 @@ function sample_code_worker_generic!(
         next_code_idx = mod(absolute_chip, primary_length) + 1
         sec_idx = div(absolute_chip, primary_length)
         sec_val = secondary_value(sec, prn, sec_idx)
-        next_code = gnss.codes[next_code_idx, prn] * sec_val
+        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        next_code = codes_view[next_code_idx, prn] * code_mul
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
         num_iterations = min(next_prev - prev, length(sampled_code) - prev)
