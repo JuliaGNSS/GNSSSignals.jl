@@ -24,4 +24,11 @@
     @test get_code_spectrum(galileo_e1b, -2 * get_code_frequency(galileo_e1b)) == 0.0
 
     @test get_code_center_frequency_ratio(galileo_e1b) ≈ 1 / 1540
+
+    # `get_code_type` for CBOC signals comes from
+    # `promote_type(eltype(codes), typeof(modulation.boc1_power))`. Pin
+    # it to `Float32` so a future widening of `boc1_power` to `Float64`
+    # (or eltype change) is caught here rather than silently flipping
+    # every `gen_code!` buffer/allocation downstream.
+    @test get_code_type(galileo_e1b) === Float32
 end
