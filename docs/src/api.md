@@ -31,6 +31,7 @@ GNSSSignals.PerPRNSecondaryCode
 
 ```@docs
 GNSSSignals.LOC
+GNSSSignals.BOC
 GNSSSignals.BOCsin
 GNSSSignals.BOCcos
 GNSSSignals.CBOC
