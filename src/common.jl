@@ -185,9 +185,14 @@ function sample_code!(
     # we hold back `num_inner_iterations - real_num_inner` chips for the
     # tail to handle.
     real_num_inner = ceil(Int, frequency_ratio)
+    # `real_num_inner == 9` is an empirical outlier: pad=16 costs ~19 %
+    # vs no padding (pad=12 also hurts). Adjacent values 10..15 all
+    # benefit from pad=16. Likely a quirk in how LLVM unrolls the 9-store
+    # case relative to the 16-store case on x86_64 / AVX2.
     num_inner_iterations =
         real_num_inner <= 4  ? 4  :
         real_num_inner <= 8  ? 8  :
+        real_num_inner == 9  ? 9  :
         real_num_inner <= 16 ? 16 : real_num_inner
     tail_slack = num_inner_iterations - real_num_inner
     num_code_samples_to_iterate = max(0, raw_num_code_samples - tail_slack)
