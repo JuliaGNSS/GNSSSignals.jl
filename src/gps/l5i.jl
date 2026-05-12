@@ -208,8 +208,8 @@ end
 # construction (stored as `negated_codes`) and pick the right matrix
 # once per primary period in the worker, avoiding the per-chip multiply
 # that would otherwise prevent the fused load-broadcast pattern.
-@inline function _select_codes_for(gnss::GPSL5I, sec_val)
-    return sec_val > 0 ? (gnss.codes, true) : (gnss.negated_codes, true)
+@inline function _select_codes_for(signal::GPSL5I, sec_val)
+    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
 end
 
 """

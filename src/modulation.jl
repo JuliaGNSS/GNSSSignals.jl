@@ -57,9 +57,10 @@ end
 """
     LOC()
 
-Legacy/BPSK modulation (no subcarrier).
+Linear Offset Carrier modulation — the BPSK-like baseline with no
+subcarrier, named in contrast to [`BOC`](@ref) (Binary Offset Carrier).
 
-Used for GPS L1 C/A and GPS L5 signals.
+Used for GPS L1 C/A and GPS L5-I.
 """
 struct LOC <: Modulation end
 
@@ -94,13 +95,13 @@ end
 """
 $(SIGNATURES)
 
-Get the element type for code values of a GNSS system.
+Get the element type for code values of a GNSS signal.
 
 Returns the numeric type used to represent code values. For BPSK (LOC) signals,
 this is typically `Int16`. For CBOC signals, this is a floating-point type.
 
 # Arguments
-- `system`: A GNSS system instance
+- `signal`: A GNSS signal instance
 
 # Returns
 - `Type`: The element type for code values
@@ -113,13 +114,13 @@ julia> get_code_type(GalileoE1B())
 Float32
 ```
 """
-get_code_type(system::T) where {T<:AbstractGNSSSignal} = get_code_type(system, get_modulation(T))
+get_code_type(signal::T) where {T<:AbstractGNSSSignal} = get_code_type(signal, get_modulation(T))
 
-get_code_type(system::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation) where {T} = T
-get_code_type(system::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation::CBOC) where {T} =
+get_code_type(signal::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation) where {T} = T
+get_code_type(signal::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation::CBOC) where {T} =
     promote_type(T, typeof(modulation.boc1_power))
 
-get_code_factor(system::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
+get_code_factor(signal::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
 get_code_factor(modulation::LOC) = 1
 get_code_factor(modulation::BOC) = modulation.n
 get_code_factor(modulation::CBOC) = modulation.boc1.n
@@ -127,10 +128,10 @@ get_code_factor(modulation::CBOC) = modulation.boc1.n
 """
 $(SIGNATURES)
 
-Get the modulation type for a GNSS system.
+Get the modulation type for a GNSS signal.
 
 # Arguments
-- `system`: A GNSS system instance or type
+- `signal`: A GNSS signal instance or type
 
 # Returns
 - `Modulation`: The modulation type (`LOC`, `BOCsin`, `BOCcos`, or `CBOC`)
@@ -143,17 +144,17 @@ julia> get_modulation(GalileoE1B())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
-get_modulation(s::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
+get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
 
 """
 $(SIGNATURES)
 
 Get the spectral power density of a GNSS signal at a given frequency.
 
-Computes the power spectral density based on the system's modulation type.
+Computes the power spectral density based on the signal's modulation type.
 
 # Arguments
-- `system`: A GNSS system instance
+- `signal`: A GNSS signal instance
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
@@ -166,22 +167,22 @@ julia> get_code_spectrum(GPSL1CA(), 0kHz)
 9.775171065493646e-7
 ```
 """
-get_code_spectrum(system, f) = get_code_spectrum(get_modulation(system), system, f)
-get_code_spectrum(modulation::LOC, system, f) =
-    get_code_spectrum_BPSK(get_code_frequency(system), f)
-get_code_spectrum(modulation::BOCsin, system, f) = get_code_spectrum_BOCsin(
-    modulation.n * get_code_frequency(system),
-    modulation.m * get_code_frequency(system),
+get_code_spectrum(signal, f) = get_code_spectrum(get_modulation(signal), signal, f)
+get_code_spectrum(modulation::LOC, signal, f) =
+    get_code_spectrum_BPSK(get_code_frequency(signal), f)
+get_code_spectrum(modulation::BOCsin, signal, f) = get_code_spectrum_BOCsin(
+    modulation.n * get_code_frequency(signal),
+    modulation.m * get_code_frequency(signal),
     f,
 )
-get_code_spectrum(modulation::BOCcos, system, f) = get_code_spectrum_BOCcos(
-    modulation.n * get_code_frequency(system),
-    modulation.m * get_code_frequency(system),
+get_code_spectrum(modulation::BOCcos, signal, f) = get_code_spectrum_BOCcos(
+    modulation.n * get_code_frequency(signal),
+    modulation.m * get_code_frequency(signal),
     f,
 )
-function get_code_spectrum(modulation::CBOC, system, f)
-    get_code_spectrum(modulation.boc1, system, f) * modulation.boc1_power +
-    get_code_spectrum(modulation.boc2, system, f) * (1 - modulation.boc1_power)
+function get_code_spectrum(modulation::CBOC, signal, f)
+    get_code_spectrum(modulation.boc1, signal, f) * modulation.boc1_power +
+    get_code_spectrum(modulation.boc2, signal, f) * (1 - modulation.boc1_power)
 end
 
 function get_subcarrier_code(modulation::BOCsin, phase::T) where {T<:Real}
@@ -194,7 +195,7 @@ function get_subcarrier_code(modulation::BOCcos, phase::T) where {T<:Real}
 end
 
 # The amplitude is the sqrt of the power see
-# https://galileognss.eu/wp-content/uploads/2015/12/Galileo_OS_SIS_ICD_v1.2.pdf
+# https://galileosignal.eu/wp-content/uploads/2015/12/Galileo_OS_SIS_ICD_v1.2.pdf
 # Chapter 2.3.3. E1 Signal
 function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
     get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
@@ -214,7 +215,7 @@ Returns the spreading code value (including subcarrier modulation for BOC signal
 at the specified code phase. The phase is automatically wrapped to the code length.
 
 # Arguments
-- `system`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
+- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `phase`: Code phase in chips
 - `prn`: PRN number of the satellite
 
@@ -230,8 +231,8 @@ julia> get_code(GPSL1CA(), 1200.3, 1)
 julia> get_code.(GPSL1CA(), 0:1022, 1)  # Full code period
 ```
 """
-function get_code(system::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
-    get_code(get_modulation(T), system, phase, prn)
+function get_code(signal::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
+    get_code(get_modulation(T), signal, phase, prn)
 end
 
 """
@@ -241,15 +242,15 @@ Get code value for BOC-modulated signals at a given phase.
 
 Internal method that handles BOC modulation (sine or cosine phased).
 """
-function get_code(modulation::BOC, system::AbstractGNSSSignal, phase, prn::Integer)
+function get_code(modulation::BOC, signal::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(system.codes, 1)
-    sec = get_secondary_code(system)
+    primary_length = size(signal.codes, 1)
+    sec = get_secondary_code(signal)
     sec_len = secondary_code_length(sec)
     absolute_chip = mod(floored_phase, primary_length * sec_len)
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
-    get_code_at_index(system, chip_idx, prn) *
+    get_code_at_index(signal, chip_idx, prn) *
     secondary_value(sec, prn, sec_idx) *
     get_subcarrier_code(modulation, phase)
 end
@@ -261,23 +262,23 @@ Get code value for LOC (BPSK) signals at a given phase.
 
 Internal method that handles legacy/BPSK modulation without subcarrier.
 """
-function get_code(modulation::LOC, system::AbstractGNSSSignal, phase, prn::Integer)
+function get_code(modulation::LOC, signal::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(system.codes, 1)
-    sec = get_secondary_code(system)
+    primary_length = size(signal.codes, 1)
+    sec = get_secondary_code(signal)
     sec_len = secondary_code_length(sec)
     absolute_chip = mod(floored_phase, primary_length * sec_len)
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
-    get_code_at_index(system, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
 end
 
 Base.@propagate_inbounds function get_code_at_index(
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     phase::Integer,
     prn::Integer,
 )
-    gnss.codes[phase+1, prn]
+    signal.codes[phase+1, prn]
 end
 
 """
@@ -292,7 +293,7 @@ The phase must be within `[0, code_length * secondary_code_length)`.
     Using phases outside the valid range results in undefined behavior.
 
 # Arguments
-- `system`: A GNSS system instance
+- `signal`: A GNSS signal instance
 - `phase`: Code phase in chips (must be within valid range)
 - `prn`: PRN number of the satellite
 
@@ -305,11 +306,11 @@ julia> get_code_unsafe(GPSL1CA(), 500.0, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
-    system::S,
+    signal::S,
     phase,
     prn::Integer,
 ) where {S<:AbstractGNSSSignal}
-    get_code_unsafe(get_modulation(S), system, phase, prn)
+    get_code_unsafe(get_modulation(S), signal, phase, prn)
 end
 
 """
@@ -322,16 +323,16 @@ Internal method for BOC modulation without phase wrapping. Assumes
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::BOC,
-    system::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     phase,
     prn::Integer,
 )
     floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(system.codes, 1)
-    sec = get_secondary_code(system)
+    primary_length = size(signal.codes, 1)
+    sec = get_secondary_code(signal)
     chip_idx = mod(floored_phase, primary_length)
     sec_idx = div(floored_phase, primary_length)
-    get_code_at_index(system, chip_idx, prn) *
+    get_code_at_index(signal, chip_idx, prn) *
     secondary_value(sec, prn, sec_idx) *
     get_subcarrier_code(modulation, phase)
 end
@@ -346,14 +347,14 @@ Internal method for BPSK modulation without phase wrapping. Assumes
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::LOC,
-    system::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     phase,
     prn::Integer,
 )
     floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(system.codes, 1)
-    sec = get_secondary_code(system)
+    primary_length = size(signal.codes, 1)
+    sec = get_secondary_code(signal)
     chip_idx = mod(floored_phase, primary_length)
     sec_idx = div(floored_phase, primary_length)
-    get_code_at_index(system, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
 end
