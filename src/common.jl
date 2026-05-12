@@ -28,15 +28,29 @@ $(SIGNATURES)
 Widen a primary-code matrix from its on-disk / LFSR-generated `Int8`
 representation to `Int16`.
 
-Chip values are ±1 and would fit in `Int8`, but storing as `Int16`
-substantially improves `gen_code!` performance: the inner store loop
-emits a clean `vpbroadcastw` + `vmovq` SIMD pattern on Int16, while
-Int8 storage triggers an `shl 8 + or` byte-packing antipattern (or a
-slower `movsx` load chain when the buffer is Int16). Benchmarks on
-x86_64 / AVX2 show the Int8 matrix is 15-25% slower than Int16.
+Chip values are ±1 and would fit in `Int8`, but on x86_64 / AVX2 hardware
+storing as `Int16` is materially faster for `gen_code!`: the inner store
+loop emits a clean `vpbroadcastw` + `vmovq` pattern, while Int8 storage
+triggers an `shl 8 + or` byte-packing antipattern (3 extra μops per chip)
+when the buffer is also `Int8`. Storing Int8 chips into an Int16 buffer
+recovers the clean codegen but still loses ~14 % because the `movsx`
+load chain runs slower than `movzx`.
 
-Memory cost is small in absolute terms — the largest current matrix
-(GPS L5-I, 10230 × 37) is 757 KB at Int16.
+Probed alternatives that did **not** recover Int8 perf on AVX2:
+- `@simd ivdep` annotation on the inner store loop (no measurable
+  effect — LLVM has already made its codegen choice for `Val`-known
+  fixed-trip loops)
+- `unsafe_store!` of a replicated `UInt32` to bypass LLVM's
+  pattern-matcher (helped Int8/Int8 by ~5 % but still ~12 % slower
+  than Int16/Int16, and a regression for Int16/Int16)
+- `SIMD.jl` `Vec{N,T}` broadcast-store (slower at every NUM_INNER
+  measured because the abstraction forces an xmm materialization for
+  small N)
+
+Memory cost of widening is small in absolute terms — the largest
+current matrix (GPS L5-I, 10230 × 37) is 757 KB at Int16. The trade-off
+may invert on AVX-512 or non-x86 hardware; revisit if you have access
+to such platforms.
 """
 widen_codes_to_storage(codes::AbstractMatrix) = Int16.(codes)
 
