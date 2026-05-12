@@ -83,19 +83,19 @@ $(SIGNATURES)
 
 Get the secondary code for GPS L1 C/A.
 
-GPS L1 C/A has no secondary code, so this returns 1.
+GPS L1 C/A has no secondary code.
 
 # Returns
-- `Int`: 1 (no secondary code)
+- [`NoSecondaryCode`](@ref)
 
 # Examples
 ```julia-repl
 julia> get_secondary_code(GPSL1CA())
-1
+NoSecondaryCode()
 ```
 """
 @inline function get_secondary_code(::GPSL1CA)
-    1
+    NoSecondaryCode()
 end
 
 """

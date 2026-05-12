@@ -17,6 +17,7 @@ end
     @test @inferred(get_center_frequency(gpsl5i)) == 1.17645e9Hz
     @test @inferred(get_code_length(gpsl5i)) == 10230
     @test @inferred(get_secondary_code_length(gpsl5i)) == 10
+    @test @inferred(get_secondary_code(gpsl5i)) isa SharedSecondaryCode{10}
     @test @inferred(get_code(gpsl5i, 0, 1)) == 1
     @test @inferred(get_code(gpsl5i, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5i, 0.0, 1)) == 1

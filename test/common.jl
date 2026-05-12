@@ -23,23 +23,27 @@ end
     @test get_signal_name(GalileoE1B()) == "Galileo E1B"
 end
 
-@testset "get_secondary_code with phase" begin
-    gpsl5i = GPSL5I()
-    # GPS L5-I has a 10-element secondary code: (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
-    @test get_secondary_code(gpsl5i, 0.0) == 1      # First period
-    @test get_secondary_code(gpsl5i, 10230.0) == 1  # Second period
-    @test get_secondary_code(gpsl5i, 40920.0) == -1 # Fifth period (index 4)
-    @test get_secondary_code(gpsl5i, 51150.0) == -1 # Sixth period (index 5)
+@testset "SecondaryCode dispatch" begin
+    # L5-I has a SharedSecondaryCode of length 10 (NH10).
+    gpsl5i_sec = get_secondary_code(GPSL5I())
+    @test gpsl5i_sec isa SharedSecondaryCode{10}
+    @test GNSSSignals.secondary_code_length(gpsl5i_sec) == 10
+    # NH10 = (1, 1, 1, 1, -1, -1, 1, -1, 1, -1); prn is ignored for SharedSecondaryCode.
+    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 0) == 1
+    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 4) == -1
+    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 9) == -1
+    # Index wraps modulo length.
+    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 10) == 1
 
-    # GPS L1 C/A has no secondary code (returns 1)
-    gpsl1ca = GPSL1CA()
-    @test get_secondary_code(gpsl1ca, 0.0) == 1
-    @test get_secondary_code(gpsl1ca, 1000.0) == 1
-
-    # Galileo E1B has no secondary code (returns 1)
-    gal_e1b = GalileoE1B()
-    @test get_secondary_code(gal_e1b, 0.0) == 1
-    @test get_secondary_code(gal_e1b, 5000.0) == 1
+    # L1 C/A and E1B have NoSecondaryCode; secondary_value returns `true`
+    # (so multiplication is a true no-op preserving eltype).
+    for sig in (GPSL1CA(), GalileoE1B())
+        sec = get_secondary_code(sig)
+        @test sec isa NoSecondaryCode
+        @test GNSSSignals.secondary_code_length(sec) == 1
+        @test GNSSSignals.secondary_value(sec, 1, 0) === true
+        @test GNSSSignals.secondary_value(sec, 7, 42) === true
+    end
 end
 
 @testset "Base.show for GNSS signals" begin

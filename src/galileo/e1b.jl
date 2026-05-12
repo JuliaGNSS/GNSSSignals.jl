@@ -93,19 +93,20 @@ $(SIGNATURES)
 
 Get the secondary code for Galileo E1B.
 
-Galileo E1B has no secondary code, so this returns 1.
+Galileo E1B has no secondary code (it is the data component; the secondary
+code lives on the E1C pilot).
 
 # Returns
-- `Int`: 1 (no secondary code)
+- [`NoSecondaryCode`](@ref)
 
 # Examples
 ```julia-repl
 julia> get_secondary_code(GalileoE1B())
-1
+NoSecondaryCode()
 ```
 """
 @inline function get_secondary_code(::GalileoE1B)
-    1
+    NoSecondaryCode()
 end
 
 """

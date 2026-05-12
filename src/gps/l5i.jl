@@ -162,37 +162,33 @@ function gen_l5i_code(initial_xb_code_states)
     return satellite_code
 end
 
-"""
-$(SIGNATURES)
-
-Generate 10 periods of the PRN L5-I code, with `initial_xb_code_states`, each ⊻ with one bit
-of the 10bit Neuman-Hofman sequence 0000110101.
-"""
-function add_neuman_hofman_code(l5_code, neuman_hofman_code)
-    vec(l5_code .* neuman_hofman_code')
-end
-
-function get_neuman_hofman_code()
-    [1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
-end
-
 function read_gpsl5i_codes()
-    mapreduce(
-        sat -> add_neuman_hofman_code(
-            gen_l5i_code(INITIAL_XB_CODE_STATES[sat]),
-            get_neuman_hofman_code(),
-        ),
-        hcat,
-        1:37,
-    )
+    mapreduce(sat -> gen_l5i_code(INITIAL_XB_CODE_STATES[sat]), hcat, 1:37)
 end
 
 function GPSL5I()
     GPSL5I(Int16.(read_gpsl5i_codes()))
 end
 
-function get_secondary_code(::GPSL5I)
-    (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
+"""
+$(SIGNATURES)
+
+Get the secondary (Neuman-Hofman NH10) code for GPS L5-I.
+
+NH10 is shared across all PRNs: every primary code period (1 ms) is XOR'd
+with one chip of the 10-bit sequence `0000110101`, mapped to `±1`.
+
+# Returns
+- [`SharedSecondaryCode`](@ref) of length 10
+
+# Examples
+```julia-repl
+julia> get_secondary_code(GPSL5I())
+SharedSecondaryCode{10, Int8}((1, 1, 1, 1, -1, -1, 1, -1, 1, -1))
+```
+"""
+@inline function get_secondary_code(::GPSL5I)
+    SharedSecondaryCode((Int8(1), Int8(1), Int8(1), Int8(1), Int8(-1), Int8(-1), Int8(1), Int8(-1), Int8(1), Int8(-1)))
 end
 
 """
