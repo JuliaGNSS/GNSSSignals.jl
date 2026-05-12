@@ -171,17 +171,24 @@ function sample_code!(
         floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
     raw_num_code_samples =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
-    # Pad the inner store loop to at least 4 stores per chip. LLVM
-    # vectorizes the inner store into a single 8-byte (or wider) SIMD
-    # write at length 4, significantly faster than 2-3 scalar word-stores
-    # even though we write a few "extra" slots per chip — the next chip's
-    # writes overwrite the extras (overwrite-tolerance).
+    # Pad the inner store loop to the smallest power of two ≥ max(real, 4)
+    # up to 16. LLVM emits a single wide SIMD store at lengths 4 / 8 / 16
+    # (8B / 16B / 32B respectively for Int16 elements), which is faster
+    # than the irregular unrolled stores LLVM picks for non-power-of-two
+    # lengths even though we write a few "extra" slots per chip. The next
+    # chip's writes overwrite the extras (overwrite-tolerance).
+    #
+    # Above real=16, no padding: the asymptotic store-bandwidth-limited
+    # regime is reached and wider pads would just add wasted writes.
     #
     # The very last main-loop chip's extras must fit in the buffer, so
     # we hold back `num_inner_iterations - real_num_inner` chips for the
     # tail to handle.
     real_num_inner = ceil(Int, frequency_ratio)
-    num_inner_iterations = max(real_num_inner, 4)
+    num_inner_iterations =
+        real_num_inner <= 4  ? 4  :
+        real_num_inner <= 8  ? 8  :
+        real_num_inner <= 16 ? 16 : real_num_inner
     tail_slack = num_inner_iterations - real_num_inner
     num_code_samples_to_iterate = max(0, raw_num_code_samples - tail_slack)
     dispatch_sample_code_worker!(
