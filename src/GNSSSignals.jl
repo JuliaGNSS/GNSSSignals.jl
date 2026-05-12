@@ -31,7 +31,11 @@ export AbstractGNSSSignal,
     get_signal_name,
     min_bits_for_code_length,
     get_modulation,
-    get_secondary_code
+    get_secondary_code,
+    SecondaryCode,
+    NoSecondaryCode,
+    SharedSecondaryCode,
+    PerPRNSecondaryCode
 
 """
     AbstractGNSSSignal{C}
@@ -86,6 +90,7 @@ end
 
 include("modulation.jl")
 include("bands.jl")
+include("secondary_codes.jl")
 include("gps/l1ca.jl")
 include("gps/l5i.jl")
 include("galileo/e1b.jl")

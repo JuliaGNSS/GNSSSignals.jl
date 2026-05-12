@@ -243,8 +243,14 @@ Internal method that handles BOC modulation (sine or cosine phased).
 """
 function get_code(modulation::BOC, system::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    modded_floored_phase = mod(floored_phase, size(system.codes, 1))
-    get_code_at_index(system, modded_floored_phase, prn) *
+    primary_length = size(system.codes, 1)
+    sec = get_secondary_code(system)
+    sec_len = secondary_code_length(sec)
+    absolute_chip = mod(floored_phase, primary_length * sec_len)
+    chip_idx = mod(absolute_chip, primary_length)
+    sec_idx = div(absolute_chip, primary_length)
+    get_code_at_index(system, chip_idx, prn) *
+    secondary_value(sec, prn, sec_idx) *
     get_subcarrier_code(modulation, phase)
 end
 
@@ -257,8 +263,13 @@ Internal method that handles legacy/BPSK modulation without subcarrier.
 """
 function get_code(modulation::LOC, system::AbstractGNSSSignal, phase, prn::Integer)
     floored_phase = get_floored_phase(modulation, phase)
-    modded_floored_phase = mod(floored_phase, size(system.codes, 1))
-    get_code_at_index(system, modded_floored_phase, prn)
+    primary_length = size(system.codes, 1)
+    sec = get_secondary_code(system)
+    sec_len = secondary_code_length(sec)
+    absolute_chip = mod(floored_phase, primary_length * sec_len)
+    chip_idx = mod(absolute_chip, primary_length)
+    sec_idx = div(absolute_chip, primary_length)
+    get_code_at_index(system, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
 end
 
 Base.@propagate_inbounds function get_code_at_index(
@@ -306,7 +317,8 @@ $(SIGNATURES)
 
 Get code value for BOC signals without bounds checking.
 
-Internal method for BOC modulation without phase wrapping.
+Internal method for BOC modulation without phase wrapping. Assumes
+`phase` is within `[0, primary_length * secondary_length)`.
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::BOC,
@@ -315,7 +327,13 @@ Base.@propagate_inbounds function get_code_unsafe(
     prn::Integer,
 )
     floored_phase = get_floored_phase(modulation, phase)
-    get_code_at_index(system, floored_phase, prn) * get_subcarrier_code(modulation, phase)
+    primary_length = size(system.codes, 1)
+    sec = get_secondary_code(system)
+    chip_idx = mod(floored_phase, primary_length)
+    sec_idx = div(floored_phase, primary_length)
+    get_code_at_index(system, chip_idx, prn) *
+    secondary_value(sec, prn, sec_idx) *
+    get_subcarrier_code(modulation, phase)
 end
 
 """
@@ -323,7 +341,8 @@ $(SIGNATURES)
 
 Get code value for LOC (BPSK) signals without bounds checking.
 
-Internal method for BPSK modulation without phase wrapping.
+Internal method for BPSK modulation without phase wrapping. Assumes
+`phase` is within `[0, primary_length * secondary_length)`.
 """
 Base.@propagate_inbounds function get_code_unsafe(
     modulation::LOC,
@@ -332,5 +351,9 @@ Base.@propagate_inbounds function get_code_unsafe(
     prn::Integer,
 )
     floored_phase = get_floored_phase(modulation, phase)
-    get_code_at_index(system, floored_phase, prn)
+    primary_length = size(system.codes, 1)
+    sec = get_secondary_code(system)
+    chip_idx = mod(floored_phase, primary_length)
+    sec_idx = div(floored_phase, primary_length)
+    get_code_at_index(system, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
 end

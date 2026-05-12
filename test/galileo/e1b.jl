@@ -4,6 +4,7 @@
     @test @inferred(get_center_frequency(galileo_e1b)) == 1.57542e9Hz
     @test @inferred(get_code_length(galileo_e1b)) == 4092
     @test @inferred(get_secondary_code_length(galileo_e1b)) == 1
+    @test @inferred(get_secondary_code(galileo_e1b)) isa NoSecondaryCode
     @test @inferred(get_code(galileo_e1b, 0, 1)) ≈ 1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(get_code(galileo_e1b, 0.0, 1)) ≈ 1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(get_code(galileo_e1b, 0.5, 1)) ≈ -1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)

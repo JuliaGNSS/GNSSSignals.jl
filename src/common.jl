@@ -119,12 +119,18 @@ function sample_code!(
     start_phase_including_shift =
         start_phase + start_index_shift * code_frequency / sampling_frequency
 
-    code_length = get_code_length(gnss) * get_secondary_code_length(gnss)
+    sec = get_secondary_code(gnss)
+    primary_length = get_code_length(gnss)
+    secondary_length = secondary_code_length(sec)
+    full_cycle_length = primary_length * secondary_length
     # Compute fractional part before any normalization to preserve exact floating-point value
     floored_code_phase = floor(Int, start_phase_including_shift)
     frac_part = floored_code_phase - start_phase_including_shift  # Always in (-1, 0]
-    # Normalize only the integer part for array indexing
-    code_start_index = mod(floored_code_phase, code_length)
+    # Split the absolute phase into (primary chip index, secondary chip index)
+    # within one full secondary cycle.
+    absolute_chip = mod(floored_code_phase, full_cycle_length)
+    code_start_index = mod(absolute_chip, primary_length)
+    secondary_start_index = div(absolute_chip, primary_length)
     # The -256 offset handles boundary cases where a sample falls exactly on a chip
     # boundary (e.g., phase = 2.0). Without this offset, floor(2.0) = 2 would assign
     # two samples to the first chip when only one belongs there. The offset ensures
@@ -137,13 +143,16 @@ function sample_code!(
     dispatch_sample_code_worker!(
         sampled_code,
         gnss,
+        sec,
         prn,
         frequency_ratio_fixed_point,
         fixed_point,
         code_start_index,
+        secondary_start_index,
         delta_sum,
         num_code_samples_to_iterate,
-        code_length,
+        primary_length,
+        secondary_length,
         num_inner_iterations,
     )
     return sampled_code
@@ -151,32 +160,43 @@ end
 
 # Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
 # gets fully unrolled and vectorized by LLVM.
+#
+# `sec` is a SecondaryCode; for `NoSecondaryCode` the per-chip multiply
+# folds to a no-op at compile time. For `SharedSecondaryCode` /
+# `PerPRNSecondaryCode` we hoist the lookup outside the per-chip loop —
+# the secondary value is constant within one primary-code period.
 function sample_code_worker!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSSSignal,
+    sec::SecondaryCode,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
     fixed_point::Int,
     code_start_index::Int,
+    secondary_start_index::Int,
     delta_sum::Int,
     num_code_samples_to_iterate::Int,
-    code_length::Int,
+    primary_length::Int,
+    secondary_length::Int,
     ::Val{NUM_INNER},
 ) where {NUM_INNER}
     prev = 0
-    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
+    num_code_iterations =
+        cld(num_code_samples_to_iterate + code_start_index, primary_length)
     processed_code_samples = 0
     @inbounds for k = 0:(num_code_iterations-1)
         iteration_begin = (k == 0 ? code_start_index : 0) + 1
         iteration_end = min(
             num_code_samples_to_iterate + (k == 0 ? code_start_index : 0) -
             processed_code_samples - 1,
-            code_length,
+            primary_length,
         )
         iterations = iteration_begin:iteration_end
         processed_code_samples += length(iterations)
+        sec_val = secondary_value(
+            sec, prn, mod(secondary_start_index + k, secondary_length))
         for i in iterations
-            next_code = gnss.codes[i, prn]
+            next_code = gnss.codes[i, prn] * sec_val
             for j = 1:NUM_INNER
                 sampled_code[prev+j] = next_code
             end
@@ -185,8 +205,14 @@ function sample_code_worker!(
         end
     end
     @inbounds for i = 0:2
-        next_code_idx = mod(processed_code_samples + code_start_index + i, code_length) + 1
-        next_code = gnss.codes[next_code_idx, prn]
+        absolute_chip = mod(
+            processed_code_samples + code_start_index + i,
+            primary_length * secondary_length,
+        )
+        next_code_idx = mod(absolute_chip, primary_length) + 1
+        sec_idx = div(absolute_chip, primary_length)
+        sec_val = secondary_value(sec, prn, sec_idx)
+        next_code = gnss.codes[next_code_idx, prn] * sec_val
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
         num_iterations = min(next_prev - prev, length(sampled_code) - prev)
@@ -203,29 +229,35 @@ end
 function sample_code_worker_generic!(
     sampled_code::AbstractVector,
     gnss::AbstractGNSSSignal,
+    sec::SecondaryCode,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
     fixed_point::Int,
     code_start_index::Int,
+    secondary_start_index::Int,
     delta_sum::Int,
     num_code_samples_to_iterate::Int,
-    code_length::Int,
+    primary_length::Int,
+    secondary_length::Int,
     num_inner_iterations::Int,
 )
     prev = 0
-    num_code_iterations = cld(num_code_samples_to_iterate + code_start_index, code_length)
+    num_code_iterations =
+        cld(num_code_samples_to_iterate + code_start_index, primary_length)
     processed_code_samples = 0
     @inbounds for k = 0:(num_code_iterations-1)
         iteration_begin = (k == 0 ? code_start_index : 0) + 1
         iteration_end = min(
             num_code_samples_to_iterate + (k == 0 ? code_start_index : 0) -
             processed_code_samples - 1,
-            code_length,
+            primary_length,
         )
         iterations = iteration_begin:iteration_end
         processed_code_samples += length(iterations)
+        sec_val = secondary_value(
+            sec, prn, mod(secondary_start_index + k, secondary_length))
         for i in iterations
-            next_code = gnss.codes[i, prn]
+            next_code = gnss.codes[i, prn] * sec_val
             @simd ivdep for j = 1:num_inner_iterations
                 sampled_code[prev+j] = next_code
             end
@@ -234,8 +266,14 @@ function sample_code_worker_generic!(
         end
     end
     @inbounds for i = 0:2
-        next_code_idx = mod(processed_code_samples + code_start_index + i, code_length) + 1
-        next_code = gnss.codes[next_code_idx, prn]
+        absolute_chip = mod(
+            processed_code_samples + code_start_index + i,
+            primary_length * secondary_length,
+        )
+        next_code_idx = mod(absolute_chip, primary_length) + 1
+        sec_idx = div(absolute_chip, primary_length)
+        sec_val = secondary_value(sec, prn, sec_idx)
+        next_code = gnss.codes[next_code_idx, prn] * sec_val
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
         num_iterations = min(next_prev - prev, length(sampled_code) - prev)
@@ -251,13 +289,16 @@ end
 @generated function dispatch_sample_code_worker!(
     sampled_code,
     gnss,
+    sec,
     prn,
     frequency_ratio_fixed_point,
     fixed_point,
     code_start_index,
+    secondary_start_index,
     delta_sum,
     num_code_samples_to_iterate,
-    code_length,
+    primary_length,
+    secondary_length,
     num_inner_iterations,
 )
     branches = [
@@ -265,13 +306,16 @@ end
             num_inner_iterations == $i && return sample_code_worker!(
                 sampled_code,
                 gnss,
+                sec,
                 prn,
                 frequency_ratio_fixed_point,
                 fixed_point,
                 code_start_index,
+                secondary_start_index,
                 delta_sum,
                 num_code_samples_to_iterate,
-                code_length,
+                primary_length,
+                secondary_length,
                 Val($i),
             )
         ) for i = 1:SAMPLE_CODE_INNER_THRESHOLD
@@ -281,13 +325,16 @@ end
         return sample_code_worker_generic!(
             sampled_code,
             gnss,
+            sec,
             prn,
             frequency_ratio_fixed_point,
             fixed_point,
             code_start_index,
+            secondary_start_index,
             delta_sum,
             num_code_samples_to_iterate,
-            code_length,
+            primary_length,
+            secondary_length,
             num_inner_iterations,
         )
     end
@@ -611,51 +658,7 @@ julia> get_secondary_code_length(GPSL5I())
 ```
 """
 @inline function get_secondary_code_length(gnss::AbstractGNSSSignal)
-    length(get_secondary_code(gnss))
-end
-
-"""
-$(SIGNATURES)
-
-Get the secondary code value at a given phase.
-
-# Arguments
-- `gnss`: A GNSS signal instance
-- `phase`: Code phase in chips
-
-# Returns
-- Secondary code value at the given phase
-
-# Examples
-```julia-repl
-julia> get_secondary_code(GPSL5I(), 10230.0)  # Start of second code period
-1
-```
-"""
-@inline function get_secondary_code(gnss::AbstractGNSSSignal, phase)
-    get_secondary_code(gnss, get_secondary_code(gnss), phase)
-end
-
-"""
-$(SIGNATURES)
-
-Get secondary code value when code is a single integer (no secondary code).
-
-Returns the code value unchanged.
-"""
-@inline function get_secondary_code(gnss::AbstractGNSSSignal, code::Integer, phase)
-    code
-end
-
-"""
-$(SIGNATURES)
-
-Get secondary code value at phase when code is a tuple (has secondary code).
-
-Computes the secondary code index from the phase and returns the corresponding value.
-"""
-@inline function get_secondary_code(gnss::AbstractGNSSSignal, code::Tuple, phase)
-    code[mod(floor(Int, phase / get_code_length(gnss)), get_secondary_code_length(gnss))+1]
+    secondary_code_length(get_secondary_code(gnss))
 end
 
 """

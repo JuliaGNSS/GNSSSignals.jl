@@ -4,6 +4,7 @@
     @test @inferred(get_center_frequency(gpsl1ca)) == 1.57542e9Hz
     @test @inferred(get_code_length(gpsl1ca)) == 1023
     @test @inferred(get_secondary_code_length(gpsl1ca)) == 1
+    @test @inferred(get_secondary_code(gpsl1ca)) isa NoSecondaryCode
     @test @inferred(get_code(gpsl1ca, 0, 1)) == 1
     @test @inferred(get_code(gpsl1ca, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl1ca, 0.0, 1)) == 1
