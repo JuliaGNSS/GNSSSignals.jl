@@ -1,12 +1,12 @@
 """
 $(SIGNATURES)
 
-Get the full code matrix for a GNSS system.
+Get the full code matrix for a GNSS signal.
 
 Returns the codes as a matrix where each column represents a PRN.
 
 # Arguments
-- `gnss`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
+- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 
 # Returns
 - `Matrix`: Code matrix of size `(code_length, num_prns)`
@@ -18,8 +18,8 @@ julia> size(codes)
 (1023, 37)
 ```
 """
-function get_codes(gnss::AbstractGNSSSignal)
-    gnss.codes
+function get_codes(signal::AbstractGNSSSignal)
+    signal.codes
 end
 
 """
@@ -76,7 +76,7 @@ in the provided buffer. Includes subcarrier modulation for BOC-type signals.
 
 # Arguments
 - `sampled_code`: Pre-allocated output buffer
-- `gnss`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
+- `signal`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be larger than code frequency)
 - `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
@@ -96,10 +96,10 @@ julia> gen_code!(buffer, GPSL1CA(), 1, 4MHz)
 """
 function gen_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(gnss),
+    code_frequency::Frequency = get_code_frequency(signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
     PHASET = Int32,
@@ -115,7 +115,7 @@ function gen_code!(
     )
     multiply_with_subcarrier!(
         sampled_code,
-        get_modulation(gnss),
+        get_modulation(signal),
         sampling_frequency,
         code_frequency,
         start_phase,
@@ -127,14 +127,14 @@ end
 
 function sample_code!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(gnss),
+    code_frequency::Frequency = get_code_frequency(signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
 )
-    modulated_code_frequency = code_frequency * get_code_factor(gnss)
+    modulated_code_frequency = code_frequency * get_code_factor(signal)
     frequency_ratio = sampling_frequency / modulated_code_frequency
     modulated_code_frequency > sampling_frequency && error(
         "The sampling frequency must be larger than the code frequency multiplied by code factor (larger than $modulated_code_frequency, it is $sampling_frequency).",
@@ -151,8 +151,8 @@ function sample_code!(
     start_phase_including_shift =
         start_phase + start_index_shift * code_frequency / sampling_frequency
 
-    sec = get_secondary_code(gnss)
-    primary_length = get_code_length(gnss)
+    sec = get_secondary_code(signal)
+    primary_length = get_code_length(signal)
     secondary_length = secondary_code_length(sec)
     full_cycle_length = primary_length * secondary_length
     # Compute fractional part before any normalization to preserve exact floating-point value
@@ -224,7 +224,7 @@ the current primary-period's secondary-chip value.
 Returns a `(codes, multiplier)` tuple. The inner loop reads
 `codes[i, prn] * multiplier` per chip.
 
-The default implementation returns `(gnss.codes, sec_val)` — the inner
+The default implementation returns `(signal.codes, sec_val)` — the inner
 loop multiplies each chip by the secondary value as usual. Per-signal
 specializations can pre-negate the codes matrix at construction time
 and return `(positive_or_negated_codes, true)`; the `* true` then
@@ -235,7 +235,7 @@ This is an internal helper for the `sample_code_worker!` /
 `sample_code_worker_generic!` hot path. `get_code` does its own
 straightforward lookup and does not use this dispatch.
 """
-@inline _select_codes_for(gnss::AbstractGNSSSignal, sec_val) = (gnss.codes, sec_val)
+@inline _select_codes_for(signal::AbstractGNSSSignal, sec_val) = (signal.codes, sec_val)
 
 # Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
 # gets fully unrolled and vectorized by LLVM.
@@ -246,7 +246,7 @@ straightforward lookup and does not use this dispatch.
 # the secondary value is constant within one primary-code period.
 function sample_code_worker!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     sec::SecondaryCode,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
@@ -278,9 +278,9 @@ function sample_code_worker!(
         # `_select_codes_for` lets signals with a ±1 SharedSecondaryCode
         # swap between a precomputed positive/negated code matrix here,
         # hoisting the per-chip multiply out of the inner loop. The
-        # default returns (gnss.codes, sec_val), preserving the original
+        # default returns (signal.codes, sec_val), preserving the original
         # behaviour for signals without that specialization.
-        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        codes_view, code_mul = _select_codes_for(signal, sec_val)
         for i in iterations
             next_code = codes_view[i, prn] * code_mul
             for j = 1:NUM_INNER
@@ -302,7 +302,7 @@ function sample_code_worker!(
         next_code_idx = mod(absolute_chip, primary_length) + 1
         sec_idx = div(absolute_chip, primary_length)
         sec_val = secondary_value(sec, prn, sec_idx)
-        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        codes_view, code_mul = _select_codes_for(signal, sec_val)
         next_code = codes_view[next_code_idx, prn] * code_mul
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
@@ -319,7 +319,7 @@ end
 # Fallback for oversampling ratios above SAMPLE_CODE_INNER_THRESHOLD.
 function sample_code_worker_generic!(
     sampled_code::AbstractVector,
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     sec::SecondaryCode,
     prn::Integer,
     frequency_ratio_fixed_point::Int,
@@ -348,7 +348,7 @@ function sample_code_worker_generic!(
         processed_code_samples += length(iterations)
         sec_val = secondary_value(
             sec, prn, mod(secondary_start_index + k, secondary_length))
-        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        codes_view, code_mul = _select_codes_for(signal, sec_val)
         for i in iterations
             next_code = codes_view[i, prn] * code_mul
             @simd ivdep for j = 1:num_inner_iterations
@@ -366,7 +366,7 @@ function sample_code_worker_generic!(
         next_code_idx = mod(absolute_chip, primary_length) + 1
         sec_idx = div(absolute_chip, primary_length)
         sec_val = secondary_value(sec, prn, sec_idx)
-        codes_view, code_mul = _select_codes_for(gnss, sec_val)
+        codes_view, code_mul = _select_codes_for(signal, sec_val)
         next_code = codes_view[next_code_idx, prn] * code_mul
         delta_sum += frequency_ratio_fixed_point
         next_prev = delta_sum >> fixed_point
@@ -657,7 +657,7 @@ specified sampling frequency. For in-place operation, use [`gen_code!`](@ref).
 
 # Arguments
 - `num_samples`: Number of samples to generate
-- `gnss`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
+- `signal`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be larger than code frequency)
 - `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
@@ -677,14 +677,14 @@ julia> length(sampled_code)
 """
 function gen_code(
     num_samples::Integer,
-    gnss::AbstractGNSSSignal,
+    signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(gnss),
+    code_frequency::Frequency = get_code_frequency(signal),
     start_phase = 0.0,
     start_index::Integer = 0,
 )
-    code = zeros(get_code_type(gnss), num_samples)
+    code = zeros(get_code_type(signal), num_samples)
     gen_code!(code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index)
 end
 
@@ -696,7 +696,7 @@ Get the ratio of code frequency to center frequency.
 This ratio is used to compute the code Doppler from the carrier Doppler.
 
 # Arguments
-- `gnss`: A GNSS signal instance
+- `signal`: A GNSS signal instance
 
 # Returns
 - `Float64`: The code-to-center frequency ratio
@@ -707,8 +707,8 @@ julia> get_code_center_frequency_ratio(GPSL1CA())
 0.0006493506493506494
 ```
 """
-@inline function get_code_center_frequency_ratio(gnss::AbstractGNSSSignal)
-    get_code_frequency(gnss) / get_center_frequency(gnss)
+@inline function get_code_center_frequency_ratio(signal::AbstractGNSSSignal)
+    get_code_frequency(signal) / get_center_frequency(signal)
 end
 
 """
@@ -720,7 +720,7 @@ Calculates the number of bits required to represent the full code length,
 including secondary code if present.
 
 # Arguments
-- `gnss`: A GNSS signal instance
+- `signal`: A GNSS signal instance
 
 # Returns
 - `Int`: Number of bits needed
@@ -733,8 +733,8 @@ julia> min_bits_for_code_length(GPSL5I())
 17
 ```
 """
-@inline function min_bits_for_code_length(gnss::AbstractGNSSSignal)
-    ndigits(get_code_length(gnss) * get_secondary_code_length(gnss); base = 2)
+@inline function min_bits_for_code_length(signal::AbstractGNSSSignal)
+    ndigits(get_code_length(signal) * get_secondary_code_length(signal); base = 2)
 end
 
 """
@@ -743,7 +743,7 @@ $(SIGNATURES)
 Get the length of the secondary code.
 
 # Arguments
-- `gnss`: A GNSS signal instance
+- `signal`: A GNSS signal instance
 
 # Returns
 - `Int`: Secondary code length (1 if no secondary code)
@@ -756,8 +756,8 @@ julia> get_secondary_code_length(GPSL5I())
 10
 ```
 """
-@inline function get_secondary_code_length(gnss::AbstractGNSSSignal)
-    secondary_code_length(get_secondary_code(gnss))
+@inline function get_secondary_code_length(signal::AbstractGNSSSignal)
+    secondary_code_length(get_secondary_code(signal))
 end
 
 """

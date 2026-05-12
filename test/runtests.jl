@@ -3,7 +3,7 @@ import Unitful: Hz, MHz, Frequency
 import GNSSSignals: BOCsin, BOCcos, CBOC
 
 @testset "Aqua.jl" begin
-    Aqua.test_all(GNSSSignals; ambiguities=false, deps_compat=(check_extras=false,))
+    Aqua.test_all(GNSSSignals; deps_compat=(check_extras=false,))
 end
 
 include("test_codes.jl")
