@@ -17,7 +17,7 @@ Receivers should query the secondary code via [`get_secondary_code`](@ref),
 which returns the appropriate `SecondaryCode` instance for the signal.
 
 The internal API for evaluating the secondary at a given secondary-chip
-index is [`secondary_value`](@ref). It is typed-dispatched so the
+index is `secondary_value`. It is typed-dispatched so the
 no-secondary case folds to the multiplicative identity at compile time.
 """
 abstract type SecondaryCode end
@@ -26,7 +26,7 @@ abstract type SecondaryCode end
     NoSecondaryCode <: SecondaryCode
 
 Marker type for signals without a secondary code. All
-[`secondary_value`](@ref) lookups return `1`, which the inner code-generation
+`secondary_value` lookups return `1`, which the inner code-generation
 loops multiply by — the compiler elides the multiplication entirely.
 """
 struct NoSecondaryCode <: SecondaryCode end
@@ -49,6 +49,16 @@ integer alphabet, depending on the signal's spec).
 """
 struct SharedSecondaryCode{N, T<:Integer} <: SecondaryCode
     code::NTuple{N, T}
+
+    # Inner constructor that takes the chips as varargs (at least one).
+    # Defining any inner constructor suppresses Julia's auto-generated
+    # outer constructor; the `c1::T, crest::T...` signature pins `T`
+    # from the first chip and counts `N` from the splat, keeping both
+    # type parameters bound for Aqua's `unbound_args` check.
+    function SharedSecondaryCode(c1::T, crest::T...) where {T<:Integer}
+        N = 1 + length(crest)
+        return new{N, T}((c1, crest...))
+    end
 end
 
 @inline secondary_code_length(::SharedSecondaryCode{N}) where {N} = N

@@ -188,7 +188,10 @@ SharedSecondaryCode{10, Int8}((1, 1, 1, 1, -1, -1, 1, -1, 1, -1))
 ```
 """
 @inline function get_secondary_code(::GPSL5I)
-    SharedSecondaryCode((Int8(1), Int8(1), Int8(1), Int8(1), Int8(-1), Int8(-1), Int8(1), Int8(-1), Int8(1), Int8(-1)))
+    SharedSecondaryCode(
+        Int8(1), Int8(1), Int8(1), Int8(1), Int8(-1),
+        Int8(-1), Int8(1), Int8(-1), Int8(1), Int8(-1),
+    )
 end
 
 """

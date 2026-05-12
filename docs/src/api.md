@@ -18,6 +18,15 @@ GNSSSignals.L5
 GNSSSignals.get_band
 ```
 
+## Secondary Codes
+
+```@docs
+GNSSSignals.SecondaryCode
+GNSSSignals.NoSecondaryCode
+GNSSSignals.SharedSecondaryCode
+GNSSSignals.PerPRNSecondaryCode
+```
+
 ## Modulation Types
 
 ```@docs
