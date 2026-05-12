@@ -167,7 +167,7 @@ function read_gpsl5i_codes()
 end
 
 function GPSL5I()
-    GPSL5I(Int16.(read_gpsl5i_codes()))
+    GPSL5I(widen_codes_to_storage(read_gpsl5i_codes()))
 end
 
 """

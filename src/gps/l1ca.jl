@@ -57,7 +57,7 @@ function read_gpsl1ca_codes()
 end
 
 function GPSL1CA()
-    GPSL1CA(Int16.(read_gpsl1ca_codes()))
+    GPSL1CA(widen_codes_to_storage(read_gpsl1ca_codes()))
 end
 
 """

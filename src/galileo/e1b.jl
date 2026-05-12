@@ -67,7 +67,7 @@ function read_galileo_e1b_codes()
 end
 
 function GalileoE1B()
-    GalileoE1B(Int16.(read_galileo_e1b_codes()))
+    GalileoE1B(widen_codes_to_storage(read_galileo_e1b_codes()))
 end
 
 """
