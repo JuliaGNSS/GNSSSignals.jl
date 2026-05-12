@@ -12,8 +12,11 @@ export AbstractGNSSSignal,
     L1,
     L5,
     GPSL1CA,
+    GPSL1C_D,
+    GPSL1C_P,
     GPSL5I,
     GalileoE1B,
+    TMBOC,
     gen_code!,
     gen_code,
     get_codes,
@@ -93,6 +96,10 @@ include("bands.jl")
 include("secondary_codes.jl")
 include("gps/l1ca.jl")
 include("gps/l5i.jl")
+include("gps/l1c_constants.jl")
+include("gps/l1c_codes.jl")
+include("gps/l1c_d.jl")
+include("gps/l1c_p.jl")
 include("galileo/e1b.jl")
 include("common.jl")
 end

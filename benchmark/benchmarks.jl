@@ -43,3 +43,30 @@ SUITE["code"]["code generation"]["GalileoE1B"] = @benchmarkable gen_code!(
     $0.0,
     $0,
 ) evals = 10 samples = 10000
+
+# L1C-D and L1C-P landed post-v2.0; they may not exist on the master baseline.
+# Guard each entry with `isdefined` so AirspeedVelocity can still diff against
+# master. Remove the guards once master includes them.
+if isdefined(GNSSSignals, :GPSL1C_D)
+    SUITE["code"]["code generation"]["GPSL1C_D"] = @benchmarkable gen_code!(
+        $sampled_code,
+        $(GNSSSignals.GPSL1C_D()),
+        $1,
+        $(5e6Hz),
+        $(1023e3Hz),
+        $0.0,
+        $0,
+    ) evals = 10 samples = 10000
+end
+
+if isdefined(GNSSSignals, :GPSL1C_P)
+    SUITE["code"]["code generation"]["GPSL1C_P"] = @benchmarkable gen_code!(
+        $sampled_code,
+        $(GNSSSignals.GPSL1C_P()),
+        $1,
+        $(15e6Hz),
+        $(1023e3Hz),
+        $0.0,
+        $0,
+    ) evals = 10 samples = 10000
+end

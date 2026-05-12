@@ -93,6 +93,46 @@ struct CBOC{B1<:BOC,B2<:BOC} <: BOC
 end
 
 """
+    TMBOC(boc1, boc2, pattern)
+
+Time-Multiplexed Binary Offset Carrier modulation.
+
+Used for the GPS L1C pilot (L1C-P) component. Within each repeating
+block of `length(pattern)` primary chips, `pattern[k]` selects which
+BOC variant to apply at chip-position `k - 1`: `true` for `boc2`,
+`false` for `boc1`.
+
+For GPS L1C-P specifically, the pattern is TMBOC(6,1,4/33): every
+33 primary chips, the four positions `{0, 4, 6, 29}` use BOC(6,1) and
+the remaining 29 use BOC(1,1). See IS-GPS-800G §3.3.
+
+# Arguments
+- `boc1`: BOC variant for the majority positions (`pattern[k] == false`)
+- `boc2`: BOC variant for the minority positions (`pattern[k] == true`)
+- `pattern`: `NTuple{N, Bool}` selecting BOC variant per chip-position
+  within one repeat block. `N` must match the signal's TMBOC period.
+
+The two BOC components must share the same code-rate multiplier `n`.
+
+# Example
+```julia
+# GPS L1C-P: BOC(6,1) at positions 0, 4, 6, 29 within every 33 chips
+pattern = ntuple(k -> (k - 1) ∈ (0, 4, 6, 29), 33)
+tmboc = TMBOC(BOCsin(1, 1), BOCsin(6, 1), pattern)
+```
+"""
+struct TMBOC{B1<:BOC,B2<:BOC,N} <: BOC
+    boc1::B1
+    boc2::B2
+    pattern::NTuple{N, Bool}
+    function TMBOC(boc1::B1, boc2::B2, pattern::NTuple{N, Bool}) where {B1<:BOC, B2<:BOC, N}
+        boc1.n == boc2.n || error("n of both BOCs must match")
+        N >= 1 || error("TMBOC pattern must be non-empty")
+        new{B1, B2, N}(boc1, boc2, pattern)
+    end
+end
+
+"""
 $(SIGNATURES)
 
 Get the element type for code values of a GNSS signal.
@@ -124,6 +164,7 @@ get_code_factor(signal::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_m
 get_code_factor(modulation::LOC) = 1
 get_code_factor(modulation::BOC) = modulation.n
 get_code_factor(modulation::CBOC) = modulation.boc1.n
+get_code_factor(modulation::TMBOC) = modulation.boc1.n
 
 """
 $(SIGNATURES)
@@ -185,6 +226,14 @@ function get_code_spectrum(modulation::CBOC, signal, f)
     get_code_spectrum(modulation.boc2, signal, f) * (1 - modulation.boc1_power)
 end
 
+# For TMBOC, weight by the fraction of chips that use each BOC variant.
+function get_code_spectrum(modulation::TMBOC{B1, B2, N}, signal, f) where {B1, B2, N}
+    n_boc2 = count(modulation.pattern)
+    boc2_frac = n_boc2 / N
+    get_code_spectrum(modulation.boc1, signal, f) * (1 - boc2_frac) +
+    get_code_spectrum(modulation.boc2, signal, f) * boc2_frac
+end
+
 function get_subcarrier_code(modulation::BOCsin, phase::T) where {T<:Real}
     floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
     iseven(floored_subcarrier_phase) * 2 - 1
@@ -202,9 +251,20 @@ function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
     get_subcarrier_code(modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
 end
 
+# TMBOC's subcarrier value at a given phase: pick the BOC variant for
+# the current primary-chip position (mod pattern length), then evaluate
+# that BOC's subcarrier at the same phase.
+function get_subcarrier_code(modulation::TMBOC{B1, B2, N}, phase::T) where {B1, B2, N, T<:Real}
+    chip_pos = mod(floor(Int, phase * modulation.boc1.n), N)
+    @inbounds use_boc2 = modulation.pattern[chip_pos + 1]
+    use_boc2 ? get_subcarrier_code(modulation.boc2, phase) :
+               get_subcarrier_code(modulation.boc1, phase)
+end
+
 get_floored_phase(modulation::LOC, phase) = floor(Int, phase)
 get_floored_phase(modulation::BOC, phase) = floor(Int, phase * modulation.n)
 get_floored_phase(modulation::CBOC, phase) = floor(Int, phase * modulation.boc1.n)
+get_floored_phase(modulation::TMBOC, phase) = floor(Int, phase * modulation.boc1.n)
 
 """
 $(SIGNATURES)

@@ -5,6 +5,8 @@
 ```@docs
 GNSSSignals.AbstractGNSSSignal
 GNSSSignals.GPSL1CA
+GNSSSignals.GPSL1C_D
+GNSSSignals.GPSL1C_P
 GNSSSignals.GPSL5I
 GNSSSignals.GalileoE1B
 ```
@@ -35,6 +37,7 @@ GNSSSignals.BOC
 GNSSSignals.BOCsin
 GNSSSignals.BOCcos
 GNSSSignals.CBOC
+GNSSSignals.TMBOC
 ```
 
 ## Code Generation
