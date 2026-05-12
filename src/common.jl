@@ -137,9 +137,20 @@ function sample_code!(
     # samples exactly on boundaries are assigned to the next chip.
     delta_sum =
         floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
-    num_code_samples_to_iterate =
+    raw_num_code_samples =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
-    num_inner_iterations = ceil(Int, frequency_ratio)
+    # Pad the inner store loop to at least 4 stores per chip. LLVM
+    # vectorizes the inner store into a single 8-byte (or wider) write
+    # at this length, which is significantly faster than 2 scalar
+    # word-stores even though we write a few "extra" slots per chip.
+    # The next chip's writes overwrite the extras (overwrite-tolerance);
+    # the very last main-loop chip's extras must fit in the buffer, so
+    # we hold back `num_inner_iterations - real_num_inner` chips for the
+    # tail to handle.
+    real_num_inner = ceil(Int, frequency_ratio)
+    num_inner_iterations = max(real_num_inner, 4)
+    tail_slack = num_inner_iterations - real_num_inner
+    num_code_samples_to_iterate = max(0, raw_num_code_samples - tail_slack)
     dispatch_sample_code_worker!(
         sampled_code,
         gnss,
@@ -154,6 +165,7 @@ function sample_code!(
         primary_length,
         secondary_length,
         num_inner_iterations,
+        tail_slack,
     )
     return sampled_code
 end
@@ -179,6 +191,7 @@ function sample_code_worker!(
     primary_length::Int,
     secondary_length::Int,
     ::Val{NUM_INNER},
+    tail_slack::Int,
 ) where {NUM_INNER}
     prev = 0
     num_code_iterations =
@@ -204,7 +217,11 @@ function sample_code_worker!(
             prev = delta_sum >> fixed_point
         end
     end
-    @inbounds for i = 0:2
+    # Tail: handle the chips held back from the main loop (`tail_slack`)
+    # plus the standard 3-chip safety margin. Each iteration clamps
+    # writes to the buffer end via `min(...)`, and breaks once `prev`
+    # has filled the buffer.
+    @inbounds for i = 0:(tail_slack + 2)
         absolute_chip = mod(
             processed_code_samples + code_start_index + i,
             primary_length * secondary_length,
@@ -240,6 +257,7 @@ function sample_code_worker_generic!(
     primary_length::Int,
     secondary_length::Int,
     num_inner_iterations::Int,
+    tail_slack::Int,
 )
     prev = 0
     num_code_iterations =
@@ -265,7 +283,7 @@ function sample_code_worker_generic!(
             prev = delta_sum >> fixed_point
         end
     end
-    @inbounds for i = 0:2
+    @inbounds for i = 0:(tail_slack + 2)
         absolute_chip = mod(
             processed_code_samples + code_start_index + i,
             primary_length * secondary_length,
@@ -300,6 +318,7 @@ end
     primary_length,
     secondary_length,
     num_inner_iterations,
+    tail_slack,
 )
     branches = [
         :(
@@ -317,8 +336,9 @@ end
                 primary_length,
                 secondary_length,
                 Val($i),
+                tail_slack,
             )
-        ) for i = 1:SAMPLE_CODE_INNER_THRESHOLD
+        ) for i = 4:SAMPLE_CODE_INNER_THRESHOLD
     ]
     quote
         $(branches...)
@@ -336,6 +356,7 @@ end
             primary_length,
             secondary_length,
             num_inner_iterations,
+            tail_slack,
         )
     end
 end
