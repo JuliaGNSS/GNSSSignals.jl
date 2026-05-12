@@ -60,6 +60,64 @@ widen_codes_to_storage(codes::AbstractMatrix) = Int16.(codes)
 # within a few percent of the specialized version.
 const SAMPLE_CODE_INNER_THRESHOLD = 64
 
+# Runtime-detected at module load. `+avx512f` is the base AVX-512 feature
+# (foundation); every other AVX-512 subset implies it. Used by
+# `_pad_inner_iterations` to pick an arch-tuned padding ladder.
+const HAS_AVX512 = let
+    try
+        f = ccall(:jl_get_cpu_features, Any, ())
+        f isa AbstractString && occursin("+avx512f", f)
+    catch
+        false
+    end
+end
+
+# Pad the inner store loop to a length that LLVM emits a clean wide SIMD
+# store for. Per-chip "extra" writes get overwritten by the next chip's
+# writes (overwrite-tolerance), so over-padding only costs slightly extra
+# store bandwidth. The very last main-loop chip's extras must fit in the
+# buffer, so the caller holds back `num_inner_iterations - real_num_inner`
+# chips for the tail loop to handle with bounds-respecting writes.
+#
+# Two ladders, picked per-arch from the runtime feature string:
+#
+# - AVX2: ladder steps at {4, 8, 16}, with a `real == 9` exception
+#   (pad=16 there loses ~19% on Zen 3 / Intel client AVX2). Tuned on
+#   Zen 3 (this laptop's reference). Confirmed: real ∈ {10..16} all
+#   benefit from pad=16; real=9 stays unpadded.
+#
+# - AVX-512: ladder steps at {4, 8, 12, 16, 20, 24}. Additions vs AVX2:
+#     * pad to 12 for real ∈ {10, 11, 12}: beats pad=16 by 13–23% on
+#       Zen 5.
+#     * real ∈ {17, 18}: no padding — both regress >20 % at pad=24
+#       and >8 % at pad=20.
+#     * pad to 20 for real == 19: −15 % vs natural; pad=24 loses here.
+#     * pad to 24 for real ∈ {21, 22, 23}: beats natural by 9–24 %.
+#   The `real == 9` exception is preserved (same outlier on both
+#   archs). Above 24, no padding pays.
+#
+# Other architectures (ARM NEON, AVX-512 with VBMI2 tweaks, Apple
+# Silicon) fall through to the AVX2 ladder by default. If you re-tune
+# for another arch, sweep `real ∈ 2..32` over `benchmark/benchmarks.jl`
+# and add a new branch here.
+@inline function _pad_inner_iterations(real_num_inner::Int)
+    if HAS_AVX512
+        real_num_inner <= 4  ? 4  :
+        real_num_inner <= 8  ? 8  :
+        real_num_inner == 9  ? 9  :
+        real_num_inner <= 12 ? 12 :
+        real_num_inner <= 16 ? 16 :
+        real_num_inner <= 18 ? real_num_inner :
+        real_num_inner <= 20 ? 20 :
+        real_num_inner <= 23 ? 24 : real_num_inner
+    else
+        real_num_inner <= 4  ? 4  :
+        real_num_inner <= 8  ? 8  :
+        real_num_inner == 9  ? 9  :
+        real_num_inner <= 16 ? 16 : real_num_inner
+    end
+end
+
 """
 $(SIGNATURES)
 
@@ -106,7 +164,7 @@ function gen_code!(
 )
     sample_code!(
         sampled_code,
-        gnss,
+        signal,
         prn,
         sampling_frequency,
         code_frequency,
@@ -171,34 +229,13 @@ function sample_code!(
         floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
     raw_num_code_samples =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
-    # Pad the inner store loop to the smallest power of two ≥ max(real, 4)
-    # up to 16. LLVM emits a single wide SIMD store at lengths 4 / 8 / 16
-    # (8B / 16B / 32B respectively for Int16 elements), which is faster
-    # than the irregular unrolled stores LLVM picks for non-power-of-two
-    # lengths even though we write a few "extra" slots per chip. The next
-    # chip's writes overwrite the extras (overwrite-tolerance).
-    #
-    # Above real=16, no padding: the asymptotic store-bandwidth-limited
-    # regime is reached and wider pads would just add wasted writes.
-    #
-    # The very last main-loop chip's extras must fit in the buffer, so
-    # we hold back `num_inner_iterations - real_num_inner` chips for the
-    # tail to handle.
     real_num_inner = ceil(Int, frequency_ratio)
-    # `real_num_inner == 9` is an empirical outlier: pad=16 costs ~19 %
-    # vs no padding (pad=12 also hurts). Adjacent values 10..15 all
-    # benefit from pad=16. Likely a quirk in how LLVM unrolls the 9-store
-    # case relative to the 16-store case on x86_64 / AVX2.
-    num_inner_iterations =
-        real_num_inner <= 4  ? 4  :
-        real_num_inner <= 8  ? 8  :
-        real_num_inner == 9  ? 9  :
-        real_num_inner <= 16 ? 16 : real_num_inner
+    num_inner_iterations = _pad_inner_iterations(real_num_inner)
     tail_slack = num_inner_iterations - real_num_inner
     num_code_samples_to_iterate = max(0, raw_num_code_samples - tail_slack)
     dispatch_sample_code_worker!(
         sampled_code,
-        gnss,
+        signal,
         sec,
         prn,
         frequency_ratio_fixed_point,
@@ -236,6 +273,49 @@ This is an internal helper for the `sample_code_worker!` /
 straightforward lookup and does not use this dispatch.
 """
 @inline _select_codes_for(signal::AbstractGNSSSignal, sec_val) = (signal.codes, sec_val)
+
+# Shared tail loop for both `sample_code_worker!` and
+# `sample_code_worker_generic!`. The tail handles the chips held back
+# from the main loop (`tail_slack`) plus a 3-chip safety margin; each
+# iteration clamps writes to the buffer end via `min(...)` and breaks
+# once `prev` has filled the buffer. Inlined so the workers don't pay
+# a call overhead per `gen_code!`.
+@inline function sample_code_tail!(
+    sampled_code,
+    signal,
+    sec,
+    prn,
+    frequency_ratio_fixed_point,
+    fixed_point,
+    code_start_index,
+    delta_sum,
+    prev,
+    processed_code_samples,
+    primary_length,
+    secondary_length,
+    tail_slack,
+)
+    @inbounds for i = 0:(tail_slack + 2)
+        absolute_chip = mod(
+            processed_code_samples + code_start_index + i,
+            primary_length * secondary_length,
+        )
+        next_code_idx = mod(absolute_chip, primary_length) + 1
+        sec_idx = div(absolute_chip, primary_length)
+        sec_val = secondary_value(sec, prn, sec_idx)
+        codes_view, code_mul = _select_codes_for(signal, sec_val)
+        next_code = codes_view[next_code_idx, prn] * code_mul
+        delta_sum += frequency_ratio_fixed_point
+        next_prev = delta_sum >> fixed_point
+        num_iterations = min(next_prev - prev, length(sampled_code) - prev)
+        for j = 1:num_iterations
+            sampled_code[prev+j] = next_code
+        end
+        prev = next_prev
+        prev >= length(sampled_code) && break
+    end
+    return sampled_code
+end
 
 # Inner worker parameterized on `Val{NUM_INNER}` so the fixed-trip inner loop
 # gets fully unrolled and vectorized by LLVM.
@@ -290,33 +370,21 @@ function sample_code_worker!(
             prev = delta_sum >> fixed_point
         end
     end
-    # Tail: handle the chips held back from the main loop (`tail_slack`)
-    # plus the standard 3-chip safety margin. Each iteration clamps
-    # writes to the buffer end via `min(...)`, and breaks once `prev`
-    # has filled the buffer.
-    @inbounds for i = 0:(tail_slack + 2)
-        absolute_chip = mod(
-            processed_code_samples + code_start_index + i,
-            primary_length * secondary_length,
-        )
-        next_code_idx = mod(absolute_chip, primary_length) + 1
-        sec_idx = div(absolute_chip, primary_length)
-        sec_val = secondary_value(sec, prn, sec_idx)
-        codes_view, code_mul = _select_codes_for(signal, sec_val)
-        next_code = codes_view[next_code_idx, prn] * code_mul
-        delta_sum += frequency_ratio_fixed_point
-        next_prev = delta_sum >> fixed_point
-        num_iterations = min(next_prev - prev, length(sampled_code) - prev)
-        for j = 1:num_iterations
-            sampled_code[prev+j] = next_code
-        end
-        prev = next_prev
-        prev >= length(sampled_code) && break
-    end
-    return sampled_code
+    return sample_code_tail!(
+        sampled_code, signal, sec, prn,
+        frequency_ratio_fixed_point, fixed_point, code_start_index,
+        delta_sum, prev, processed_code_samples,
+        primary_length, secondary_length, tail_slack,
+    )
 end
 
 # Fallback for oversampling ratios above SAMPLE_CODE_INNER_THRESHOLD.
+#
+# Kept structurally in sync with `sample_code_worker!` above — the outer
+# `k` loop and the tail are identical, only the inner store differs
+# (`@simd ivdep` over a runtime length here vs. a `Val`-known fixed trip
+# in the specialized worker). If you fix a bug in one outer/tail
+# loop, fix it in the other.
 function sample_code_worker_generic!(
     sampled_code::AbstractVector,
     signal::AbstractGNSSSignal,
@@ -358,31 +426,17 @@ function sample_code_worker_generic!(
             prev = delta_sum >> fixed_point
         end
     end
-    @inbounds for i = 0:(tail_slack + 2)
-        absolute_chip = mod(
-            processed_code_samples + code_start_index + i,
-            primary_length * secondary_length,
-        )
-        next_code_idx = mod(absolute_chip, primary_length) + 1
-        sec_idx = div(absolute_chip, primary_length)
-        sec_val = secondary_value(sec, prn, sec_idx)
-        codes_view, code_mul = _select_codes_for(signal, sec_val)
-        next_code = codes_view[next_code_idx, prn] * code_mul
-        delta_sum += frequency_ratio_fixed_point
-        next_prev = delta_sum >> fixed_point
-        num_iterations = min(next_prev - prev, length(sampled_code) - prev)
-        for j = 1:num_iterations
-            sampled_code[prev+j] = next_code
-        end
-        prev = next_prev
-        prev >= length(sampled_code) && break
-    end
-    return sampled_code
+    return sample_code_tail!(
+        sampled_code, signal, sec, prn,
+        frequency_ratio_fixed_point, fixed_point, code_start_index,
+        delta_sum, prev, processed_code_samples,
+        primary_length, secondary_length, tail_slack,
+    )
 end
 
 @generated function dispatch_sample_code_worker!(
     sampled_code,
-    gnss,
+    signal,
     sec,
     prn,
     frequency_ratio_fixed_point,
@@ -400,7 +454,7 @@ end
         :(
             num_inner_iterations == $i && return sample_code_worker!(
                 sampled_code,
-                gnss,
+                signal,
                 sec,
                 prn,
                 frequency_ratio_fixed_point,
@@ -422,7 +476,7 @@ end
         $(branches...)
         return sample_code_worker_generic!(
             sampled_code,
-            gnss,
+            signal,
             sec,
             prn,
             frequency_ratio_fixed_point,
@@ -685,7 +739,7 @@ function gen_code(
     start_index::Integer = 0,
 )
     code = zeros(get_code_type(signal), num_samples)
-    gen_code!(code, gnss, prn, sampling_frequency, code_frequency, start_phase, start_index)
+    gen_code!(code, signal, prn, sampling_frequency, code_frequency, start_phase, start_index)
 end
 
 """
