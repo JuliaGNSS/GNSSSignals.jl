@@ -670,6 +670,54 @@ function multiply_with_subcarrier!(
     sampled_code
 end
 
+# TMBOC subcarrier multiply. For each sample, compute both BOC bits
+# and the current primary-chip position (mod the pattern length), then
+# select which BOC's bit to apply. The pattern is type-encoded as an
+# `NTuple{N, Bool}` so the modulus has a compile-time divisor and the
+# lookup compiles to a small jump table.
+#
+# Chip tracking: rather than a per-sample fixed-point multiply that
+# could overflow for long buffers, maintain a single 64-bit accumulator
+# that advances by `Δchip_fp = code_freq / sampling_freq * 2^32` per
+# sample. The current chip index (mod NPAT) is the upper 32 bits of the
+# accumulator, reduced modulo the pattern length.
+function multiply_with_subcarrier!(
+    sampled_code::AbstractVector{T},
+    modulation::TMBOC{B1, B2, NPAT},
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase = 0.0,
+    start_index::Integer = 0,
+    PHASET = Int32,
+) where {T, B1, B2, NPAT}
+    fp_boc1, sc_phase_boc1, sc_delta_boc1 = calc_subcarrier_phase_and_delta(
+        modulation.boc1, sampling_frequency, code_frequency, start_phase, PHASET,
+    )
+    fp_boc2, sc_phase_boc2, sc_delta_boc2 = calc_subcarrier_phase_and_delta(
+        modulation.boc2, sampling_frequency, code_frequency, start_phase, PHASET,
+    )
+    # Chip-position state. We track the chip index modulo NPAT directly,
+    # advancing by one chip whenever the fractional sample-within-chip
+    # counter wraps. Float64 here is fine — the chip rate vs sample rate
+    # ratio is well-behaved and 2000 samples won't accumulate enough
+    # rounding to matter.
+    chips_per_sample = code_frequency / sampling_frequency
+    chip_pos_f = mod(start_phase, NPAT)            # current fractional chip-position
+    pattern = modulation.pattern
+    @inbounds for (index, i) in enumerate(
+        PHASET(start_index):PHASET(length(sampled_code) - 1 + start_index),
+    )
+        chip_pos = mod(floor(Int, chip_pos_f), NPAT)
+        use_boc2 = pattern[chip_pos + 1]
+        b = use_boc2 ?
+            calc_subcarrier_bit(i, fp_boc2, sc_phase_boc2, sc_delta_boc2, PHASET) :
+            calc_subcarrier_bit(i, fp_boc1, sc_phase_boc1, sc_delta_boc1, PHASET)
+        sampled_code[index] *= T(b)
+        chip_pos_f += chips_per_sample
+    end
+    sampled_code
+end
+
 function multiply_with_subcarrier!(
     sampled_code::AbstractVector{T},
     modulation::BOCcos,

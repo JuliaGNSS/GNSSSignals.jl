@@ -1,0 +1,89 @@
+"""
+    GPSL1C_D{C} <: AbstractGNSSSignal{C}
+
+GPS L1C data signal (the data-carrying component of L1C, broadcast by
+Block III/IIIF satellites alongside the legacy L1 C/A).
+
+BOC(1,1) sine-phased on the L1 band (1575.42 MHz). 10230-chip primary
+code at 1.023 Mcps, derived from a Weil-code construction with a 7-chip
+expansion inserted at a PRN-specific point (IS-GPS-800G §3.2.2.1.1).
+No secondary code; carries the CNAV-2 message at 50 sps.
+
+# Example
+```julia
+gpsl1c_d = GPSL1C_D()
+get_code_length(gpsl1c_d)   # 10230
+get_band(gpsl1c_d)          # L1()
+```
+
+PRNs 1-63 are supported; PRNs 64-210 (IS-GPS-800G Table 6.3-1) are not
+implemented in this package.
+"""
+struct GPSL1C_D{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+    codes::C
+end
+
+get_modulation(::Type{<:GPSL1C_D}) = BOCsin(1, 1)
+@inline get_modulation(::GPSL1C_D) = BOCsin(1, 1)
+
+"""
+$(SIGNATURES)
+
+Get the band the signal is transmitted on.
+"""
+@inline get_band(::GPSL1C_D) = L1()
+
+"""
+$(SIGNATURES)
+
+Get the human-readable signal name.
+"""
+get_signal_name(::GPSL1C_D) = "GPS L1C-D"
+
+function read_gpsl1c_d_codes()
+    _l1c_build_primary_codes(L1C_D_WEIL_INDEX, L1C_D_INSERTION_INDEX)
+end
+
+function GPSL1C_D()
+    GPSL1C_D(widen_codes_to_storage(read_gpsl1c_d_codes()))
+end
+
+"""
+$(SIGNATURES)
+
+Get the primary code length for GPS L1C-D.
+
+# Returns
+- `Int`: 10230 chips
+"""
+@inline get_code_length(::GPSL1C_D) = L1C_PRIMARY_LENGTH
+
+"""
+$(SIGNATURES)
+
+Get the secondary code for GPS L1C-D.
+
+The data component has no secondary code (the overlay applies only to
+the pilot, L1C-P).
+"""
+@inline get_secondary_code(::GPSL1C_D) = NoSecondaryCode()
+
+"""
+$(SIGNATURES)
+
+Get the code chipping rate for GPS L1C-D.
+
+# Returns
+- `Frequency`: 1.023 MHz
+"""
+@inline get_code_frequency(::GPSL1C_D) = 1_023_000Hz
+
+"""
+$(SIGNATURES)
+
+Get the data bit rate for GPS L1C-D.
+
+# Returns
+- `Frequency`: 50 Hz (CNAV-2)
+"""
+@inline get_data_frequency(::GPSL1C_D) = 50Hz
