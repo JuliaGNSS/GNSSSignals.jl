@@ -761,18 +761,44 @@ end
     chip_step = chip_delta_fp * UInt64(L)
     chip_pos_base = (UInt64(int_chip_offset) + base_count) % UInt64(NPAT)
 
-    # Fast path: no chip transition within the 16-lane block. All lanes
-    # share `chip_pos_base`.
+    # Fast path 1: no chip transition within the 16-lane block. All
+    # lanes share `chip_pos_base`. Dominant case at typical fs/cf > L.
     next_threshold = (base_count + UInt64(1)) << 32
     if chip_acc_base + chip_step <= next_threshold
         return Vec{16, UInt32}(UInt32(chip_pos_base))
     end
 
-    # General case: at fs/cf close to L (e.g. 15 MHz / 1.023 MHz ≈ 14.66
-    # samples/chip) a block can straddle one or even two chip
-    # boundaries. Compute the per-lane chip-count delta (in {0, 1, 2})
-    # by finding the lane index where each threshold is first crossed.
+    lane_idx = Vec{16, UInt32}((
+        UInt32(0), UInt32(1), UInt32(2), UInt32(3),
+        UInt32(4), UInt32(5), UInt32(6), UInt32(7),
+        UInt32(8), UInt32(9), UInt32(10), UInt32(11),
+        UInt32(12), UInt32(13), UInt32(14), UInt32(15),
+    ))
+    npat_v = Vec{16, UInt32}(UInt32(NPAT))
+
+    # Fast path 2: exactly one chip transition within the block. This
+    # is the common case at fs/cf close to L (e.g. 15 MHz / 1.023 MHz
+    # ≈ 14.66 samples/chip → 91 % of blocks have one transition, 9 %
+    # have two). Find the first lane at base+1 with a single
+    # `cld`/`vifelse`/wrap pair.
     second_threshold = (base_count + UInt64(2)) << 32
+    if chip_acc_base + chip_step <= second_threshold
+        j_trans = if chip_acc_base >= next_threshold
+            0
+        else
+            Int(cld(next_threshold - chip_acc_base, chip_delta_fp))
+        end
+        delta_v = vifelse(
+            lane_idx < Vec{16, UInt32}(UInt32(j_trans)),
+            Vec{16, UInt32}(0),
+            Vec{16, UInt32}(1),
+        )
+        chip_pos_v = Vec{16, UInt32}(UInt32(chip_pos_base)) + delta_v
+        return vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
+    end
+
+    # General case: two transitions inside the block. Per-lane
+    # chip-count delta ∈ {0, 1, 2}.
     j_trans1 = if chip_acc_base >= next_threshold
         0
     else
@@ -780,17 +806,9 @@ end
     end
     j_trans2 = if chip_acc_base >= second_threshold
         0
-    elseif chip_acc_base + chip_step <= second_threshold
-        L  # past end of block — no second transition
     else
         Int(cld(second_threshold - chip_acc_base, chip_delta_fp))
     end
-    lane_idx = Vec{16, UInt32}((
-        UInt32(0), UInt32(1), UInt32(2), UInt32(3),
-        UInt32(4), UInt32(5), UInt32(6), UInt32(7),
-        UInt32(8), UInt32(9), UInt32(10), UInt32(11),
-        UInt32(12), UInt32(13), UInt32(14), UInt32(15),
-    ))
     one_v = Vec{16, UInt32}(1)
     zero_v = Vec{16, UInt32}(0)
     delta_v =
@@ -799,16 +817,8 @@ end
     chip_pos_v = Vec{16, UInt32}(UInt32(chip_pos_base)) + delta_v
     # Branchless modulo-NPAT: chip_pos_v ∈ [0, NPAT+1], so at most two
     # successive subtractions of NPAT bring every lane back into range.
-    chip_pos_v = vifelse(
-        chip_pos_v >= Vec{16, UInt32}(UInt32(NPAT)),
-        chip_pos_v - Vec{16, UInt32}(UInt32(NPAT)),
-        chip_pos_v,
-    )
-    return vifelse(
-        chip_pos_v >= Vec{16, UInt32}(UInt32(NPAT)),
-        chip_pos_v - Vec{16, UInt32}(UInt32(NPAT)),
-        chip_pos_v,
-    )
+    chip_pos_v = vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
+    return vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
 end
 
 # Two-pass fallback used when:
