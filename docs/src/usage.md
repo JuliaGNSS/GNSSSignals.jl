@@ -133,6 +133,19 @@ get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 
 Note that due to CBOC modulation, Galileo E1B code values are floating-point rather than integer.
 
+### Galileo E1B (BOC(1,1) approximation)
+
+Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, code rate, data rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation and integer (`Int16`) output:
+
+```julia
+e1b = GalileoE1B_BOC11()
+get_code_length(e1b)         # 4092
+get_modulation(e1b)          # BOCsin(1, 1)
+get_code_type(e1b)           # Int16
+```
+
+Use [`GalileoE1B`](@ref) for the full CBOC spec output (Float32); use [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) when the 0.45 dB loss is acceptable and Int16 / lower sampling rate is preferable.
+
 ## Bands
 
 A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two signals with the same band can be driven by a single carrier NCO in a receiver — that is the architectural reason this abstraction exists.

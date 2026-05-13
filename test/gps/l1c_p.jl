@@ -135,29 +135,6 @@ end
     end
 end
 
-# Decode a gzipped hex-packed L1C fixture file. The decompressed
-# stream is a hex string with least-significant-bit-first packing of
-# ±1 samples: each hex nibble holds 4 samples, bit 0 of nibble `k`
-# is sample `4k + 1`, bit 3 is sample `4k + 4`. The packed length
-# matches one primary code period at
-# `sampling_frequency = 12 × code_frequency` — that is,
-# `12 × 10230 = 122760` samples. The file is stored gzipped because
-# the chip-aligned sample pattern is highly redundant (about 93 %
-# compression).
-function _load_l1c_hex_fixture(filename::AbstractString)
-    hex = open(filename) do io
-        strip(read(GzipDecompressorStream(io), String))
-    end
-    n_samples = 12 * 10230
-    out = Vector{Int16}(undef, n_samples)
-    @inbounds for k = 1:n_samples
-        nibble = parse(UInt8, hex[(k - 1) ÷ 4 + 1]; base = 16)
-        bit = (nibble >> ((k - 1) % 4)) & UInt8(1)
-        out[k] = bit == 0 ? Int16(-1) : Int16(1)
-    end
-    out
-end
-
 @testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against PocketSDR's L1C code generator
     # (primary code, overlay code, and TMBOC sub-carrier modulation).
@@ -183,12 +160,12 @@ end
     # `l1cd` and `l1cp` reproduce the in-tree fixtures bit-for-bit
     # across all 122760 samples.
     fixture_dir = joinpath(@__DIR__, "fixtures")
-    ref_d = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_d_prn1_fs12chip.hex.gz"))
-    ref_p = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_p_prn1_fs12chip.hex.gz"))
+    n_samples = 12 * 10230
+    ref_d = _load_packed_hex_fixture(joinpath(fixture_dir, "l1c_d_prn1_fs12chip.hex.gz"), n_samples)
+    ref_p = _load_packed_hex_fixture(joinpath(fixture_dir, "l1c_p_prn1_fs12chip.hex.gz"), n_samples)
 
     sampling_rate = 12.276e6Hz
     code_rate = 1023e3Hz
-    n_samples = 12 * 10230
 
     buf_d = zeros(Int16, n_samples)
     gen_code!(buf_d, GPSL1C_D(), 1, sampling_rate, code_rate, 0.0, 0)
