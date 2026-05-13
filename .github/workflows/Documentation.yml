@@ -7,6 +7,14 @@ on:
     tags: '*'
   pull_request:
 
+# Serialize Documentation runs per ref. Two parallel `pull_request`
+# events on the same PR (e.g. from a force-push immediately after a
+# previous push) otherwise race on the final `git push` to `gh-pages`
+# and one always fails with `[rejected] HEAD -> gh-pages (fetch first)`.
+concurrency:
+  group: documentation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     permissions:
