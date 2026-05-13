@@ -138,6 +138,19 @@ end
     # The fixtures hold one primary code period (= 12 × 10230 = 122760
     # samples) of ±1 values packed 1 bit per sample, LSB-first per hex
     # nibble.
+    #
+    # The fixtures are reproducible from PocketSDR (`sdr_code.py`):
+    #
+    #   import sdr_code, numpy as np
+    #   prn = 1
+    #   # L1C-D: PocketSDR outputs 2 samples/chip; upsample 6× to match.
+    #   l1cd = np.repeat(np.asarray(sdr_code.gen_code_L1CD(prn)), 6)
+    #   # L1C-P: PocketSDR is already 12 samples/chip; apply overlay bit 0.
+    #   overlay0 = int(sdr_code.sec_code_L1CP(prn)[0])
+    #   l1cp = np.asarray(sdr_code.gen_code_L1CP(prn)) * overlay0
+    #
+    # `l1cd` and `l1cp` reproduce the in-tree fixtures bit-for-bit
+    # across all 122760 samples.
     fixture_dir = joinpath(@__DIR__, "fixtures")
     ref_d = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_d_prn1_fs12chip.hex.gz"))
     ref_p = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_p_prn1_fs12chip.hex.gz"))
