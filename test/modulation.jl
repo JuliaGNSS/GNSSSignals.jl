@@ -69,6 +69,89 @@
     @test GNSSSignals.get_code_factor(GNSSSignals.LOC()) == 1
 end
 
+@testset "TMBOC accessors" begin
+    # The L1C-P TMBOC: BOC(6,1) at chip-positions {0, 4, 6, 29}, BOC(1,1) elsewhere.
+    boc1 = GNSSSignals.BOCsin(1, 1)
+    boc6 = GNSSSignals.BOCsin(6, 1)
+    pattern = ntuple(k -> (k - 1) ∈ (0, 4, 6, 29), Val(33))
+    tmboc = GNSSSignals.TMBOC(boc1, boc6, pattern)
+
+    # `get_subcarrier_code`: at each chip position pick the BOC variant
+    # selected by the pattern, then evaluate that BOC's subcarrier at
+    # the given phase.
+    @testset "get_subcarrier_code" begin
+        # Chip-position 0 is BOC(6,1): subcarrier flips every 1/12 chip.
+        # First half-cycle (phase ∈ [0, 1/12)) is +1.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 0.0) == 1
+        @test GNSSSignals.get_subcarrier_code(tmboc, 1 / 12 - 0.001) == 1
+        # Second half-cycle (phase ∈ [1/12, 2/12)) is −1.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 1 / 12 + 0.001) == -1
+        @test GNSSSignals.get_subcarrier_code(tmboc, 2 / 12 - 0.001) == -1
+        # Third half-cycle returns to +1.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 2 / 12 + 0.001) == 1
+
+        # Chip-position 1 is BOC(1,1): subcarrier flips every 1/2 chip.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 1.1) == 1   # first half +1
+        @test GNSSSignals.get_subcarrier_code(tmboc, 1.6) == -1  # second half −1
+
+        # Chip-position 4 is BOC(6,1) again.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 4.0) == 1
+        @test GNSSSignals.get_subcarrier_code(tmboc, 4 + 1 / 12 + 0.001) == -1
+
+        # The pattern repeats every 33 chips.
+        @test GNSSSignals.get_subcarrier_code(tmboc, 33.0) ==
+              GNSSSignals.get_subcarrier_code(tmboc, 0.0)
+        @test GNSSSignals.get_subcarrier_code(tmboc, 33 + 1.1) ==
+              GNSSSignals.get_subcarrier_code(tmboc, 1.1)
+    end
+
+    # `get_floored_phase`: integer chip index from a continuous phase.
+    # TMBOC uses the boc1 `n` multiplier (same as CBOC).
+    @testset "get_floored_phase" begin
+        @test GNSSSignals.get_floored_phase(tmboc, 0.0) == 0
+        @test GNSSSignals.get_floored_phase(tmboc, 1.7) == 1
+        @test GNSSSignals.get_floored_phase(tmboc, 32.9) == 32
+        @test GNSSSignals.get_floored_phase(tmboc, 33.0) == 33
+
+        # With a non-unit `n`, the result scales by `n`.
+        boc1_n2 = GNSSSignals.BOCsin(1, 2)
+        boc6_n2 = GNSSSignals.BOCsin(6, 2)
+        tmboc_n2 = GNSSSignals.TMBOC(boc1_n2, boc6_n2, pattern)
+        @test GNSSSignals.get_floored_phase(tmboc_n2, 2.3) == 4
+    end
+
+    # `get_code_spectrum`: power-weighted mix of the BOC component
+    # spectra, where the weights are the fractions of chips using each.
+    @testset "get_code_spectrum" begin
+        sig = GPSL1C_P()
+
+        # Sanity: the PSD is real and non-negative at sampled frequencies.
+        for f in (-2e6, -100e3, 100e3, 2e6)
+            @test get_code_spectrum(sig, f) >= 0
+        end
+
+        # PSD value matches the explicit weighted-sum formula at a few
+        # representative frequencies. 4 of 33 chips use BOC(6,1) →
+        # BOC(6,1) weight is 4/33, BOC(1,1) weight is 29/33.
+        n_boc2 = 4
+        N = 33
+        boc2_frac = n_boc2 / N
+        for f in (50e3, 250e3, 1.5e6)
+            expected =
+                GNSSSignals.get_code_spectrum(boc1, sig, f) * (1 - boc2_frac) +
+                GNSSSignals.get_code_spectrum(boc6, sig, f) * boc2_frac
+            @test get_code_spectrum(sig, f) ≈ expected
+        end
+
+        # Symmetry: BOC subcarriers are zero-mean, so the spectrum
+        # vanishes at DC.
+        @test get_code_spectrum(sig, 0) == 0.0
+
+        # Spectrum is even.
+        @test get_code_spectrum(sig, 500e3) ≈ get_code_spectrum(sig, -500e3)
+    end
+end
+
 @testset "Spectrum functions with units" begin
     # Test BPSK spectrum with different unit combinations
     fc = 1.023e6
