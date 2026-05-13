@@ -513,7 +513,18 @@ end
             mod(start_phase, 1) * unsigned(one(PHASET)) << fixed_point,
         ) << 1 * unsigned(PHASET(modulation.m))
 
-    delta_subcarrier_phase = floor(
+    # Ceil-round the phase increment so that, at chip-aligned sampling
+    # rates (e.g. fs = 12 × code_frequency for BOC(1,1)), the
+    # accumulator reaches the sign-bit threshold on the spec-aligned
+    # sample. Each BOC chip then splits cleanly as
+    # `[+, +, …, +, −, −, …, −]` with the second half starting at
+    # sample `j = period/2`, matching the IS-GPS-800G / IS-GPS-200
+    # convention used by every other reference implementation we
+    # checked (GNSS-SDR, PocketSDR). With `floor` the
+    # threshold was missed by ≤1 ULP at exact alignment and the
+    # sign-flip landed one sample late, drifting the BOC sub-carrier
+    # against the primary chip rate over the buffer.
+    delta_subcarrier_phase = ceil(
         unsigned(PHASET),
         subcarrier_frequency * unsigned(one(PHASET)) << fixed_point / sampling_frequency,
     )
@@ -747,21 +758,32 @@ end
 ) where {NPAT}
     L = 16
     base_count = chip_acc_base >> 32
-    next_threshold = (base_count + UInt64(1)) << 32
     chip_step = chip_delta_fp * UInt64(L)
     chip_pos_base = (UInt64(int_chip_offset) + base_count) % UInt64(NPAT)
 
+    # Fast path: no chip transition within the 16-lane block. All lanes
+    # share `chip_pos_base`.
+    next_threshold = (base_count + UInt64(1)) << 32
     if chip_acc_base + chip_step <= next_threshold
-        # No chip transition in this block — all lanes share chip_pos_base.
         return Vec{16, UInt32}(UInt32(chip_pos_base))
     end
 
-    # One transition within the block. Find the first lane at base+1.
-    if chip_acc_base >= next_threshold
-        j_trans = 0
+    # General case: at fs/cf close to L (e.g. 15 MHz / 1.023 MHz ≈ 14.66
+    # samples/chip) a block can straddle one or even two chip
+    # boundaries. Compute the per-lane chip-count delta (in {0, 1, 2})
+    # by finding the lane index where each threshold is first crossed.
+    second_threshold = (base_count + UInt64(2)) << 32
+    j_trans1 = if chip_acc_base >= next_threshold
+        0
     else
-        need = next_threshold - chip_acc_base
-        j_trans = Int(cld(need, chip_delta_fp))
+        Int(cld(next_threshold - chip_acc_base, chip_delta_fp))
+    end
+    j_trans2 = if chip_acc_base >= second_threshold
+        0
+    elseif chip_acc_base + chip_step <= second_threshold
+        L  # past end of block — no second transition
+    else
+        Int(cld(second_threshold - chip_acc_base, chip_delta_fp))
     end
     lane_idx = Vec{16, UInt32}((
         UInt32(0), UInt32(1), UInt32(2), UInt32(3),
@@ -769,16 +791,22 @@ end
         UInt32(8), UInt32(9), UInt32(10), UInt32(11),
         UInt32(12), UInt32(13), UInt32(14), UInt32(15),
     ))
-    delta_v = vifelse(
-        lane_idx < Vec{16, UInt32}(UInt32(j_trans)),
-        Vec{16, UInt32}(0),
-        Vec{16, UInt32}(1),
-    )
+    one_v = Vec{16, UInt32}(1)
+    zero_v = Vec{16, UInt32}(0)
+    delta_v =
+        vifelse(lane_idx < Vec{16, UInt32}(UInt32(j_trans1)), zero_v, one_v) +
+        vifelse(lane_idx < Vec{16, UInt32}(UInt32(j_trans2)), zero_v, one_v)
     chip_pos_v = Vec{16, UInt32}(UInt32(chip_pos_base)) + delta_v
-    wrapped = chip_pos_v - Vec{16, UInt32}(UInt32(NPAT))
+    # Branchless modulo-NPAT: chip_pos_v ∈ [0, NPAT+1], so at most two
+    # successive subtractions of NPAT bring every lane back into range.
+    chip_pos_v = vifelse(
+        chip_pos_v >= Vec{16, UInt32}(UInt32(NPAT)),
+        chip_pos_v - Vec{16, UInt32}(UInt32(NPAT)),
+        chip_pos_v,
+    )
     return vifelse(
         chip_pos_v >= Vec{16, UInt32}(UInt32(NPAT)),
-        wrapped,
+        chip_pos_v - Vec{16, UInt32}(UInt32(NPAT)),
         chip_pos_v,
     )
 end
@@ -1009,7 +1037,7 @@ function multiply_with_subcarrier!(
         modulation.boc2, sampling_frequency, code_frequency, start_phase, Int32,
     )
     pattern_bits64 = _pack_tmboc_pattern(modulation.pattern)
-    chip_delta_fp = round(UInt64, Float64(code_frequency / sampling_frequency) * (UInt64(1) << 32))
+    chip_delta_fp = ceil(UInt64, Float64(code_frequency / sampling_frequency) * (UInt64(1) << 32))
     int_chip_offset = mod(floor(Int, start_phase), NPAT)
     chip_acc_fp0 = UInt64(floor(UInt64, mod(start_phase, 1.0) * (UInt64(1) << 32)))
     si = reinterpret(UInt32, Int32(start_index))
@@ -1050,7 +1078,7 @@ function multiply_with_subcarrier!(
         modulation.boc2, sampling_frequency, code_frequency, start_phase, Int32,
     )
     pattern_bits64 = _pack_tmboc_pattern(modulation.pattern)
-    chip_delta_fp = round(UInt64, Float64(code_frequency / sampling_frequency) * (UInt64(1) << 32))
+    chip_delta_fp = ceil(UInt64, Float64(code_frequency / sampling_frequency) * (UInt64(1) << 32))
     int_chip_offset = mod(floor(Int, start_phase), NPAT)
     chip_acc_fp0 = UInt64(floor(UInt64, mod(start_phase, 1.0) * (UInt64(1) << 32)))
     si = reinterpret(UInt32, Int32(start_index))
