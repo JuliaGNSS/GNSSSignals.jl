@@ -107,6 +107,54 @@ end
     end
 end
 
+# Decode a gzipped hex-packed L1C fixture file. The decompressed
+# stream is a hex string with LSB-first packing of ±1 samples: each
+# hex nibble holds 4 samples, bit 0 of nibble `k` is sample `4k+1`,
+# bit 3 is sample `4k+4`. The packed length matches one primary
+# code period at fs = 12 × code_rate (= 12 × 10230 = 122760
+# samples). Stored gzipped because the chip-aligned sample pattern
+# is highly redundant (~93 % compression).
+function _load_l1c_hex_fixture(filename::AbstractString)
+    hex = open(filename) do io
+        strip(read(GzipDecompressorStream(io), String))
+    end
+    n_samples = 12 * 10230
+    out = Vector{Int16}(undef, n_samples)
+    @inbounds for k = 1:n_samples
+        nibble = parse(UInt8, hex[(k - 1) ÷ 4 + 1]; base = 16)
+        bit = (nibble >> ((k - 1) % 4)) & UInt8(1)
+        out[k] = bit == 0 ? Int16(-1) : Int16(1)
+    end
+    out
+end
+
+@testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, fs=12.276 MHz)" begin
+    # Independent cross-check against PocketSDR's L1C code generator
+    # (primary code + overlay + TMBOC sub-carrier modulation). At
+    # fs = 12 × code_rate
+    # the primary chip boundaries and BOC sub-carrier half-cycles both
+    # align to sample boundaries, so the comparison is bit-exact.
+    #
+    # The fixtures hold one primary code period (= 12 × 10230 = 122760
+    # samples) of ±1 values packed 1 bit per sample, LSB-first per hex
+    # nibble.
+    fixture_dir = joinpath(@__DIR__, "fixtures")
+    ref_d = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_d_prn1_fs12chip.hex.gz"))
+    ref_p = _load_l1c_hex_fixture(joinpath(fixture_dir, "l1c_p_prn1_fs12chip.hex.gz"))
+
+    sampling_rate = 12.276e6Hz
+    code_rate = 1023e3Hz
+    n_samples = 12 * 10230
+
+    buf_d = zeros(Int16, n_samples)
+    gen_code!(buf_d, GPSL1C_D(), 1, sampling_rate, code_rate, 0.0, 0)
+    @test buf_d == ref_d
+
+    buf_p = zeros(Int16, n_samples)
+    gen_code!(buf_p, GPSL1C_P(), 1, sampling_rate, code_rate, 0.0, 0)
+    @test buf_p == ref_p
+end
+
 @testset "TMBOC generic-T fallback runs and agrees with Float32 fast path" begin
     # Buffers whose eltype is neither Int16 nor Float32 dispatch to the
     # generic per-sample TMBOC method. Exercise it with Float64 and check
