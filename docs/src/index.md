@@ -9,17 +9,20 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 | Signal | Band | Carrier Frequency | Code Frequency | Code Length | Modulation |
 |--------|------|-------------------|----------------|-------------|------------|
 | GPS L1 C/A | L1 | 1575.42 MHz | 1.023 MHz | 1023 chips | BPSK |
+| GPS L1C-D | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | BOC(1,1) |
+| GPS L1C-P | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips + 1800-bit overlay | TMBOC(6,1,4/33) |
 | GPS L5-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | BPSK + Neuman-Hofman |
 | Galileo E1B | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | CBOC(6,1,1/11) |
 
-GPS L1 C/A and Galileo E1B both report the same [`Band`](@ref GNSSSignals.Band) ([`L1`](@ref GNSSSignals.L1)) because they share the 1575.42 MHz RF carrier — a receiver can drive both with the same carrier NCO.
+GPS L1 C/A, GPS L1C-D, GPS L1C-P, and Galileo E1B all report the same [`Band`](@ref GNSSSignals.Band) ([`L1`](@ref GNSSSignals.L1)) because they share the 1575.42 MHz RF carrier — a receiver can drive them with the same carrier NCO.
 
 ### Modulation Types
 
 - **LOC** — Legacy/BPSK modulation (GPS L1 C/A, GPS L5-I)
-- **BOCsin** — Sine-phased Binary Offset Carrier
+- **BOCsin** — Sine-phased Binary Offset Carrier (GPS L1C-D)
 - **BOCcos** — Cosine-phased Binary Offset Carrier
 - **CBOC** — Composite Binary Offset Carrier (Galileo E1B)
+- **TMBOC** — Time-Multiplexed Binary Offset Carrier (GPS L1C-P)
 
 ## Installation
 
@@ -71,7 +74,7 @@ For more detailed examples, see the [Usage](@ref) guide.
 
 GNSSSignals.jl provides functionality to:
 
-- Generate spreading codes for GPS L1 C/A, GPS L5-I, and Galileo E1B
+- Generate spreading codes for GPS L1 C/A, GPS L1C-D, GPS L1C-P, GPS L5-I, and Galileo E1B
 - Sample codes at arbitrary frequencies with [`gen_code`](@ref) and [`gen_code!`](@ref)
 - Access code values at specific phases with [`get_code`](@ref)
 - Query signal parameters (code length, frequencies, modulation type)

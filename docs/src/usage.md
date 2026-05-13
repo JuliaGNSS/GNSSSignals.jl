@@ -86,6 +86,38 @@ get_secondary_code_length(gpsl5i) # 10
 get_secondary_code(gpsl5i)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 ```
 
+### GPS L1C-D
+
+GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and carries CNAV-2 data at 50 sps. It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
+
+```julia
+gpsl1c_d = GPSL1C_D()
+get_code_length(gpsl1c_d)           # 10230
+get_band(gpsl1c_d)                  # L1()
+get_center_frequency(gpsl1c_d)      # 1575420000 Hz
+get_code_frequency(gpsl1c_d)        # 1023000 Hz
+get_data_frequency(gpsl1c_d)        # 50 Hz
+get_secondary_code_length(gpsl1c_d) # 1 (no secondary code)
+get_modulation(gpsl1c_d)            # BOCsin(1, 1)
+```
+
+### GPS L1C-P
+
+GPS L1C-P is the pilot (dataless) component of GPS L1C. It carries 75% of the L1C power per IS-GPS-800G and uses TMBOC(6,1,4/33) modulation: every 33 primary chips, four positions (`{0, 4, 6, 29}`) use BOC(6,1) and the rest use BOC(1,1). It shares the same 10230-chip Weil construction as L1C-D (different per-PRN parameters) and adds an 18-second 1800-bit per-PRN overlay (exposed as a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode)):
+
+```julia
+gpsl1c_p = GPSL1C_P()
+get_code_length(gpsl1c_p)           # 10230
+get_band(gpsl1c_p)                  # L1()
+get_center_frequency(gpsl1c_p)      # 1575420000 Hz
+get_code_frequency(gpsl1c_p)        # 1023000 Hz
+get_data_frequency(gpsl1c_p)        # 0 Hz (dataless)
+get_secondary_code_length(gpsl1c_p) # 1800
+get_modulation(gpsl1c_p)            # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
+```
+
+The overlay code is per-PRN, so [`get_secondary_code`](@ref) returns a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode) wrapping the 1800 × 63 overlay matrix rather than a plain tuple.
+
 ### Galileo E1B
 
 Galileo E1B (the data-carrying component of Galileo E1 OS) uses CBOC(6,1,1/11) modulation. It is transmitted on the same RF carrier as GPS L1 C/A — [`get_band`](@ref) returns [`L1`](@ref GNSSSignals.L1) for both:
