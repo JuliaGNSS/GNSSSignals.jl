@@ -64,11 +64,11 @@ end
     end
 end
 
-@testset "TMBOC SIMD fast path matches two-pass fallback" begin
-    # The Int16/Float32 fast paths use an explicit SIMD.jl kernel; the
-    # generic path falls back to a two-pass scalar/auto-vectorized
-    # implementation. They must agree bit-for-bit on Int16 and within
-    # floating-point rounding on Float32.
+@testset "TMBOC Int16 SIMD fast path matches two-pass fallback" begin
+    # `multiply_with_subcarrier!(::Vector{Int16}, ::TMBOC, ...)` uses an
+    # explicit 16-lane SIMD.jl kernel; any non-`Vector` Int16 buffer
+    # (e.g. `view(buf, 1:N)`) hits the auto-vectorized two-pass
+    # fallback. Both must agree bit-for-bit.
     sig = GPSL1C_P()
     modulation = get_modulation(sig)
     sampling_rate = 15e6Hz
@@ -82,28 +82,17 @@ end
         (97,   0.0, 0),  # exercises the scalar tail
         (256,  0.0, 0),  # exact multiple of 16
     )
-        buf_simd_i16 = ones(Int16, samples)
-        buf_ref_i16  = ones(Int16, samples)
+        buf_simd = ones(Int16, samples)
+        buf_ref  = ones(Int16, samples)
         GNSSSignals.multiply_with_subcarrier!(
-            buf_simd_i16, modulation, sampling_rate, code_rate, start_phase, start_index,
+            buf_simd, modulation, sampling_rate, code_rate, start_phase, start_index,
         )
         # Force the two-pass fallback by passing a typed view.
-        v_ref = view(buf_ref_i16, 1:samples)
+        v_ref = view(buf_ref, 1:samples)
         GNSSSignals.multiply_with_subcarrier!(
             v_ref, modulation, sampling_rate, code_rate, start_phase, start_index,
         )
-        @test buf_simd_i16 == buf_ref_i16
-
-        buf_simd_f32 = ones(Float32, samples)
-        buf_ref_f32  = ones(Float32, samples)
-        GNSSSignals.multiply_with_subcarrier!(
-            buf_simd_f32, modulation, sampling_rate, code_rate, start_phase, start_index,
-        )
-        v_ref_f32 = view(buf_ref_f32, 1:samples)
-        GNSSSignals.multiply_with_subcarrier!(
-            v_ref_f32, modulation, sampling_rate, code_rate, start_phase, start_index,
-        )
-        @test buf_simd_f32 == buf_ref_f32
+        @test buf_simd == buf_ref
     end
 end
 
@@ -171,30 +160,17 @@ end
     @test buf_p == ref_p
 end
 
-@testset "TMBOC generic-T fallback runs and agrees with Float32 fast path" begin
-    # Buffers whose eltype is neither Int16 nor Float32 dispatch to the
-    # generic per-sample TMBOC method. Exercise it with Float64 and check
-    # the result matches the Float32 fast path within rounding.
+@testset "TMBOC `multiply_with_subcarrier!` rejects non-Int16 buffers" begin
+    # Only `Int16` buffers are supported. Float32 / Float64 / Int32
+    # callers get a `MethodError` instead of a silently slow path.
     sig = GPSL1C_P()
     modulation = get_modulation(sig)
-    sampling_rate = 15e6Hz
-    code_rate = 1023e3Hz
+    fs = 15e6Hz
+    cf = 1023e3Hz
 
-    for (samples, start_phase, start_index) in (
-        (2000, 0.0, 0),
-        (2000, 1.7, 3),
-        (97,   13.5, -2),
-    )
-        buf_f64 = ones(Float64, samples)
-        buf_f32 = ones(Float32, samples)
-        GNSSSignals.multiply_with_subcarrier!(
-            buf_f64, modulation, sampling_rate, code_rate, start_phase, start_index,
+    for buf in (ones(Float32, 100), ones(Float64, 100), ones(Int32, 100))
+        @test_throws MethodError GNSSSignals.multiply_with_subcarrier!(
+            buf, modulation, fs, cf, 0.0, 0,
         )
-        GNSSSignals.multiply_with_subcarrier!(
-            buf_f32, modulation, sampling_rate, code_rate, start_phase, start_index,
-        )
-        # Both paths produce ±1 (BOC sign-bits times unity initial buffer),
-        # so equality holds across the Float64↔Float32 boundary.
-        @test buf_f64 == Float64.(buf_f32)
     end
 end

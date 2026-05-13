@@ -711,31 +711,31 @@ end
     return bits
 end
 
-# TMBOC subcarrier multiply.
+# TMBOC subcarrier multiply (Int16 buffers only).
 #
 # Strategy: explicit 16-lane SIMD via SIMD.jl. Per SIMD iteration we
 # process 16 samples:
 #   1. Compute chip_pos for each lane via a 16-lane SIMD ramp (scalar
 #      base, per-lane bump on chip transition).
-#   2. `pattern_bits >> chip_pos_lane` (vpsrlvd) selects BOC1 vs BOC2
-#      per lane in a single vector instruction — no gather, no mod.
-#   3. Compute both BOC sign-bits per lane via the sign-bit splice trick
-#      (one arithmetic shift + or, vectorized), `vifelse` to select.
+#   2. `pattern_bits >> chip_pos_lane` (`vpsrlvd`) selects BOC(1,1) vs
+#      BOC(6,1) per lane in a single vector instruction — no gather,
+#      no per-lane modulo.
+#   3. Compute both BOC sign-bits per lane via the sign-bit splice
+#      trick (one arithmetic shift + or, vectorized), `vifelse` to
+#      select.
 #   4. Load 16 buffer samples, multiply, store.
 #
-# The pattern must fit in 32 bits (so `vpsrlvd` is sufficient). For
-# L1C-P (TMBOC(6,1,4/33) with BOC2 at chip positions {0,4,6,29}) this
-# holds; the dispatch in `multiply_with_subcarrier!(TMBOC, ...)` falls
-# back to the two-pass for patterns that don't fit.
-#
-# Measured on 2000 samples at 15 MHz/1.023 MHz:
-#   Int16:    AVX2 555 ns / AVX-512 265 ns  (was 946 ns / 607 ns two-pass)
-#   Float32:  AVX2 ~590 ns / AVX-512 ~310 ns  (similar pattern)
+# The packed pattern must fit in 32 bits (so `vpsrlvd` is sufficient).
+# For L1C-P — TMBOC(6,1,4/33) with BOC(6,1) at chip positions
+# {0, 4, 6, 29} — this holds. The Int16 dispatcher below falls back
+# to the auto-vectorized two-pass for non-contiguous Int16 buffers and
+# for patterns whose packed bits don't fit in `UInt32`. Buffers with
+# any other element type (`Float32`, `Float64`, …) raise a
+# `MethodError`; convert to `Int16` first.
 
 # Compute the last 1-based sample index in absolute chip count `chip`.
 # Returns N if the buffer ends within this chip. Used by the two-pass
-# fallback (kept for buffer types other than Int16/Float32 and patterns
-# outside UInt32).
+# fallback for non-contiguous Int16 buffers.
 @inline function _tmboc_chip_end(
     chip::Int,
     chip_acc_fp0::UInt64,
@@ -840,15 +840,16 @@ end
     return vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
 end
 
-# Two-pass fallback used when:
-#   - the buffer is not a contiguous `Vector` (SIMD.jl `vload` requires it), or
-#   - the packed `pattern_bits` doesn't fit in UInt32, or
-#   - we fall through from the generic TMBOC method below.
+# Two-pass fallback for buffers that don't qualify for the SIMD path.
+# Hit when either the buffer isn't a contiguous `Vector{Int16}`
+# (SIMD.jl `vload` requires it — e.g. a `view` lands here) or when
+# the packed `pattern_bits` doesn't fit in `UInt32`.
 #
-# Pass 1 multiplies the whole buffer by BOC1's sign-bit (pure SIMD,
-# auto-vectorized). Pass 2 walks chips and, for each BOC2 chip,
-# re-multiplies that chip's samples by BOC1·BOC2 (in {-1,+1}), so the
-# net effect at those samples is BOC2 instead of BOC1.
+# Pass 1 multiplies the whole buffer by the BOC(1,1) sign-bit
+# (pure auto-vectorized loop). Pass 2 walks chips and, for each
+# BOC(6,1) chip, re-multiplies that chip's samples by
+# `BOC(1,1) · BOC(6,1)` (which is in {-1, +1}), so the net effect at
+# those samples is BOC(6,1) instead of BOC(1,1).
 function _tmboc_two_pass_i16!(
     sampled_code::AbstractVector{Int16},
     sc_phase_boc1::UInt32, sc_delta_boc1::UInt32,
@@ -876,40 +877,6 @@ function _tmboc_two_pass_i16!(
                 b1 = calc_subcarrier_bit_i32(i, sc_phase_boc1, sc_delta_boc1)
                 b2 = calc_subcarrier_bit_i32(i, sc_phase_boc2, sc_delta_boc2)
                 sampled_code[index] = (Int32(sampled_code[index]) * b1 * b2) % Int16
-            end
-        end
-        sample_start = sample_end + 1
-        chip += 1
-    end
-    sampled_code
-end
-
-function _tmboc_two_pass_f32!(
-    sampled_code::AbstractVector{Float32},
-    sc_phase_boc1::UInt32, sc_delta_boc1::UInt32,
-    sc_phase_boc2::UInt32, sc_delta_boc2::UInt32,
-    pattern_bits::UInt64,
-    chip_acc_fp0::UInt64, chip_delta_fp::UInt64,
-    int_chip_offset::Int, si::UInt32,
-    ::Val{NPAT},
-) where {NPAT}
-    N = length(sampled_code)
-    @inbounds @simd ivdep for index = 1:N
-        i = UInt32(index - 1) + si
-        sampled_code[index] *= calc_subcarrier_bit_f32(i, sc_phase_boc1, sc_delta_boc1)
-    end
-    sample_start = 1
-    chip = 0
-    while sample_start <= N
-        sample_end = _tmboc_chip_end(chip, chip_acc_fp0, chip_delta_fp, N)
-        chip_pos = (int_chip_offset + chip) % NPAT
-        use_boc2 = ((pattern_bits >> chip_pos) & UInt64(1)) != UInt64(0)
-        if use_boc2
-            @inbounds @simd ivdep for index = sample_start:sample_end
-                i = UInt32(index - 1) + si
-                b1 = calc_subcarrier_bit_f32(i, sc_phase_boc1, sc_delta_boc1)
-                b2 = calc_subcarrier_bit_f32(i, sc_phase_boc2, sc_delta_boc2)
-                sampled_code[index] *= b1 * b2
             end
         end
         sample_start = sample_end + 1
@@ -985,71 +952,6 @@ function _tmboc_simd_i16!(
     sampled_code
 end
 
-# 16-lane SIMD.jl Float32 fast path. Same structure as the Int16 variant
-# but produces Float32 ±1 sign-bits via the bit-splice trick.
-function _tmboc_simd_f32!(
-    sampled_code::Vector{Float32},
-    sc_phase_boc1::UInt32, sc_delta_boc1::UInt32,
-    sc_phase_boc2::UInt32, sc_delta_boc2::UInt32,
-    pattern_bits::UInt32,
-    chip_acc_fp0::UInt64, chip_delta_fp::UInt64,
-    int_chip_offset::Int, si::UInt32,
-    ::Val{NPAT},
-) where {NPAT}
-    N = length(sampled_code)
-    L = 16
-    Nblk = (N ÷ L) * L
-
-    lane_idx = Vec{16, UInt32}((
-        UInt32(0), UInt32(1), UInt32(2), UInt32(3),
-        UInt32(4), UInt32(5), UInt32(6), UInt32(7),
-        UInt32(8), UInt32(9), UInt32(10), UInt32(11),
-        UInt32(12), UInt32(13), UInt32(14), UInt32(15),
-    ))
-    sc_phase_boc1_v = Vec{16, UInt32}(sc_phase_boc1 + sc_delta_boc1 * si) +
-                       lane_idx * Vec{16, UInt32}(sc_delta_boc1)
-    sc_phase_boc2_v = Vec{16, UInt32}(sc_phase_boc2 + sc_delta_boc2 * si) +
-                       lane_idx * Vec{16, UInt32}(sc_delta_boc2)
-    sc_step_boc1 = Vec{16, UInt32}(sc_delta_boc1 * UInt32(L))
-    sc_step_boc2 = Vec{16, UInt32}(sc_delta_boc2 * UInt32(L))
-
-    chip_step = chip_delta_fp * UInt64(L)
-    chip_acc_base = chip_acc_fp0
-    pattern_v = Vec{16, UInt32}(pattern_bits)
-
-    @inbounds for blk = 0:L:(Nblk - 1)
-        chip_pos_v = _tmboc_chip_pos_16(chip_acc_base, chip_delta_fp, int_chip_offset, Val(NPAT))
-        bits_v = pattern_v >> chip_pos_v
-        use_boc2_v = (bits_v & Vec{16, UInt32}(1)) != Vec{16, UInt32}(0)
-
-        b1_bits = (sc_phase_boc1_v & Vec{16, UInt32}(0x80000000)) | Vec{16, UInt32}(0x3F800000)
-        b2_bits = (sc_phase_boc2_v & Vec{16, UInt32}(0x80000000)) | Vec{16, UInt32}(0x3F800000)
-        b1 = reinterpret(Vec{16, Float32}, b1_bits)
-        b2 = reinterpret(Vec{16, Float32}, b2_bits)
-        b = vifelse(use_boc2_v, b2, b1)
-
-        v = vload(Vec{16, Float32}, sampled_code, blk + 1)
-        vstore(v * b, sampled_code, blk + 1)
-
-        sc_phase_boc1_v += sc_step_boc1
-        sc_phase_boc2_v += sc_step_boc2
-        chip_acc_base += chip_step
-    end
-
-    @inbounds for index = (Nblk + 1):N
-        i = UInt32(index - 1) + si
-        b1 = calc_subcarrier_bit_f32(i, sc_phase_boc1, sc_delta_boc1)
-        b2 = calc_subcarrier_bit_f32(i, sc_phase_boc2, sc_delta_boc2)
-        acc = chip_acc_fp0 + UInt64(index - 1) * chip_delta_fp
-        chip = Int(acc >> 32)
-        chip_pos = (int_chip_offset + chip) % NPAT
-        bit = (pattern_bits >> chip_pos) & UInt32(1)
-        b = bit != 0 ? b2 : b1
-        sampled_code[index] *= b
-    end
-    sampled_code
-end
-
 function multiply_with_subcarrier!(
     sampled_code::AbstractVector{Int16},
     modulation::TMBOC{B1, B2, NPAT},
@@ -1089,80 +991,6 @@ function multiply_with_subcarrier!(
         chip_acc_fp0, chip_delta_fp,
         int_chip_offset, si, Val(NPAT),
     )
-end
-
-function multiply_with_subcarrier!(
-    sampled_code::AbstractVector{Float32},
-    modulation::TMBOC{B1, B2, NPAT},
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase = 0.0,
-    start_index::Integer = 0,
-    PHASET = Int32,
-) where {B1, B2, NPAT}
-    _, sc_phase_boc1, sc_delta_boc1 = calc_subcarrier_phase_and_delta(
-        modulation.boc1, sampling_frequency, code_frequency, start_phase, Int32,
-    )
-    _, sc_phase_boc2, sc_delta_boc2 = calc_subcarrier_phase_and_delta(
-        modulation.boc2, sampling_frequency, code_frequency, start_phase, Int32,
-    )
-    pattern_bits64 = _pack_tmboc_pattern(modulation.pattern)
-    chip_delta_fp = ceil(UInt64, Float64(code_frequency / sampling_frequency) * (UInt64(1) << 32))
-    int_chip_offset = mod(floor(Int, start_phase), NPAT)
-    chip_acc_fp0 = UInt64(floor(UInt64, mod(start_phase, 1.0) * (UInt64(1) << 32)))
-    si = reinterpret(UInt32, Int32(start_index))
-
-    if sampled_code isa Vector{Float32} && pattern_bits64 <= UInt64(typemax(UInt32))
-        return _tmboc_simd_f32!(
-            sampled_code,
-            sc_phase_boc1, sc_delta_boc1,
-            sc_phase_boc2, sc_delta_boc2,
-            UInt32(pattern_bits64),
-            chip_acc_fp0, chip_delta_fp,
-            int_chip_offset, si, Val(NPAT),
-        )
-    end
-    return _tmboc_two_pass_f32!(
-        sampled_code,
-        sc_phase_boc1, sc_delta_boc1,
-        sc_phase_boc2, sc_delta_boc2,
-        pattern_bits64,
-        chip_acc_fp0, chip_delta_fp,
-        int_chip_offset, si, Val(NPAT),
-    )
-end
-
-# TMBOC subcarrier multiply — generic fallback for other element types.
-function multiply_with_subcarrier!(
-    sampled_code::AbstractVector{T},
-    modulation::TMBOC{B1, B2, NPAT},
-    sampling_frequency::Frequency,
-    code_frequency::Frequency,
-    start_phase = 0.0,
-    start_index::Integer = 0,
-    PHASET = Int32,
-) where {T, B1, B2, NPAT}
-    fp_boc1, sc_phase_boc1, sc_delta_boc1 = calc_subcarrier_phase_and_delta(
-        modulation.boc1, sampling_frequency, code_frequency, start_phase, PHASET,
-    )
-    fp_boc2, sc_phase_boc2, sc_delta_boc2 = calc_subcarrier_phase_and_delta(
-        modulation.boc2, sampling_frequency, code_frequency, start_phase, PHASET,
-    )
-    chips_per_sample = code_frequency / sampling_frequency
-    chip_pos_f = mod(start_phase, NPAT)
-    pattern = modulation.pattern
-    @inbounds for (index, i) in enumerate(
-        PHASET(start_index):PHASET(length(sampled_code) - 1 + start_index),
-    )
-        chip_pos = mod(floor(Int, chip_pos_f), NPAT)
-        use_boc2 = pattern[chip_pos + 1]
-        b = use_boc2 ?
-            calc_subcarrier_bit(i, fp_boc2, sc_phase_boc2, sc_delta_boc2, PHASET) :
-            calc_subcarrier_bit(i, fp_boc1, sc_phase_boc1, sc_delta_boc1, PHASET)
-        sampled_code[index] *= T(b)
-        chip_pos_f += chips_per_sample
-    end
-    sampled_code
 end
 
 function multiply_with_subcarrier!(
