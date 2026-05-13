@@ -108,12 +108,14 @@ end
 end
 
 # Decode a gzipped hex-packed L1C fixture file. The decompressed
-# stream is a hex string with LSB-first packing of ±1 samples: each
-# hex nibble holds 4 samples, bit 0 of nibble `k` is sample `4k+1`,
-# bit 3 is sample `4k+4`. The packed length matches one primary
-# code period at fs = 12 × code_rate (= 12 × 10230 = 122760
-# samples). Stored gzipped because the chip-aligned sample pattern
-# is highly redundant (~93 % compression).
+# stream is a hex string with least-significant-bit-first packing of
+# ±1 samples: each hex nibble holds 4 samples, bit 0 of nibble `k`
+# is sample `4k + 1`, bit 3 is sample `4k + 4`. The packed length
+# matches one primary code period at
+# `sampling_frequency = 12 × code_frequency` — that is,
+# `12 × 10230 = 122760` samples. The file is stored gzipped because
+# the chip-aligned sample pattern is highly redundant (about 93 %
+# compression).
 function _load_l1c_hex_fixture(filename::AbstractString)
     hex = open(filename) do io
         strip(read(GzipDecompressorStream(io), String))
@@ -128,24 +130,25 @@ function _load_l1c_hex_fixture(filename::AbstractString)
     out
 end
 
-@testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, fs=12.276 MHz)" begin
+@testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against PocketSDR's L1C code generator
-    # (primary code + overlay + TMBOC sub-carrier modulation). At
-    # fs = 12 × code_rate
-    # the primary chip boundaries and BOC sub-carrier half-cycles both
-    # align to sample boundaries, so the comparison is bit-exact.
+    # (primary code, overlay code, and TMBOC sub-carrier modulation).
+    # At `sampling_frequency = 12 × code_frequency` the primary chip
+    # boundaries and the BOC sub-carrier half-cycle boundaries both
+    # land on sample boundaries, so the comparison is bit-exact.
     #
-    # The fixtures hold one primary code period (= 12 × 10230 = 122760
-    # samples) of ±1 values packed 1 bit per sample, LSB-first per hex
-    # nibble.
+    # The fixtures hold one primary code period
+    # (`12 × 10230 = 122760` samples) of ±1 values, packed 1 bit per
+    # sample (least-significant-bit-first inside each hex nibble).
     #
     # The fixtures are reproducible from PocketSDR (`sdr_code.py`):
     #
     #   import sdr_code, numpy as np
     #   prn = 1
-    #   # L1C-D: PocketSDR outputs 2 samples/chip; upsample 6× to match.
+    #   # L1C-D: PocketSDR outputs 2 samples per chip; upsample by 6×.
     #   l1cd = np.repeat(np.asarray(sdr_code.gen_code_L1CD(prn)), 6)
-    #   # L1C-P: PocketSDR is already 12 samples/chip; apply overlay bit 0.
+    #   # L1C-P: PocketSDR is already at 12 samples per chip; apply
+    #   # the first overlay bit.
     #   overlay0 = int(sdr_code.sec_code_L1CP(prn)[0])
     #   l1cp = np.asarray(sdr_code.gen_code_L1CP(prn)) * overlay0
     #

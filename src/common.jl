@@ -513,17 +513,20 @@ end
             mod(start_phase, 1) * unsigned(one(PHASET)) << fixed_point,
         ) << 1 * unsigned(PHASET(modulation.m))
 
-    # Ceil-round the phase increment so that, at chip-aligned sampling
-    # rates (e.g. fs = 12 × code_frequency for BOC(1,1)), the
-    # accumulator reaches the sign-bit threshold on the spec-aligned
-    # sample. Each BOC chip then splits cleanly as
-    # `[+, +, …, +, −, −, …, −]` with the second half starting at
-    # sample `j = period/2`, matching the IS-GPS-800G / IS-GPS-200
-    # convention used by every other reference implementation we
-    # checked (GNSS-SDR, PocketSDR). With `floor` the
-    # threshold was missed by ≤1 ULP at exact alignment and the
-    # sign-flip landed one sample late, drifting the BOC sub-carrier
-    # against the primary chip rate over the buffer.
+    # Ceil-round the phase increment so that, at sampling rates where
+    # the BOC half-cycle boundary lands on an exact sample boundary
+    # (for example, `sampling_frequency = 12 × code_frequency` with
+    # BOC(1,1), where each chip is 12 samples and the half-cycle is 6
+    # samples), the integer phase accumulator reaches the sign-bit
+    # threshold on the spec-aligned sample. Each BOC chip then splits
+    # cleanly into two halves of equal length with the same primary
+    # chip sign — the first half positive (relative to the chip),
+    # then negated — matching the IS-GPS-800G / IS-GPS-200 convention
+    # used by every other reference implementation we checked
+    # (GNSS-SDR, PocketSDR). With `floor` the accumulator missed the
+    # threshold by ≤ 1 unit in the last place at exact alignment and
+    # the sign-flip landed one sample late, drifting the BOC
+    # sub-carrier against the primary chip rate over the buffer.
     delta_subcarrier_phase = ceil(
         unsigned(PHASET),
         subcarrier_frequency * unsigned(one(PHASET)) << fixed_point / sampling_frequency,
@@ -762,7 +765,9 @@ end
     chip_pos_base = (UInt64(int_chip_offset) + base_count) % UInt64(NPAT)
 
     # Fast path 1: no chip transition within the 16-lane block. All
-    # lanes share `chip_pos_base`. Dominant case at typical fs/cf > L.
+    # lanes share `chip_pos_base`. Dominant case whenever the block
+    # spans less than one chip — i.e. when the samples-per-chip ratio
+    # is larger than the SIMD lane count.
     next_threshold = (base_count + UInt64(1)) << 32
     if chip_acc_base + chip_step <= next_threshold
         return Vec{16, UInt32}(UInt32(chip_pos_base))
@@ -777,19 +782,22 @@ end
     npat_v = Vec{16, UInt32}(UInt32(NPAT))
 
     # Fast path 2: exactly one chip transition within the block. This
-    # is the common case at fs/cf close to L (e.g. 15 MHz / 1.023 MHz
-    # ≈ 14.66 samples/chip → 91 % of blocks have one transition, 9 %
-    # have two). Find the first lane at base+1 with a single
-    # `cld`/`vifelse`/wrap pair.
+    # is the common case when the samples-per-chip ratio is close to
+    # the SIMD lane count. For example at sampling_frequency = 15 MHz
+    # and code_frequency = 1.023 MHz the block spans about 1.09 chips,
+    # so roughly 91 % of blocks have a single chip transition and 9 %
+    # have two. Find the first lane that belongs to the next chip and
+    # bump the lanes at or after it by one chip-pos with a single
+    # comparison-plus-select.
     second_threshold = (base_count + UInt64(2)) << 32
     if chip_acc_base + chip_step <= second_threshold
-        j_trans = if chip_acc_base >= next_threshold
+        first_lane_in_next_chip = if chip_acc_base >= next_threshold
             0
         else
             Int(cld(next_threshold - chip_acc_base, chip_delta_fp))
         end
         delta_v = vifelse(
-            lane_idx < Vec{16, UInt32}(UInt32(j_trans)),
+            lane_idx < Vec{16, UInt32}(UInt32(first_lane_in_next_chip)),
             Vec{16, UInt32}(0),
             Vec{16, UInt32}(1),
         )
@@ -797,14 +805,15 @@ end
         return vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
     end
 
-    # General case: two transitions inside the block. Per-lane
-    # chip-count delta ∈ {0, 1, 2}.
-    j_trans1 = if chip_acc_base >= next_threshold
+    # General case: two transitions inside the block. The per-lane
+    # chip-count delta is 0, 1, or 2 depending on which thresholds the
+    # lane's accumulator value has crossed.
+    first_lane_in_next_chip = if chip_acc_base >= next_threshold
         0
     else
         Int(cld(next_threshold - chip_acc_base, chip_delta_fp))
     end
-    j_trans2 = if chip_acc_base >= second_threshold
+    first_lane_two_chips_ahead = if chip_acc_base >= second_threshold
         0
     else
         Int(cld(second_threshold - chip_acc_base, chip_delta_fp))
@@ -812,11 +821,21 @@ end
     one_v = Vec{16, UInt32}(1)
     zero_v = Vec{16, UInt32}(0)
     delta_v =
-        vifelse(lane_idx < Vec{16, UInt32}(UInt32(j_trans1)), zero_v, one_v) +
-        vifelse(lane_idx < Vec{16, UInt32}(UInt32(j_trans2)), zero_v, one_v)
+        vifelse(
+            lane_idx < Vec{16, UInt32}(UInt32(first_lane_in_next_chip)),
+            zero_v,
+            one_v,
+        ) +
+        vifelse(
+            lane_idx < Vec{16, UInt32}(UInt32(first_lane_two_chips_ahead)),
+            zero_v,
+            one_v,
+        )
     chip_pos_v = Vec{16, UInt32}(UInt32(chip_pos_base)) + delta_v
-    # Branchless modulo-NPAT: chip_pos_v ∈ [0, NPAT+1], so at most two
-    # successive subtractions of NPAT bring every lane back into range.
+    # Branch-free modulo-NPAT. After adding the per-lane delta,
+    # `chip_pos_v` is in `[0, NPAT + 1]`, so at most two successive
+    # subtractions of NPAT bring every lane back into the range
+    # `[0, NPAT)`.
     chip_pos_v = vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
     return vifelse(chip_pos_v >= npat_v, chip_pos_v - npat_v, chip_pos_v)
 end
