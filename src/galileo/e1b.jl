@@ -144,3 +144,50 @@ julia> get_data_frequency(GalileoE1B())
 @inline function get_data_frequency(::GalileoE1B)
     250Hz
 end
+
+"""
+    GalileoE1B_BOC11{C} <: AbstractGNSSSignal{C}
+
+BOC(1,1) approximation of Galileo E1B (the data-carrying component of
+Galileo E1 OS).
+
+Galileo E1B is specified as CBOC(6,1,1/11) — a Float32 weighted sum of
+BOC(1,1) and BOC(6,1) requiring fs ≥ 2 · 6 · 1.023 MHz to fully
+sample. Many software receivers substitute a pure BOC(1,1) replica
+because (a) the BOC(6,1) component carries only 1/11 of the signal
+power, so the correlation loss is ≈ 0.45 dB, and (b) BOC(1,1) needs
+only fs ≥ 2 · 1.023 MHz, allowing lower sampling rates and Int16
+output. PocketSDR, for example, uses this substitution by default
+(see `mod_code` in `sdr_code.c`).
+
+Use this type when you want the lower sampling-rate, Int16-output
+variant; use [`GalileoE1B`](@ref) for the full CBOC spec output (Float32).
+
+Primary code, code length, code frequency, data rate, and band are
+identical to [`GalileoE1B`](@ref); only `get_modulation` differs.
+
+# Example
+```julia
+e1b = GalileoE1B_BOC11()
+get_modulation(e1b)    # BOCsin(1, 1)
+get_code_length(e1b)   # 4092
+```
+"""
+struct GalileoE1B_BOC11{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+    codes::C
+end
+
+get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
+@inline get_modulation(::GalileoE1B_BOC11) = BOCsin(1, 1)
+
+@inline get_band(::GalileoE1B_BOC11) = L1()
+get_signal_name(::GalileoE1B_BOC11) = "Galileo E1B (BOC(1,1) approximation)"
+
+function GalileoE1B_BOC11()
+    GalileoE1B_BOC11(widen_codes_to_storage(read_galileo_e1b_codes()))
+end
+
+@inline get_code_length(::GalileoE1B_BOC11) = 4092
+@inline get_secondary_code(::GalileoE1B_BOC11) = NoSecondaryCode()
+@inline get_code_frequency(::GalileoE1B_BOC11) = 1023_000Hz
+@inline get_data_frequency(::GalileoE1B_BOC11) = 250Hz

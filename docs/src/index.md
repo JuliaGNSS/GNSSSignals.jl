@@ -13,6 +13,7 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 | GPS L1C-P | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips + 1800-bit overlay | TMBOC(6,1,4/33) |
 | GPS L5-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | BPSK + Neuman-Hofman |
 | Galileo E1B | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | CBOC(6,1,1/11) |
+| Galileo E1B (BOC(1,1) approximation) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | BOC(1,1) |
 
 GPS L1 C/A, GPS L1C-D, GPS L1C-P, and Galileo E1B all report the same [`Band`](@ref GNSSSignals.Band) ([`L1`](@ref GNSSSignals.L1)) because they share the 1575.42 MHz RF carrier — a receiver can drive them with the same carrier NCO.
 

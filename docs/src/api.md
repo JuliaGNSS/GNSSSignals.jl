@@ -9,6 +9,7 @@ GNSSSignals.GPSL1C_D
 GNSSSignals.GPSL1C_P
 GNSSSignals.GPSL5I
 GNSSSignals.GalileoE1B
+GNSSSignals.GalileoE1B_BOC11
 ```
 
 ## Bands

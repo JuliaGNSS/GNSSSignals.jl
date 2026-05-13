@@ -14,6 +14,7 @@ A Julia package for generating GNSS spreading codes and signals.
 * GPS L1C-P (TMBOC(6,1,4/33) with 1800-bit overlay)
 * GPS L5-I (BPSK with Neuman-Hofman secondary code)
 * Galileo E1B (CBOC modulation)
+* Galileo E1B BOC(1,1) approximation (lower sampling rate, Int16 output; common SDR substitute for full CBOC)
 * Highly optimized code generation using fixed-point arithmetic for real-time signal processing
 
 ## Installation
