@@ -162,14 +162,16 @@ end
         -1,
     )
 
-    # Allow a few bounded mismatches: at non-chip-aligned sampling
-    # rates the integer phase accumulator's `ceil`-rounded delta
-    # drifts by < 1 ULP per sample relative to the analytical
-    # `floor(continuous_phase)` reference. Over ~4 ms of samples this
-    # can flip up to a handful of sign-bit threshold crossings half a
-    # sample early; the implementation is otherwise spec-aligned and
-    # bit-exact at chip-aligned sampling rates (see the PocketSDR
-    # fixture comparison in `test/gps/`).
+    # Allow a few bounded mismatches: at sampling rates where the BOC
+    # half-cycle boundary does not land exactly on a sample boundary,
+    # the integer phase accumulator's `ceil`-rounded increment drifts
+    # by less than one unit-in-the-last-place per sample relative to
+    # the analytical `floor(continuous_phase)` reference. Over the
+    # roughly 4 ms covered by 4000 samples this can flip a handful of
+    # sign-bit threshold crossings by one sample. The implementation
+    # is otherwise spec-aligned and bit-exact at the
+    # chip-aligned sampling rate used by the PocketSDR fixture
+    # comparison in `test/gps/`.
     mismatches = count(sampled_code .!= reference)
     @test mismatches <= 4
 end
