@@ -2,6 +2,7 @@ module GNSSSignals
 
 using DocStringExtensions
 using FixedPointNumbers
+using SIMD: Vec, vload, vstore, vifelse, shufflevector
 using Statistics
 using Unitful: Frequency, Hz, upreferred
 
