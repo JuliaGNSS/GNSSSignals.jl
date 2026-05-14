@@ -176,6 +176,75 @@ end
     @test mismatches <= 4
 end
 
+@testset "sample_code_tail! applies secondary_start_index for tail-only buffers" begin
+    # `sample_code_tail!` had a bug where the secondary-code index it
+    # used was computed only from the buffer-local chip offset and
+    # ignored `secondary_start_index`. Effect: any buffer small enough
+    # to fit entirely in the tail (a few dozen samples at moderate
+    # oversampling) silently fell back to secondary chip 0 regardless
+    # of `start_phase`. Larger buffers passed through the main worker
+    # loop which used the right index, so the bug only surfaced with
+    # `start_phase ≥ primary_length` AND small `N`.
+    #
+    # Test: for each signal that has a secondary code, ask for a
+    # small buffer at `start_phase = k * primary_length` and verify
+    # that every sample equals
+    # `secondary[k] / secondary[0] × gen_code!(start_phase = 0)`.
+    # Keep `N` well below one primary period so no secondary-bit
+    # transition happens inside the buffer.
+
+    # GPS L1C-P (PerPRNSecondaryCode): cover offsets where the
+    # overlay sign flips relative to chip 0.
+    let signal = GPSL1C_P(),
+        prn = 2,
+        primary = get_code_length(signal),
+        sr = 12.276e6Hz,
+        cf = 1023e3Hz,
+        sec = GNSSSignals.get_secondary_code(signal)
+
+        s0 = GNSSSignals.secondary_value(sec, prn, 0)
+        for sec_offset in 0:5
+            for N in (12, 24, 100)
+                buf0 = zeros(Int16, N)
+                buf1 = zeros(Int16, N)
+                gen_code!(buf0, signal, prn, sr, cf, 0.0, 0)
+                gen_code!(buf1, signal, prn, sr, cf, Float64(sec_offset * primary), 0)
+                sk = GNSSSignals.secondary_value(sec, prn, sec_offset)
+                if Int(sk) * Int(s0) > 0
+                    @test buf1 == buf0
+                else
+                    @test buf1 == .-buf0
+                end
+            end
+        end
+    end
+
+    # GPS L5-I (SharedSecondaryCode = Neuman-Hofman NH10).
+    let signal = GPSL5I(),
+        prn = 1,
+        primary = get_code_length(signal),
+        sr = 25e6Hz,
+        cf = 10230e3Hz,
+        sec = GNSSSignals.get_secondary_code(signal)
+
+        s0 = GNSSSignals.secondary_value(sec, prn, 0)
+        for sec_offset in 0:9
+            for N in (12, 24, 100)
+                buf0 = zeros(Int16, N)
+                buf1 = zeros(Int16, N)
+                gen_code!(buf0, signal, prn, sr, cf, 0.0, 0)
+                gen_code!(buf1, signal, prn, sr, cf, Float64(sec_offset * primary), 0)
+                sk = GNSSSignals.secondary_value(sec, prn, sec_offset)
+                if Int(sk) * Int(s0) > 0
+                    @test buf1 == buf0
+                else
+                    @test buf1 == .-buf0
+                end
+            end
+        end
+    end
+end
+
 @testset "gen_code! error paths" begin
     gpsl1ca = GPSL1CA()
 
