@@ -18,7 +18,7 @@ GPS L1 C/A, GPS L1C-D, GPS L1C-P, and Galileo E1B all report the same [`Band`](@
 
 ### Modulation Types
 
-- **LOC** — Legacy/BPSK modulation (GPS L1 C/A, GPS L5-I)
+- **LOC** — Linear Offset Carrier; the BPSK-like baseline with no subcarrier (GPS L1 C/A, GPS L5-I)
 - **BOCsin** — Sine-phased Binary Offset Carrier (GPS L1C-D)
 - **BOCcos** — Cosine-phased Binary Offset Carrier
 - **CBOC** — Composite Binary Offset Carrier (Galileo E1B)
