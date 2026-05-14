@@ -288,6 +288,7 @@ straightforward lookup and does not use this dispatch.
     frequency_ratio_fixed_point,
     fixed_point,
     code_start_index,
+    secondary_start_index,
     delta_sum,
     prev,
     processed_code_samples,
@@ -296,8 +297,17 @@ straightforward lookup and does not use this dispatch.
     tail_slack,
 )
     @inbounds for i = 0:(tail_slack + 2)
+        # Offset (in chips) from the start of the buffer (which already
+        # sits at primary-chip `code_start_index` of secondary-chip
+        # `secondary_start_index`).
+        chip_offset = processed_code_samples + code_start_index + i
+        # Absolute chip index within one full secondary cycle. Must add
+        # `secondary_start_index * primary_length` so the tail picks up
+        # the right secondary index for buffers that fit entirely in
+        # the tail loop (small N) and start past the first primary
+        # period.
         absolute_chip = mod(
-            processed_code_samples + code_start_index + i,
+            secondary_start_index * primary_length + chip_offset,
             primary_length * secondary_length,
         )
         next_code_idx = mod(absolute_chip, primary_length) + 1
@@ -372,7 +382,8 @@ function sample_code_worker!(
     end
     return sample_code_tail!(
         sampled_code, signal, sec, prn,
-        frequency_ratio_fixed_point, fixed_point, code_start_index,
+        frequency_ratio_fixed_point, fixed_point,
+        code_start_index, secondary_start_index,
         delta_sum, prev, processed_code_samples,
         primary_length, secondary_length, tail_slack,
     )
@@ -428,7 +439,8 @@ function sample_code_worker_generic!(
     end
     return sample_code_tail!(
         sampled_code, signal, sec, prn,
-        frequency_ratio_fixed_point, fixed_point, code_start_index,
+        frequency_ratio_fixed_point, fixed_point,
+        code_start_index, secondary_start_index,
         delta_sum, prev, processed_code_samples,
         primary_length, secondary_length, tail_slack,
     )
