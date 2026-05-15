@@ -1,5 +1,25 @@
 # Changelog
 
+# [2.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.0.0...v2.1.0) (2026-05-15)
+
+
+### Bug Fixes
+
+* **boc:** align BOC sub-carrier with primary chip transitions at chip-aligned rates ([47de944](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/47de9443ad5f218c1ed14557ef99781323c4adf2))
+* **sample_code:** apply secondary_start_index in the tail loop ([fe5aaa1](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/fe5aaa1a6001bbee8b3f28a569121d1ede4be02a))
+
+
+### Features
+
+* add GPS L1C-D and L1C-P signals ([81581d1](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/81581d1f629efc152b919692881069171036c6b1))
+
+
+### Performance Improvements
+
+* **tmboc:** explicit 16-lane SIMD.jl path for Int16 and Float32 ([03cd623](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/03cd623492b2f0cbf6c6b3100cc9b04431040369))
+* **tmboc:** restore fast path for single-transition 16-lane blocks ([d6b0ebf](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/d6b0ebf078f4cdad2c30cf82a7dafbd7491500c0))
+* **tmboc:** two-pass BOC1 + selective BOC2 fix-up ([94c9e0a](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/94c9e0af6e02433ef6216c222898b5b063d75f5b))
+
 # [2.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v1.0.3...v2.0.0) (2026-05-12)
 
 
