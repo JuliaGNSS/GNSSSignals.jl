@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.2.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.1.1...v2.2.0) (2026-05-19)
+
+
+### Features
+
+* add GalileoE1B_BOC11 (BOC(1,1) approximation of E1B) ([141922e](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/141922e1e3dfdf77c2a0ee082852e14397a9b1c1))
+
 ## [2.1.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.1.0...v2.1.1) (2026-05-19)
 
 
