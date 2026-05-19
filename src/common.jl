@@ -897,10 +897,17 @@ function _tmboc_two_pass_i16!(
     sampled_code
 end
 
-# 16-lane SIMD.jl Int16 fast path. Requires a contiguous `Vector{Int16}`
-# and a pattern that fits in UInt32.
+# 16-lane SIMD.jl Int16 fast path. Requires a contiguous Int16 buffer
+# (anything `SIMD.jl`'s `vload`/`vstore` accept — `Vector{Int16}`, a
+# `FastContiguousSubArray{Int16}` view, or any other `DenseVector{Int16}`
+# that exposes a valid `Ptr{Int16}`) and a pattern that fits in UInt32.
+const _ContiguousI16 = Union{
+    DenseVector{Int16},
+    Base.FastContiguousSubArray{Int16, 1, <:DenseArray{Int16}},
+}
+
 function _tmboc_simd_i16!(
-    sampled_code::Vector{Int16},
+    sampled_code::_ContiguousI16,
     sc_phase_boc1::UInt32, sc_delta_boc1::UInt32,
     sc_phase_boc2::UInt32, sc_delta_boc2::UInt32,
     pattern_bits::UInt32,
@@ -985,7 +992,7 @@ function multiply_with_subcarrier!(
     chip_acc_fp0 = UInt64(floor(UInt64, mod(start_phase, 1.0) * (UInt64(1) << 32)))
     si = reinterpret(UInt32, Int32(start_index))
 
-    if sampled_code isa Vector{Int16} && pattern_bits64 <= UInt64(typemax(UInt32))
+    if sampled_code isa _ContiguousI16 && pattern_bits64 <= UInt64(typemax(UInt32))
         return _tmboc_simd_i16!(
             sampled_code,
             sc_phase_boc1, sc_delta_boc1,
