@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.1.0...v2.1.1) (2026-05-19)
+
+
+### Bug Fixes
+
+* **cboc:** integer buffer raises ArgumentError with hint, not InexactError ([2ee607f](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/2ee607f3684defe03f6223b6e67dd9e1789677a6))
+
+
+### Performance Improvements
+
+* **tmboc:** route contiguous-Int16 views through SIMD fast path ([6e3b7e8](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/6e3b7e80391900015d9839d328b84593980891ba))
+
 # [2.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.0.0...v2.1.0) (2026-05-15)
 
 
