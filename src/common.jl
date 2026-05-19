@@ -655,7 +655,33 @@ function multiply_with_subcarrier!(
     sampled_code
 end
 
-# Fallback for non-Float32 output types: same algorithm, integer subcarrier bits.
+# Reject integer buffers explicitly with a helpful message. The CBOC
+# subcarrier mixes BOC(1,1) and BOC(6,1) with amplitudes
+# `sqrt(boc1_power)` and `sqrt(1 - boc1_power)` — non-integer
+# (~0.953 / ~0.302 for Galileo E1B's 10/11 split), so the only
+# meaningful buffer type is floating-point. Use `Float32`
+# (`get_code_type(GalileoE1B()) === Float32`) and round/scale to your
+# fixed-point representation afterwards if needed.
+function multiply_with_subcarrier!(
+    sampled_code::AbstractVector{<:Integer},
+    modulation::CBOC,
+    sampling_frequency::Frequency,
+    code_frequency::Frequency,
+    start_phase = 0.0,
+    start_index::Integer = 0,
+    PHASET = Int32,
+)
+    throw(ArgumentError(
+        "CBOC `multiply_with_subcarrier!` requires a floating-point " *
+        "buffer (the BOC1/BOC2 amplitudes are irrational). Got " *
+        "`AbstractVector{$(eltype(sampled_code))}`. Allocate the " *
+        "buffer with `get_code_type(signal)` (= `Float32` for CBOC " *
+        "signals) or convert to `Float32`/`Float64` first."
+    ))
+end
+
+# Fallback for floating-point output types other than Float32 (e.g.
+# Float64): same algorithm, integer subcarrier bits.
 function multiply_with_subcarrier!(
     sampled_code::AbstractVector{T},
     modulation::CBOC,
@@ -664,7 +690,7 @@ function multiply_with_subcarrier!(
     start_phase = 0.0,
     start_index::Integer = 0,
     PHASET = Int32,
-) where {T}
+) where {T<:AbstractFloat}
     fixed_point_boc1, subcarrier_phase_boc1, delta_subcarrier_phase_boc1 =
         calc_subcarrier_phase_and_delta(
             modulation.boc1,
