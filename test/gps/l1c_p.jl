@@ -65,14 +65,38 @@ end
 end
 
 @testset "TMBOC Int16 SIMD fast path matches two-pass fallback" begin
-    # `multiply_with_subcarrier!(::Vector{Int16}, ::TMBOC, ...)` uses an
-    # explicit 16-lane SIMD.jl kernel; any non-`Vector` Int16 buffer
-    # (e.g. `view(buf, 1:N)`) hits the auto-vectorized two-pass
-    # fallback. Both must agree bit-for-bit.
+    # The TMBOC `multiply_with_subcarrier!` dispatch picks the 16-lane
+    # SIMD.jl kernel (`_tmboc_simd_i16!`) for any contiguous Int16
+    # buffer (`Vector`, `FastContiguousSubArray`, or other
+    # `DenseVector{Int16}`), and the two-pass fallback
+    # (`_tmboc_two_pass_i16!`) only for non-contiguous buffers or
+    # patterns that don't fit in `UInt32`. Both kernels must agree
+    # bit-for-bit. We exercise each directly so the assertion holds
+    # even if the dispatcher is later relaxed further.
     sig = GPSL1C_P()
     modulation = get_modulation(sig)
     sampling_rate = 15e6Hz
     code_rate = 1023e3Hz
+
+    # Replicate the dispatcher's parameter-prep so we can call the
+    # private workers directly with matching inputs.
+    function _prep(modulation, sampling_rate, code_rate, start_phase, start_index)
+        _, sc_phase_boc1, sc_delta_boc1 = GNSSSignals.calc_subcarrier_phase_and_delta(
+            modulation.boc1, sampling_rate, code_rate, start_phase, Int32,
+        )
+        _, sc_phase_boc2, sc_delta_boc2 = GNSSSignals.calc_subcarrier_phase_and_delta(
+            modulation.boc2, sampling_rate, code_rate, start_phase, Int32,
+        )
+        pattern_bits64 = GNSSSignals._pack_tmboc_pattern(modulation.pattern)
+        chip_delta_fp = ceil(
+            UInt64, Float64(code_rate / sampling_rate) * (UInt64(1) << 32),
+        )
+        int_chip_offset = mod(floor(Int, start_phase), length(modulation.pattern))
+        chip_acc_fp0 = UInt64(floor(UInt64, mod(start_phase, 1.0) * (UInt64(1) << 32)))
+        si = reinterpret(UInt32, Int32(start_index))
+        return (sc_phase_boc1, sc_delta_boc1, sc_phase_boc2, sc_delta_boc2,
+                pattern_bits64, chip_delta_fp, int_chip_offset, chip_acc_fp0, si)
+    end
 
     for (samples, start_phase, start_index) in (
         (2000, 0.0, 0),
@@ -82,17 +106,32 @@ end
         (97,   0.0, 0),  # exercises the scalar tail
         (256,  0.0, 0),  # exact multiple of 16
     )
+        (sc1, sd1, sc2, sd2, pat, cdfp, ico, cafp0, si) = _prep(
+            modulation, sampling_rate, code_rate, start_phase, start_index,
+        )
+        NPAT = length(modulation.pattern)
+
         buf_simd = ones(Int16, samples)
-        buf_ref  = ones(Int16, samples)
-        GNSSSignals.multiply_with_subcarrier!(
-            buf_simd, modulation, sampling_rate, code_rate, start_phase, start_index,
+        GNSSSignals._tmboc_simd_i16!(
+            buf_simd, sc1, sd1, sc2, sd2, UInt32(pat), cafp0, cdfp, ico, si, Val(NPAT),
         )
-        # Force the two-pass fallback by passing a typed view.
-        v_ref = view(buf_ref, 1:samples)
-        GNSSSignals.multiply_with_subcarrier!(
-            v_ref, modulation, sampling_rate, code_rate, start_phase, start_index,
+
+        buf_ref = ones(Int16, samples)
+        GNSSSignals._tmboc_two_pass_i16!(
+            buf_ref, sc1, sd1, sc2, sd2, pat, cafp0, cdfp, ico, si, Val(NPAT),
         )
+
         @test buf_simd == buf_ref
+
+        # And: the dispatcher must route a contiguous `view` to the
+        # SIMD path (regression guard — previously gated by
+        # `isa Vector{Int16}`, which excluded views).
+        buf_view_backing = ones(Int16, samples)
+        v = view(buf_view_backing, 1:samples)
+        GNSSSignals.multiply_with_subcarrier!(
+            v, modulation, sampling_rate, code_rate, start_phase, start_index,
+        )
+        @test v == buf_simd
     end
 end
 
