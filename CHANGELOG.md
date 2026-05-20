@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.0...v2.2.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* **l1c_d:** report channel symbol rate (100 Hz), not info bit rate (50 Hz) ([0fee3ab](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/0fee3ab94e3b3517b19f39ea64553335f5c0e801))
+
 # [2.2.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.1.1...v2.2.0) (2026-05-19)
 
 
