@@ -88,7 +88,7 @@ get_secondary_code(gpsl5i)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 
 ### GPS L1C-D
 
-GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and carries CNAV-2 data at 50 sps. It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
+GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and broadcasts the CNAV-2 message at 100 sps (post-LDPC channel symbol rate; the information bit rate after rate-½ decoding is 50 bps). It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
 
 ```julia
 gpsl1c_d = GPSL1C_D()
@@ -96,7 +96,7 @@ get_code_length(gpsl1c_d)           # 10230
 get_band(gpsl1c_d)                  # L1()
 get_center_frequency(gpsl1c_d)      # 1575420000 Hz
 get_code_frequency(gpsl1c_d)        # 1023000 Hz
-get_data_frequency(gpsl1c_d)        # 50 Hz
+get_data_frequency(gpsl1c_d)        # 100 Hz
 get_secondary_code_length(gpsl1c_d) # 1 (no secondary code)
 get_modulation(gpsl1c_d)            # BOCsin(1, 1)
 ```
