@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.1...v2.2.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* **common:** prevent Int64 overflow in sample_code! for very short outputs ([8f472e6](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/8f472e67c75b06d40bd618f2a280bbbcd27a5967)), closes [#63](https://github.com/JuliaGNSS/GNSSSignals.jl/issues/63)
+
 ## [2.2.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.0...v2.2.1) (2026-05-20)
 
 
