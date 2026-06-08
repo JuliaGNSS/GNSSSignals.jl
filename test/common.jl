@@ -296,6 +296,29 @@ end
     @test code ≈ get_code.(signal, phase, 1)
 end
 
+# Regression test for the fixed-point overflow on very short outputs
+# (https://github.com/JuliaGNSS/GNSSSignals.jl/issues/63): a handful of
+# samples makes `ndigits(length)` tiny, so the fixed-point exponent grows
+# until `frequency_ratio * 2^exponent` overflows Int64. High sampling rate
+# (large frequency_ratio) is the worst case. Such tiny requests arise in
+# multi-signal tracking when two signals' code-block boundaries nearly
+# coincide.
+@testset "Very short code generation does not overflow $(get_signal_name(signal))" for signal in [
+    GalileoE1B(),
+    GPSL1CA(),
+    GPSL5I(),
+]
+    sampling_rate = 25e6Hz
+    for samples in (1, 2, 3, 5)
+        code = zeros(get_code_type(signal), samples)
+        code = @test_nowarn gen_code!(
+            code, signal, 1, sampling_rate, get_code_frequency(signal), 3.5,
+        )
+        phase = (0:samples-1) * get_code_frequency(signal) / sampling_rate .+ 3.5
+        @test code ≈ get_code.(signal, phase, 1)
+    end
+end
+
 @testset "Code generation for different units" begin
     sampling_rate = 25MHz
     signal = GPSL1CA()

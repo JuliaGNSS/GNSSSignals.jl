@@ -202,7 +202,20 @@ function sample_code!(
     # delta_sum accumulates (num_samples * frequency_ratio) in fixed-point representation.
     # With -1, delta_sum uses nearly the full Int range and can overflow when combined
     # with the (1 << fixed_point) offset in the initial delta_sum calculation.
-    fixed_point = sizeof(Int) * 8 - 2 - ndigits(length(sampled_code); base = 2)
+    #
+    # We must also reserve bits for the integer part of `frequency_ratio`:
+    # `frequency_ratio_fixed_point = frequency_ratio * 2^fixed_point` overflows
+    # Int64 otherwise. For long outputs `ndigits(length)` dominates and this is
+    # a no-op; for very short outputs (a handful of samples, e.g. the tiny
+    # integration windows of multi-signal tracking) it keeps the exponent low
+    # enough that the multiply stays in range. Taking the max only ever lowers
+    # `fixed_point`, so the accumulation headroom above is preserved. See
+    # https://github.com/JuliaGNSS/GNSSSignals.jl/issues/63.
+    fixed_point =
+        sizeof(Int) * 8 - 2 - max(
+            ndigits(length(sampled_code); base = 2),
+            ndigits(ceil(Int, frequency_ratio); base = 2),
+        )
 
     frequency_ratio_fixed_point = round(Int, frequency_ratio * 1 << fixed_point)
 
