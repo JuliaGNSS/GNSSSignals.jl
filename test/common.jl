@@ -415,3 +415,77 @@ end
             BigFloat(code_frequency / sampling_freq) .+ BigFloat(start_phase)
     @test sampled_code == get_code.(signal, phase, 1)
 end
+
+# Exactness / no-drift regression for the integer-DDA `sample_code!`
+# (https://github.com/JuliaGNSS/GNSSSignals.jl/issues/66). The previous running
+# binary fixed-point accumulator reserved `ndigits(length)` headroom bits, which
+# coarsened the realised code frequency on long buffers and let the phase drift
+# against the true frequency. The current DDA reduces the accumulator every chip,
+# so `fixed_point` is maximal and length-independent: drift-free for any buffer.
+#
+# Reference: treat the Float64 frequency *values* as exact and compute the chip
+# with exact rational arithmetic (no rounding of the ratio, exact floor).
+@testset "sample_code! is drift-free and exact (issue #66)" begin
+    # Exact chip for sample `j` (0-based): floor of the absolute phase in
+    # `Rational{BigInt}` from the Float64 frequency values.
+    function exact_codes(signal, prn, N, sampling, codefreq, start_phase, shift)
+        s = Rational{BigInt}(Float64(sampling / 1Hz))
+        c = Rational{BigInt}(Float64(codefreq / 1Hz))
+        sp = Rational{BigInt}(Float64(start_phase))
+        step = c // s
+        out = Vector{Int}(undef, N)
+        for j = 0:N-1
+            chip = floor(BigInt, sp + (shift + j) * step)
+            out[j+1] = get_code(signal, Float64(chip), prn)
+        end
+        out
+    end
+
+    cf_l1 = get_code_frequency(GPSL1CA())
+    cf_l5 = get_code_frequency(GPSL5I())
+
+    # Doppler-shifted (non-integer) code rates: bit-exact at every oversampling,
+    # length, start phase and index shift. These never land a sample on an exact
+    # integer chip boundary within a realistic buffer (the rationalised period is
+    # ~2^53 samples), so there are no boundary ties — only drift could cause a
+    # mismatch, and the maximal `fixed_point` keeps that far below one sample.
+    # This is the realistic GNSS case (the code rate is always Doppler-shifted).
+    cf_l1_dop = 1.0230022937236385e6Hz
+    cf_l5_dop = 1.0229734476348808e7Hz
+    doppler_cases = [
+        # (signal, sampling, code_frequency, N, start_phase, shift)
+        (GPSL1CA(), 5e6Hz, cf_l1_dop, 2_000_000, 0.0, 0),        # long buffer (drift)
+        (GPSL1CA(), 1.2 * cf_l1_dop, cf_l1_dop, 100_000, 0.0, 0),# ~1.2x oversampling
+        (GPSL1CA(), 5e6Hz, cf_l1_dop, 1_000, 3.456, -1),         # fractional phase + shift
+        (GPSL1CA(), 5e6Hz, cf_l1_dop, 1_023, -1000.0, 3),        # negative phase
+        (GPSL5I(), 30e6Hz, cf_l5_dop, 500_000, 12.7, 1),
+        (GPSL5I(), 2.4 * cf_l5_dop, cf_l5_dop, 100_000, 0.0, -2),
+        (GPSL1CA(), 200e6Hz, cf_l1_dop, 4_000, 0.0, 0),          # generic worker
+        (GPSL5I(), 25e6Hz, cf_l5_dop, 3, 7.5, -2),               # tail-only tiny buffer
+    ]
+    for (signal, sampling, cf, N, sp, shift) in doppler_cases
+        buf = zeros(get_code_type(signal), N)
+        gen_code!(buf, signal, 1, sampling, cf, sp, shift)
+        @test buf == exact_codes(signal, 1, N, sampling, cf, sp, shift)
+    end
+
+    # Perfectly rational (zero-Doppler) ratios *do* place samples exactly on chip
+    # boundaries, where the realised frequency's last-bit rounding may put a
+    # sample one index either side. Those ties are isolated (their count tracks
+    # the number of coincidences, ∝ length, NOT growing per sample) and bounded
+    # well under 0.1% — crucially they do not accumulate, so this is not the drift
+    # of the old accumulator. (The exact count depends on `fixed_point`, hence on
+    # the architecture-tuned inner-loop padding, so only a loose bound is checked.)
+    clean_cases = [
+        (GPSL1CA(), 25e6Hz, cf_l1, 2_000_000, 0.0, 0),
+        (GPSL5I(), 25e6Hz, cf_l5, 2_000_000, 0.0, 0),
+        (GPSL1CA(), 2.5e6Hz, cf_l1, 4_000, 2065.0, 0),
+        (GPSL5I(), 9.207e7Hz, cf_l5, 5_000, 2053.0, -3),  # ratio exactly 9
+    ]
+    for (signal, sampling, cf, N, sp, shift) in clean_cases
+        buf = zeros(get_code_type(signal), N)
+        gen_code!(buf, signal, 1, sampling, cf, sp, shift)
+        mismatches = count(buf .!= exact_codes(signal, 1, N, sampling, cf, sp, shift))
+        @test mismatches <= cld(N, 1000)   # < 0.1%, isolated boundary ties
+    end
+end

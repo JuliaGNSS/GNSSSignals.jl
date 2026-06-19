@@ -118,6 +118,59 @@ end
     end
 end
 
+# Drift-free fixed-point DDA for the per-chip sample run-lengths.
+#
+# `step = round(frequency_ratio * 2^fixed_point)` is the per-chip phase increment
+# in a binary fixed-point representation with `fixed_point` fractional bits. Each
+# chip adds `step`, emits the integer part (`acc >> fixed_point`) as that chip's
+# sample count, and keeps only the fractional part (`acc & mask`). Reducing every
+# chip bounds the accumulator in `[0, 2^fixed_point)`, so — unlike the previous
+# running fixed-point sum — it never overflows regardless of buffer length and
+# needs no length-dependent headroom (this is what resolved the short-output
+# overflow of https://github.com/JuliaGNSS/GNSSSignals.jl/issues/63).
+#
+# `fixed_point` is chosen maximal — reserving only the integer part of the ratio,
+# not a `ndigits(length)` term — so the realised frequency is within
+# `2^-fixed_point` of the true ratio. That is drift far below one sample over any
+# buffer, and bit-exact for Doppler-shifted rates (which have no exact
+# chip-boundary coincidence within any realistic buffer; only perfectly rational
+# ratios can land a sample exactly on a boundary, where the realised frequency's
+# last-bit rounding may place it one sample either side). The division by the
+# denominator is a single shift, keeping the per-chip cost (one add, one shift,
+# one mask) minimal — this is the hot loop at low oversampling.
+struct ChipDDA
+    step::Int
+    fixed_point::Int
+    mask::Int
+end
+
+ChipDDA(step::Integer, fixed_point::Integer) =
+    ChipDDA(Int(step), Int(fixed_point), (1 << fixed_point) - 1)
+
+# Advance by one chip: add the step, split off the integer part as this chip's
+# sample count `inc`, and reduce the accumulator back into `[0, 2^fixed_point)`.
+# Returns `(reduced_acc, inc)`. The initial `acc` may be negative (a start phase
+# partway through the first chip); the first add brings it non-negative before
+# the shift/mask, so the partial first chip falls out without a special case.
+@inline function advance(acc::Int, dda::ChipDDA)
+    acc += dda.step
+    inc = acc >> dda.fixed_point
+    acc &= dda.mask
+    return acc, inc
+end
+
+# Per-chip run-lengths block width. The reduction `acc &= mask` makes the
+# per-chip advance a loop-carried dependency; at low oversampling (few samples
+# per chip) that dependency, not the store loop, gates throughput. Processing W
+# chips per step with the *closed form* `prev_j = prev + ((acc + j*step) >> fp)`
+# (independent across `j`, base `acc` reduced once per W chips) lets the
+# iterations overlap. Pick W so the unrolled work `W * NUM_INNER` stays bounded:
+# block aggressively when there are few samples per chip, not at all once the
+# store loop already dominates. `fixed_point` reserves `log2(W)` extra bits so
+# `acc + (W-1)*step` cannot overflow (see `sample_code!`).
+@inline _block_width(num_inner::Integer) =
+    num_inner <= 4 ? 8 : num_inner <= 8 ? 4 : num_inner <= 16 ? 2 : 1
+
 """
 $(SIGNATURES)
 
@@ -198,69 +251,68 @@ function sample_code!(
         "The sampling frequency must be larger than the code frequency multiplied by code factor (larger than $modulated_code_frequency, it is $sampling_frequency).",
     )
 
-    # The -2 (instead of -1) reserves an extra bit for overflow headroom.
-    # delta_sum accumulates (num_samples * frequency_ratio) in fixed-point representation.
-    # With -1, delta_sum uses nearly the full Int range and can overflow when combined
-    # with the (1 << fixed_point) offset in the initial delta_sum calculation.
-    #
-    # We must also reserve bits for the integer part of `frequency_ratio`:
-    # `frequency_ratio_fixed_point = frequency_ratio * 2^fixed_point` overflows
-    # Int64 otherwise. For long outputs `ndigits(length)` dominates and this is
-    # a no-op; for very short outputs (a handful of samples, e.g. the tiny
-    # integration windows of multi-signal tracking) it keeps the exponent low
-    # enough that the multiply stays in range. Taking the max only ever lowers
-    # `fixed_point`, so the accumulation headroom above is preserved. See
-    # https://github.com/JuliaGNSS/GNSSSignals.jl/issues/63.
-    fixed_point =
-        sizeof(Int) * 8 - 2 - max(
-            ndigits(length(sampled_code); base = 2),
-            ndigits(ceil(Int, frequency_ratio); base = 2),
-        )
-
-    frequency_ratio_fixed_point = round(Int, frequency_ratio * 1 << fixed_point)
-
-    start_phase_including_shift =
-        start_phase + start_index_shift * code_frequency / sampling_frequency
-
     sec = get_secondary_code(signal)
     primary_length = get_code_length(signal)
     secondary_length = secondary_code_length(sec)
     full_cycle_length = primary_length * secondary_length
-    # Compute fractional part before any normalization to preserve exact floating-point value
-    floored_code_phase = floor(Int, start_phase_including_shift)
-    frac_part = floored_code_phase - start_phase_including_shift  # Always in (-1, 0]
-    # Split the absolute phase into (primary chip index, secondary chip index)
-    # within one full secondary cycle.
-    absolute_chip = mod(floored_code_phase, full_cycle_length)
-    code_start_index = mod(absolute_chip, primary_length)
-    secondary_start_index = div(absolute_chip, primary_length)
-    # The -256 offset handles boundary cases where a sample falls exactly on a chip
-    # boundary (e.g., phase = 2.0). Without this offset, floor(2.0) = 2 would assign
-    # two samples to the first chip when only one belongs there. The offset ensures
-    # samples exactly on boundaries are assigned to the next chip.
-    delta_sum =
-        floor(Int, frac_part * frequency_ratio_fixed_point) + (1 << fixed_point) - 256
+
     raw_num_code_samples =
         Int(fld(modulated_code_frequency * length(sampled_code), sampling_frequency))
     real_num_inner = ceil(Int, frequency_ratio)
     num_inner_iterations = _pad_inner_iterations(real_num_inner)
     tail_slack = num_inner_iterations - real_num_inner
     num_code_samples_to_iterate = max(0, raw_num_code_samples - tail_slack)
+
+    # Per-chip sample run-lengths come from the fixed-point DDA in `ChipDDA`.
+    # `den = 2^fixed_point`; `num = step = round(ratio * den)`. The per-chip
+    # reduction bounds the accumulator, so `fixed_point` carries no `length` term
+    # — drift-free for any buffer and free of the issue-#63 short-output overflow.
+    # `fixed_point` is maximal apart from reserving the integer part of the ratio
+    # and `log2(block_width)` bits: the worker advances the accumulator `block_width`
+    # chips at a time via the closed form (see `_block_width`), which evaluates
+    # `acc + (block_width-1)*step`, so that product must stay in `Int`.
+    block_width = _block_width(num_inner_iterations)
+    fixed_point =
+        sizeof(Int) * 8 - 2 - ndigits(block_width * ceil(Int, frequency_ratio); base = 2)
+    den = 1 << fixed_point
+    num = round(Int, frequency_ratio * den)
+
+    # Absolute phase of the first buffer sample, split into an integer chip and
+    # a sub-chip offset measured in `num`-units (`offset ∈ [0, num)` is
+    # `floor(frac_chip * num)`). The `start_index_shift` contribution is kept in
+    # exact integer arithmetic — `shift * (code/sampling) = shift * den/num`
+    # chips — so a clean integer shift never perturbs the phase. Only the
+    # Float64 `start_phase`'s sub-chip part (`sp_frac * num`) carries any
+    # rounding, and that is a one-time bounded sub-sample alignment, not drift.
+    shift_num = Int(start_index_shift) * den          # shift in num-units, exact
+    shift_chips = fld(shift_num, num)                 # integer chips from the shift
+    shift_offset = shift_num - shift_chips * num       # remainder in [0, num), exact
+    sp_floor = floor(Int, start_phase)
+    sp_frac = start_phase - sp_floor                  # [0, 1)
+    # `shift_offset` can be large, so keep it out of the Float64 arithmetic: only
+    # `sp_frac * num` (already imprecise via the Float64 `start_phase`) is float.
+    frac_int = shift_offset + floor(Int, sp_frac * num)  # floor(frac * num), [0, 2*num)
+    carry = frac_int >= num ? 1 : 0                   # carry into the integer chip
+    offset = frac_int - carry * num                    # floor(frac_chip * num), [0, num)
+    floored_code_phase = sp_floor + shift_chips + carry
+
+    # Split the absolute phase into (primary chip index, secondary chip index)
+    # within one full secondary cycle.
+    absolute_chip = mod(floored_code_phase, full_cycle_length)
+    code_start_index = mod(absolute_chip, primary_length)
+    secondary_start_index = div(absolute_chip, primary_length)
+    # Initial accumulator. The cumulative sample count after the first `m` chips
+    # of the buffer is `floor((m*num + acc0)/den)` with `acc0 = den - 1 - offset`
+    # (`offset = floor(frac_chip * num)`); the `den - 1` is the exact ceiling
+    # bias, sending a sample on an exact chip boundary to the next chip (where
+    # `floor(phase)` puts it). `acc0` may be negative for a start phase well into
+    # a chip; the DDA's first add brings the accumulator non-negative.
+    acc0 = den - 1 - offset
     dispatch_sample_code_worker!(
-        sampled_code,
-        signal,
-        sec,
-        prn,
-        frequency_ratio_fixed_point,
-        fixed_point,
-        code_start_index,
-        secondary_start_index,
-        delta_sum,
-        num_code_samples_to_iterate,
-        primary_length,
-        secondary_length,
-        num_inner_iterations,
-        tail_slack,
+        sampled_code, signal, sec, prn,
+        ChipDDA(num, fixed_point), code_start_index, secondary_start_index,
+        acc0, num_code_samples_to_iterate,
+        primary_length, secondary_length, num_inner_iterations, tail_slack,
     )
     return sampled_code
 end
@@ -298,8 +350,7 @@ straightforward lookup and does not use this dispatch.
     signal,
     sec,
     prn,
-    frequency_ratio_fixed_point,
-    fixed_point,
+    dda::ChipDDA,
     code_start_index,
     secondary_start_index,
     delta_sum,
@@ -328,8 +379,9 @@ straightforward lookup and does not use this dispatch.
         sec_val = secondary_value(sec, prn, sec_idx)
         codes_view, code_mul = _select_codes_for(signal, sec_val)
         next_code = codes_view[next_code_idx, prn] * code_mul
-        delta_sum += frequency_ratio_fixed_point
-        next_prev = delta_sum >> fixed_point
+        # Fixed-point DDA step (see `ChipDDA` / `advance`).
+        delta_sum, inc = advance(delta_sum, dda)
+        next_prev = prev + inc
         num_iterations = min(next_prev - prev, length(sampled_code) - prev)
         for j = 1:num_iterations
             sampled_code[prev+j] = next_code
@@ -352,11 +404,10 @@ function sample_code_worker!(
     signal::AbstractGNSSSignal,
     sec::SecondaryCode,
     prn::Integer,
-    frequency_ratio_fixed_point::Int,
-    fixed_point::Int,
+    dda::ChipDDA,
     code_start_index::Int,
     secondary_start_index::Int,
-    delta_sum::Int,
+    delta_sum,
     num_code_samples_to_iterate::Int,
     primary_length::Int,
     secondary_length::Int,
@@ -384,19 +435,66 @@ function sample_code_worker!(
         # default returns (signal.codes, sec_val), preserving the original
         # behaviour for signals without that specialization.
         codes_view, code_mul = _select_codes_for(signal, sec_val)
-        for i in iterations
-            next_code = codes_view[i, prn] * code_mul
-            for j = 1:NUM_INNER
-                sampled_code[prev+j] = next_code
+        if _block_width(NUM_INNER) == 1
+            # High oversampling: the store loop dominates and the per-chip carry
+            # chain is already hidden, so the plain scalar DDA is fastest.
+            for i in iteration_begin:iteration_end
+                next_code = codes_view[i, prn] * code_mul
+                for j = 1:NUM_INNER
+                    sampled_code[prev+j] = next_code
+                end
+                delta_sum, inc = advance(delta_sum, dda)
+                prev += inc
             end
-            delta_sum += frequency_ratio_fixed_point
-            prev = delta_sum >> fixed_point
+        else
+            # Low oversampling: emit `W` chips per step with independent `prev`s
+            # (closed form) so the per-chip carry chains overlap (see `_block_width`).
+            step = dda.step
+            fp = dda.fixed_point
+            mask = dda.mask
+            W = _block_width(NUM_INNER)
+            i = iteration_begin
+            # The accumulator may start negative (start phase partway into the
+            # first chip); the closed form assumes a reduced `delta_sum ∈ [0, 2^fp)`,
+            # so normalise the very first chip with one scalar step. Triggers at
+            # most once for the whole buffer.
+            while i <= iteration_end && delta_sum < 0
+                next_code = codes_view[i, prn] * code_mul
+                for j = 1:NUM_INNER
+                    sampled_code[prev+j] = next_code
+                end
+                delta_sum, inc = advance(delta_sum, dda)
+                prev += inc
+                i += 1
+            end
+            while i + W - 1 <= iteration_end
+                for q = 0:(W-1)
+                    pq = prev + ((delta_sum + q * step) >> fp)
+                    code_q = codes_view[i+q, prn] * code_mul
+                    for j = 1:NUM_INNER
+                        sampled_code[pq+j] = code_q
+                    end
+                end
+                t = delta_sum + W * step
+                prev += t >> fp
+                delta_sum = t & mask
+                i += W
+            end
+            # Scalar remainder (fewer than `W` chips left in this period).
+            while i <= iteration_end
+                next_code = codes_view[i, prn] * code_mul
+                for j = 1:NUM_INNER
+                    sampled_code[prev+j] = next_code
+                end
+                delta_sum, inc = advance(delta_sum, dda)
+                prev += inc
+                i += 1
+            end
         end
     end
     return sample_code_tail!(
         sampled_code, signal, sec, prn,
-        frequency_ratio_fixed_point, fixed_point,
-        code_start_index, secondary_start_index,
+        dda, code_start_index, secondary_start_index,
         delta_sum, prev, processed_code_samples,
         primary_length, secondary_length, tail_slack,
     )
@@ -414,11 +512,10 @@ function sample_code_worker_generic!(
     signal::AbstractGNSSSignal,
     sec::SecondaryCode,
     prn::Integer,
-    frequency_ratio_fixed_point::Int,
-    fixed_point::Int,
+    dda::ChipDDA,
     code_start_index::Int,
     secondary_start_index::Int,
-    delta_sum::Int,
+    delta_sum,
     num_code_samples_to_iterate::Int,
     primary_length::Int,
     secondary_length::Int,
@@ -446,14 +543,14 @@ function sample_code_worker_generic!(
             @simd ivdep for j = 1:num_inner_iterations
                 sampled_code[prev+j] = next_code
             end
-            delta_sum += frequency_ratio_fixed_point
-            prev = delta_sum >> fixed_point
+            # Fixed-point DDA step (see `ChipDDA` / `advance`).
+            delta_sum, inc = advance(delta_sum, dda)
+            prev += inc
         end
     end
     return sample_code_tail!(
         sampled_code, signal, sec, prn,
-        frequency_ratio_fixed_point, fixed_point,
-        code_start_index, secondary_start_index,
+        dda, code_start_index, secondary_start_index,
         delta_sum, prev, processed_code_samples,
         primary_length, secondary_length, tail_slack,
     )
@@ -464,8 +561,7 @@ end
     signal,
     sec,
     prn,
-    frequency_ratio_fixed_point,
-    fixed_point,
+    dda,
     code_start_index,
     secondary_start_index,
     delta_sum,
@@ -482,8 +578,7 @@ end
                 signal,
                 sec,
                 prn,
-                frequency_ratio_fixed_point,
-                fixed_point,
+                dda,
                 code_start_index,
                 secondary_start_index,
                 delta_sum,
@@ -504,8 +599,7 @@ end
             signal,
             sec,
             prn,
-            frequency_ratio_fixed_point,
-            fixed_point,
+            dda,
             code_start_index,
             secondary_start_index,
             delta_sum,
