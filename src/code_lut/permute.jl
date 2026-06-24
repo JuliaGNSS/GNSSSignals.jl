@@ -82,3 +82,22 @@ attributes #0 = { alwaysinline "target-features"="+avx2" }
         Tuple{NTuple{32,VecElement{Int8}},NTuple{32,VecElement{Int8}}}, table.data, index.data))
 
 end # @static x86
+
+# ---- tbl1: 16-entry Int8 in-register table lookup (AArch64 NEON) ----
+# `tbl1` treats a 128-bit register as a 16-entry Int8 lookup table and gathers all 16
+# output lanes (`out[i] = table[index[i]]`; out-of-range indices ≥ 16 return 0). It is the
+# single-window analogue of one of AVX2's two `vpshufb` halves: 16 chips → 16 lanes.
+#
+# NOT @static-guarded: defining this llvmcall on x86 is harmless — it only compiles when
+# CALLED, and the Neon backend is never selected/called on x86 (see default_backend). It is
+# validated on macOS-ARM CI. Mirrors the CI-proven SinCosLUT `tbl4` shape (permute_neon.jl).
+const _TBL1_IR = """
+declare <16 x i8> @llvm.aarch64.neon.tbl1(<16 x i8>, <16 x i8>)
+define <16 x i8> @entry(<16 x i8> %t, <16 x i8> %i) #0 {
+  %r = call <16 x i8> @llvm.aarch64.neon.tbl1(<16 x i8> %t, <16 x i8> %i)
+  ret <16 x i8> %r }
+attributes #0 = { alwaysinline "target-features"="+neon" }
+"""
+@inline _tbl1(tbl::Vec{16,Int8}, index::Vec{16,Int8}) =
+    Vec{16,Int8}(Base.llvmcall((_TBL1_IR, "entry"), NTuple{16,VecElement{Int8}},
+        Tuple{NTuple{16,VecElement{Int8}},NTuple{16,VecElement{Int8}}}, tbl.data, index.data))
