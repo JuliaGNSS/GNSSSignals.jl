@@ -43,10 +43,12 @@ fmt_mem(node) = string(round(Int, node["allocs"]), " allocs: ", round(Int, node[
 base = leaves!(Dict{String,Any}(), readrev(base_rev))
 head = leaves!(Dict{String,Any}(), readrev(head_rev))
 
-# Stable ordering: sort names, push time_to_load to the end.
-names = sort(collect(keys(base)))
+# Stable ordering over the UNION of both revs' benchmarks (so rows new on the PR — which
+# have no base counterpart — still appear, sorted in with everything else rather than
+# dropped or parked at the end). Sort alphabetically, then push time_to_load last.
+names = sort(collect(union(keys(base), keys(head))))
 filter!(!=("time_to_load"), names)
-haskey(base, "time_to_load") && push!(names, "time_to_load")
+(haskey(base, "time_to_load") || haskey(head, "time_to_load")) && push!(names, "time_to_load")
 
 headlbl = length(head_rev) >= 8 ? head_rev[1:8] * "…" : head_rev
 
@@ -57,7 +59,8 @@ println(io, "## $title")
 println(io)
 println(io, "Reporting the **minimum** over all samples (robust to shared-runner contention), ",
             "not the median. Ratio = $base_rev / $headlbl: **>1 means the PR is faster**. ",
-            "✅ ≥ 5 % faster, ⚠️ ≥ 5 % slower.")
+            "✅ ≥ 5 % faster, ⚠️ ≥ 5 % slower. A blank cell means that benchmark exists on only ",
+            "one revision (🆕 = new on the PR, 🗑 = removed).")
 println(io)
 
 # --- time table ---
@@ -66,11 +69,16 @@ println(io)
 println(io, "|  | $base_rev | $headlbl | $base_rev / $headlbl |")
 println(io, "|:--|--:|--:|--:|")
 for n in names
-    haskey(head, n) || continue
-    mb, mh = mintime(base[n]), mintime(head[n])
-    ratio = round(mb / mh; sigdigits = 3)
-    flag = ratio >= 1.05 ? " ✅" : ratio <= 0.95 ? " ⚠️" : ""
-    println(io, "| $n | $(fmt_time(mb)) | $(fmt_time(mh)) | $(ratio)$(flag) |")
+    b = get(base, n, nothing); h = get(head, n, nothing)
+    bcell = b === nothing ? "" : fmt_time(mintime(b))
+    hcell = h === nothing ? "" : fmt_time(mintime(h))
+    if b !== nothing && h !== nothing
+        ratio = round(mintime(b) / mintime(h); sigdigits = 3)
+        rcell = ratio >= 1.05 ? "$ratio ✅" : ratio <= 0.95 ? "$ratio ⚠️" : "$ratio"
+    else
+        rcell = h === nothing ? "🗑" : "🆕"
+    end
+    println(io, "| $n | $bcell | $hcell | $rcell |")
 end
 println(io)
 println(io, "</details>")
@@ -82,8 +90,10 @@ println(io)
 println(io, "|  | $base_rev | $headlbl |")
 println(io, "|:--|--:|--:|")
 for n in names
-    haskey(head, n) || continue
-    println(io, "| $n | $(fmt_mem(base[n])) | $(fmt_mem(head[n])) |")
+    b = get(base, n, nothing); h = get(head, n, nothing)
+    bcell = b === nothing ? "" : fmt_mem(b)
+    hcell = h === nothing ? "" : fmt_mem(h)
+    println(io, "| $n | $bcell | $hcell |")
 end
 println(io)
 println(io, "</details>")
