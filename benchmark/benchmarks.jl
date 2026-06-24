@@ -149,24 +149,26 @@ if isdefined(GNSSSignals, :GalileoE1C_BOC11)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OSR sweep — old gen_code! vs new LUT across oversampling ratios, at a small and a
-# steady-state buffer. Grouped by signal / osr / size under `code/osr sweep/…` so
-# "original" and "LUT" sit adjacent. Same N + fs/fc for both, and the LUT side uses the
-# warm generator (0-alloc), matching the original's 0-alloc fill. The LUT is ~flat in OSR
-# (one permute/sample); the original's run-fill speeds up with OSR — so the LUT wins most
-# at low OSR and the original catches up high (crossover ~OSR 8-16 BPSK, later BOC). Two
-# representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
-const _OSR_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
+# Oversampling sweep — old gen_code! vs new LUT across oversampling ratios, at a small
+# and a steady-state buffer. "Oversampling ratio" = samples per code chip = fs / fc;
+# the level is labelled as a multiplier (2x = sample twice per chip). Grouped by signal /
+# oversampling / size under `code/oversampling sweep/…` so "original" and "LUT" sit
+# adjacent. Same N + fs/fc for both, and the LUT side uses the warm generator (0-alloc),
+# matching the original's 0-alloc fill. The LUT is ~flat in the oversampling ratio (one
+# permute/sample); the original's run-fill speeds up as it grows — so the LUT wins most at
+# low oversampling and the original catches up high (crossover ~8-16x BPSK, later BOC).
+# Two representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
+const _SWEEP_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
     isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
         push!(s, ("GalileoE1B_BOC11", GNSSSignals.GalileoE1B_BOC11(), 1, 2))
     s
 end
 let fc = 1023e3Hz
-    for (name, signal, prn, P) in _OSR_SIGS
-        for osr in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
-            osr < P && continue                      # LUT needs fs ≥ fc·P
-            fs = osr * fc
-            g = SUITE["code"]["osr sweep"][name]["osr$(lpad(osr, 2, '0'))"][slabel]
+    for (name, signal, prn, P) in _SWEEP_SIGS
+        for oversampling in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
+            oversampling < P && continue             # LUT needs fs ≥ fc·P
+            fs = oversampling * fc
+            g = SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel]
             o16 = zeros(Int16, n)
             g["original"] =
                 @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
