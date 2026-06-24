@@ -23,8 +23,7 @@ Return a callable `p` such that `p(phase_index::Vec{64,Int32}) -> Vec{64,Int8}`,
 up the code at each (already mod-`L`) chip index via the sliding 64-chip permute window.
 """
 function prepare_code(table::CodeTable; backend::Backend = default_backend(table))
-    backend isa AVX2 && _check_avx2_length(table)
-    backend isa Neon && _check_neon_length(table)
+    backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
     PreparedCode(table.padded, backend, table.length)
 end
 
