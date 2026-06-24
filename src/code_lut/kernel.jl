@@ -33,14 +33,15 @@ const _RemT   = UInt32
 const _B       = 30
 const _STEP_DEN = Int(1) << _B          # = 2^_B
 
-# Per-lane index vector `[0, 1, …, 63]`, built once at load. The AVX-512 init (`_init_rel`)
-# materialises the running product `p = step_num·sample` for all 64 lanes at once as a real
-# SIMD multiply (`step_num · (LANES + start)`), then derives rel/remainder from `p` with a
-# vector shift + mask. At `_B = 30` the product `p` (step_num < 2^30, sample ≤ 4·64-1 = 255)
-# reaches ~2^38, past Int32, so the lanes are Int64. (The AVX2/Portable `_init_state` builds
-# its state scalar-wise instead — its SIMD `Vec{W,UInt64}` build poisoned the AVX2 hot loop's
-# register allocation; see `_init_state`.)
-const _LANES64   = Vec{64,Int64}(ntuple(j -> Int64(j - 1), Val(64)))
+# Per-lane index vectors `[0, 1, …, W-1]`, built once at load. The AVX-512 init (`_init_rel`)
+# materialises the running product `p = step_num·sample` for all 64 lanes at once with a real
+# SIMD Int64 multiply (AVX-512 has `vpmullq`), then derives rel/remainder from `p` with a
+# vector shift + mask. AVX2/Portable (`_init_state`) has no 64-bit SIMD multiply, so it splits
+# `step_num` into two _B/2-bit halves and reconstructs `p` from Int32 partial products (see
+# there), using these Int32 lanes.
+const _LANES64 = Vec{64,Int64}(ntuple(j -> Int64(j - 1), Val(64)))
+@inline @generated _lanes_i32(::Val{W}) where {W} =
+    :(Vec{$W,Int32}($(Expr(:tuple, (Int32(j - 1) for j in 1:W)...))))
 
 # Convert a chips-per-sample rate to the fixed-point `(step_num, step_den)` pair used by the
 # DDA: `step_den = 2^_B`, `step_num = round(cps · 2^_B)`. Drops `rationalize`'s continued
@@ -98,30 +99,30 @@ end
 # path can't use the scalar-base rel trick — it regressed — so it widens the phase vector
 # instead). AVX-512 uses the rel/scalar-base path (`_init_rel`) and ignores this.
 @inline _phase_type(L) = L <= typemax(Int16) ? Int16 : Int32
-# Fixed-point init: with `step_den = 2^_B` the per-lane chip index is `p >> _B` and the
-# remainder is `p & (step_den-1)`, where `p = step_num·sample` is materialised ONCE per lane
-# and both outputs derived from it in a single `ntuple` pass (no `div`, no second product).
-# `@noinline`: this runs ONCE per stream at setup (never in a hot loop). Keeping it out of
-# line stops its body (a per-lane `ntuple` build) from bloating the steady-state loops it
-# feeds (`_generate_simd_avx2!`, the iterators). Inlining the SIMD widening-multiply variant
-# there poisoned the AVX2 register allocation and spilled the hot loop (~2400 ps/sample);
-# out-of-lining the scalar build keeps the loop at ~70.
+# Fixed-point init: chip index = `p >> _B`, remainder = `p & (step_den-1)`, p = step_num·sample.
+# AVX2 has no 64-bit SIMD multiply and `p` (< 2^37 at _B=30) overflows Int32, so SPLIT
+# `step_num = hi·2^H + lo` (H = _B÷2 = 15): the partial products `hi·s` and `lo·s` both fit
+# Int32 (native `vpmulld`), and `p>>_B` / `p&(2^_B-1)` are reconstructed from them with shifts
+# and masks — no `Vec{W,UInt64}` (which has no AVX2 instruction and wrecked the hot loop's
+# register allocation). `@noinline`: runs ONCE per stream at setup, kept out of line so its
+# temporaries don't bloat the steady-state loops it feeds (`_generate_simd_avx2!`, iterators).
 @noinline function _init_state(::Val{W}, step_num, step_den, L, start_sample, phase_offset, ::Type{T}) where {W,T}
-    # Build the per-lane chip index / remainder scalar-wise: with `step_den = 2^_B` the index
-    # is `p >> _B` and the remainder is `p & (step_den-1)`, where `p = step_num·sample`
-    # (step_num < 2^_B ≤ 2^30, sample ≤ 4W-1, so `p` < 2^38 fits Int64). The build runs once
-    # per stream at setup, so the scalar `ntuple` is off the hot path. (The previous SIMD
-    # widening-multiply build was faster in isolation but, even out-of-lined, its
-    # `Vec{W,UInt64}` temporaries wrecked codegen of the AVX2 hot loop it feeds.)
-    phase = Vec{W,T}(ntuple(Val(W)) do j
-        p = Int64(step_num) * Int64(start_sample + j - 1)
-        T(mod((p >> _B) + phase_offset, L))
-    end)
-    remainder = Vec{W,_RemT}(ntuple(Val(W)) do j
-        p = Int64(step_num) * Int64(start_sample + j - 1)
-        _RemT(p & Int64(step_den - 1))
-    end)
-    (phase, remainder)
+    H      = _B >> 1                                           # split point (15 for _B = 30)
+    himask = Int32((1 << H) - 1)
+    s      = _lanes_i32(Val(W)) + Int32(start_sample)          # per-lane sample
+    A      = Vec{W,Int32}(Int32(step_num >> H)) * s            # hi·s  (fits Int32: hi<2^15, s≤4W-1)
+    Bv     = Vec{W,Int32}(Int32(step_num & Int(himask))) * s   # lo·s  (fits Int32)
+    lowB   = ((A & himask) << H) + Bv                          # low _B bits of p (+ 1 carry bit)
+    remainder = convert(Vec{W,_RemT}, lowB & Int32(step_den - 1))
+    chip   = (A >> H) + (lowB >> _B)                           # p >> _B  (chip index, ≤ 4W-1)
+    if L < 4W   # pathological short table (chip can exceed 2L): per-lane scalar mod
+        phase = convert(Vec{W,T}, Vec{W,Int32}(ntuple(j -> Int32(mod(Int64(@inbounds chip[j]) + phase_offset, L)), Val(W))))
+        return (phase, remainder)
+    end
+    po  = Int32(mod(Int64(phase_offset), Int64(L)))
+    idx = chip + po                                            # < 2L
+    idx = vifelse(idx >= Int32(L), idx - Int32(L), idx)        # mod L (one conditional subtract)
+    (convert(Vec{W,T}, idx), remainder)
 end
 
 # One windowed lookup: phase (chip indices mod L for W consecutive samples) -> W chips.
