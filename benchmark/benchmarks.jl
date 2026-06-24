@@ -49,11 +49,8 @@ SUITE["code"]["code generation"]["GalileoE1B"] = @benchmarkable gen_code!(
 ) evals = 10 samples = 10000
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Realistic 1 ms integration: per signal, compare the original `gen_code!`
-# (plain signal) against a prebuilt `CodeReplicaLUT` plan + `gen_code!(plan)`.
-# N = round(Int, fs·1e-3); fs chosen ≥ fc·subchip_factor per signal. The plan is
-# built ONCE outside the timed region (a receiver reuses it across integrations),
-# so only the per-call resample is timed.
+# 1 ms integration — old gen_code! vs new LUT, head to head (see the loop comment).
+# fs picked ≥ fc·subchip_factor per signal; N = round(Int, fs·1e-3).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # (name, signal, prn, fs, fc) — fc is the primary chip rate (1.023 MHz family
@@ -75,30 +72,36 @@ const _LUT_CASES = let cases = Any[]
     cases
 end
 
+# Per signal, fill N = round(Int, fs·1e-3) samples (one 1 ms integration) at the SAME
+# fs/fc three ways, all under one parent `code/1 ms integration/<signal>/…` so the rows
+# sit adjacent in the sorted table:
+#   "original"      — classic gen_code!(out, signal, prn, fs, fc)              (Int16 out)
+#   "LUT generator" — warm CodeGeneratorLUT reused per call (steady state)     (Int8 out, 0 alloc)
+#   "LUT one-shot"  — gen_code!(out, plan, fs, fc): rebuilds the DDA each call (Int8 out)
+# Plan/generator are built ONCE outside the timed region (a receiver reuses them). Output
+# eltype differs by design: Int16 is the original's correlator type, Int8 the LUT's native ±1.
 for (name, signal, prn, fs, fc) in _LUT_CASES
     N = round(Int, ustrip_hz(fs) * 1e-3)
+    g = SUITE["code"]["1 ms integration"][name]
     out16 = zeros(Int16, N)
-    SUITE["code"]["1ms gen_code! original"][name] = @benchmarkable gen_code!(
+    g["original"] = @benchmarkable gen_code!(
         $out16, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
 
-    # Plan built ONCE, outside the timed region (receiver reuses it).
-    if isdefined(GNSSSignals, :CodeReplicaLUT)
-        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
-        out8 = zeros(Int8, N)
-        SUITE["code"]["1ms gen_code! plan"][name] = @benchmarkable gen_code!(
-            $out8, $plan, $fs, $fc, $0.0, $0,
-        ) evals = 10 samples = 1000
-    end
-
-    # Continuing generator: DDA init paid ONCE in the CodeGeneratorLUT constructor (outside
-    # the timed region), then `gen_code!(out, gen)` per integration continues the state with
-    # no rate setup / re-init and a single-stream+scalar tail — the fast repeated path.
+    # Warm continuing generator: DDA init paid once in the constructor (outside the timed
+    # region); gen_code!(out, gen) continues the state with no re-init — the fast repeat path.
     if isdefined(GNSSSignals, :CodeGeneratorLUT)
         gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
         out8g = zeros(Int8, N)
-        SUITE["code"]["1ms gen_code! generator"][name] = @benchmarkable gen_code!(
-            $out8g, $gen,
+        g["LUT generator"] = @benchmarkable gen_code!($out8g, $gen) evals = 10 samples = 1000
+    end
+
+    # One-shot: builds the generator + DDA init on every call (the drop-in gen_code! form).
+    if isdefined(GNSSSignals, :CodeReplicaLUT)
+        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
+        out8 = zeros(Int8, N)
+        g["LUT one-shot"] = @benchmarkable gen_code!(
+            $out8, $plan, $fs, $fc, $0.0, $0,
         ) evals = 10 samples = 1000
     end
 end
@@ -146,10 +149,12 @@ if isdefined(GNSSSignals, :GalileoE1C_BOC11)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OSR sweep: original `gen_code!` vs the LUT plan across oversampling ratios, at a
-# small and a steady-state buffer. The LUT is ~flat in OSR (one permute/sample); the
-# original's run-fill speeds up with OSR — so the LUT wins most at low OSR and the
-# original catches up at high OSR (crossover ~OSR 8-16 for BPSK, later for BOC). Two
+# OSR sweep — old gen_code! vs new LUT across oversampling ratios, at a small and a
+# steady-state buffer. Grouped by signal / osr / size under `code/osr sweep/…` so
+# "original" and "LUT" sit adjacent. Same N + fs/fc for both, and the LUT side uses the
+# warm generator (0-alloc), matching the original's 0-alloc fill. The LUT is ~flat in OSR
+# (one permute/sample); the original's run-fill speeds up with OSR — so the LUT wins most
+# at low OSR and the original catches up high (crossover ~OSR 8-16 BPSK, later BOC). Two
 # representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
 const _OSR_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
     isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
@@ -158,18 +163,18 @@ const _OSR_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, pr
 end
 let fc = 1023e3Hz
     for (name, signal, prn, P) in _OSR_SIGS
-        plan = isdefined(GNSSSignals, :CodeReplicaLUT) ? GNSSSignals.CodeReplicaLUT(signal, prn) : nothing
         for osr in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
             osr < P && continue                      # LUT needs fs ≥ fc·P
             fs = osr * fc
-            key = "$name/osr$osr/$slabel"
+            g = SUITE["code"]["osr sweep"][name]["osr$(lpad(osr, 2, '0'))"][slabel]
             o16 = zeros(Int16, n)
-            SUITE["code"]["osr: original"][key] =
+            g["original"] =
                 @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
-            if plan !== nothing
+            if isdefined(GNSSSignals, :CodeGeneratorLUT)
+                gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
                 o8 = zeros(Int8, n)
-                SUITE["code"]["osr: LUT plan"][key] =
-                    @benchmarkable gen_code!($o8, $plan, $fs, $fc, $0.0, $0) evals = 1 samples = 300
+                g["LUT"] =
+                    @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 300
             end
         end
     end
