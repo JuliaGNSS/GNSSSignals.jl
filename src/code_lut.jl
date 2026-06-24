@@ -143,7 +143,7 @@ the expensive step. The resulting plan is **immutable and read-only**, so it can
 be shared across threads (build once per `(signal, prn)`, reuse it for every
 integration; a receiver holds one plan per tracked channel).
 
-Pass the plan to [`gen_code!`](@ref) or [`gen_code`](@ref) with a sampling
+Pass the plan to [`gen_code!`](@ref) or [`CodeGeneratorLUT`](@ref) with a sampling
 frequency to resample it. The baked table is independent of the sampling and code
 frequency, so a single plan serves any rate.
 
@@ -181,8 +181,8 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 # `CodeGeneratorLUT`: a mutable, *continuing* generator built once per (plan, rate).
 #
-# The expensive DDA setup (rationalize + four `_init_rel` streams, ~550 ns) runs ONCE in
-# the `gen_code` constructor. Each `gen_code!(out, gen)` then fills the NEXT `length(out)`
+# The DDA setup (fixed-point step + four stream inits, ~40 ns) runs ONCE in the
+# `CodeGeneratorLUT` constructor. Each `gen_code!(out, gen)` then fills the NEXT `length(out)`
 # samples from the carried state and saves the state advanced by exactly `length(out)`, so
 # concatenating consecutive fills equals one big generation. This amortises the init across
 # every 1 ms integration — the per-sample loop already beats the original `gen_code!`.
@@ -192,14 +192,14 @@ end
     CodeGeneratorLUT
 
 Mutable, stateful, *continuing* LUT code generator built from a [`CodeReplicaLUT`](@ref)
-plan and a sampling/code rate via [`gen_code`](@ref). It holds the resampler's DDA state
-(the `CodeLUT` rel/scalar-base streams, or the phase-based equivalent for AVX2/Portable),
-the precomputed step ratio, the chosen backend, and a secondary-period counter for signals
-with a non-baked secondary (e.g. GPS L5I's NH10).
+plan and a sampling/code rate via its constructor (`CodeGeneratorLUT(plan, fs, fc)`). It
+holds the resampler's DDA state (the `CodeLUT` rel/scalar-base streams, or the phase-based
+equivalent for AVX2/Portable), the precomputed step ratio, the chosen backend, and a
+secondary-period counter for signals with a non-baked secondary (e.g. GPS L5I's NH10).
 
 Build it once (the DDA init runs here), then call [`gen_code!`](@ref)`(out, gen)` per
-integration — that hot path does no `rationalize` and no DDA re-init, just the windowed
-permute loop with a fully vectorised tail. It can also be iterated to yield `Vec{W,Int8}`
+integration — that hot path does no rate setup and no DDA re-init, just the windowed
+permute loop with a single-stream + scalar tail. It can also be iterated to yield `Vec{W,Int8}`
 chunks (advancing the state) for fused, allocation-free correlation against a carrier.
 
 Not thread-safe (it mutates its DDA state); use one generator per stream/channel.
@@ -217,19 +217,21 @@ mutable struct CodeGeneratorLUT{S<:AbstractGNSSSignal,G<:CodeLUT.CodeGeneratorAn
 end
 
 """
-    gen_code(plan::CodeReplicaLUT, sampling_frequency,
-             code_frequency = get_code_frequency(plan.signal);
-             start_phase = 0.0, start_index_shift = 0) -> CodeGeneratorLUT
+    CodeGeneratorLUT(plan::CodeReplicaLUT, sampling_frequency,
+                     code_frequency = get_code_frequency(plan.signal);
+                     start_phase = 0.0, start_index_shift = 0) -> CodeGeneratorLUT
 
-Construct a [`CodeGeneratorLUT`](@ref): a continuing code generator over `plan` at the
-given rate. **This is where the one-time DDA setup runs** (`rationalize` + stream init);
-afterwards [`gen_code!`](@ref)`(out, gen)` fills successive chunks with no per-call setup.
+Construct a continuing code generator over `plan` at the given rate. The one-time DDA setup
+(fixed-point step + stream init) runs here; afterwards [`gen_code!`](@ref)`(out, gen)` fills
+successive chunks with no per-call setup, and `for v in gen` yields `Vec{W,Int8}` chunks
+(advancing the state). Use it for seamless block-to-block continuation (tracking) or
+register-fused iteration; for a one-shot fill, the [`gen_code!`](@ref)`(out, plan, …)`
+method is simpler.
 
 Same oversampling requirement and integer-chip phase limitation as the plan
-[`gen_code!`](@ref) method. The fast repeated path is: build the generator once outside
-your integration loop, then `gen_code!(out, gen)` per integration.
+[`gen_code!`](@ref) method.
 """
-function gen_code(
+function CodeGeneratorLUT(
     plan::CodeReplicaLUT,
     sampling_frequency,
     code_frequency = get_code_frequency(plan.signal);
@@ -241,7 +243,7 @@ function gen_code(
     fs = _to_hz(sampling_frequency)
     P = mc.subchip_factor
     fs < fc * P && error(
-        "gen_code (CodeReplicaLUT) needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
+        "CodeGeneratorLUT needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
     )
     # Integer primary-chip phase (matches gen_code!'s start_phase_including_shift; the
     # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
@@ -325,7 +327,7 @@ end
 
 Convenience one-shot: builds a [`CodeGeneratorLUT`](@ref) (paying the DDA init) and fills
 `sampled_code` once from phase zero of the requested rate. Fine for one-off use; for
-repeated integrations build `gen = gen_code(plan, fs, fc)` once and call
+repeated integrations build `gen = CodeGeneratorLUT(plan, fs, fc)` once and call
 `gen_code!(out, gen)` per integration to amortise the init.
 
 `sampled_code` is most naturally `Int8` (written directly); other integer element types go
@@ -340,8 +342,8 @@ function gen_code!(
     start_index_shift::Integer = 0,
     PHASET = Int32,
 )
-    gen = gen_code(plan, sampling_frequency, code_frequency;
-                   start_phase = start_phase, start_index_shift = start_index_shift)
+    gen = CodeGeneratorLUT(plan, sampling_frequency, code_frequency;
+                           start_phase = start_phase, start_index_shift = start_index_shift)
     gen_code!(sampled_code, gen)
 end
 
