@@ -30,15 +30,18 @@ using SIMD
 abstract type Backend end
 struct AVX512   <: Backend end   # vpermb over a 64-chip sliding window (W = 64)
 struct AVX2     <: Backend end   # vpshufb over two independent 16-chip windows (W = 32)
+struct Neon     <: Backend end   # tbl1 over a single 16-chip window (W = 16, AArch64)
 struct Portable <: Backend end   # scalar fallback (any CPU)
 
 backend_name(::AVX512)   = "AVX-512"
 backend_name(::AVX2)     = "AVX2"
+backend_name(::Neon)     = "NEON"
 backend_name(::Portable) = "portable"
 
 # Window width / SIMD lane count per backend.
 _vwidth(::AVX512)   = Val(64)
 _vwidth(::AVX2)     = Val(32)
+_vwidth(::Neon)     = Val(16)
 _vwidth(::Portable) = Val(1)
 
 """
@@ -84,15 +87,17 @@ include("code_lut/generator.jl")
         HOST_FEATURES.avx512vbmi ? AVX512() :
         HOST_FEATURES.avx2       ? AVX2()   : Portable()
     end
+elseif Sys.ARCH === :aarch64
+    default_backend() = Neon()
 else
     default_backend() = Portable()
 end
-# Length-aware: AVX2 widens its phase vector to Int32 for tables > typemax(Int16), so it
-# addresses anything up to typemax(Int32) (slower than the Int16 path, but ~20× over
+# Length-aware: AVX2/NEON widen the phase vector to Int32 for tables > typemax(Int16), so
+# they address anything up to typemax(Int32) (slower than the Int16 path, but ~20× over
 # scalar). Only fall back to Portable for the (unreachable for GNSS) even-longer tables.
 function default_backend(table::CodeTable)
     be = default_backend()
-    (be isa AVX2 && table.length > typemax(Int32)) ? Portable() : be
+    (be isa Union{AVX2,Neon} && table.length > typemax(Int32)) ? Portable() : be
 end
 
 end # module CodeLUT
