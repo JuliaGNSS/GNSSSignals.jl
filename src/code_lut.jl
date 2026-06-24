@@ -455,4 +455,7 @@ CodeGeneratorLUT4(plan::CodeReplicaLUT, sampling_frequency, num_samples::Integer
 Base.IteratorSize(::Type{<:CodeGeneratorLUT4}) = Base.HasLength()
 Base.length(g::CodeGeneratorLUT4) = length(g.inner)
 Base.eltype(::Type{CodeGeneratorLUT4{S,It}}) where {S,It} = eltype(It)
-@inline Base.iterate(g::CodeGeneratorLUT4, st...) = iterate(g.inner, st...)
+# Two explicit methods (not a `st...` varargs forward — that splat boxes the state and
+# allocates on Julia 1.10's varargs-specialization heuristics; the inner iterator is 0-alloc).
+@inline Base.iterate(g::CodeGeneratorLUT4) = iterate(g.inner)
+@inline Base.iterate(g::CodeGeneratorLUT4, state) = iterate(g.inner, state)
