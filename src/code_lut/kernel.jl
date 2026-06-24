@@ -158,6 +158,21 @@ const _AVX2_LOW16 = Vec{32,Bool}(ntuple(j -> j <= 16, Val(32)))
     _pshufb(window, index)
 end
 
+# NEON: a 128-bit register is 16 bytes, so `tbl1` does a single 16-chip → 16-lane lookup —
+# exactly ONE of AVX2's two `vpshufb` halves. So this is the single-window analogue of the
+# AVX2 two-window lookup: one base (lane-0 chip), one 16-chip window, one `tbl1`. The 16
+# samples span ≤ 15 chips when oversampled, so the relative indices are 0..15 (never the
+# ≥16 out-of-range that `tbl1` zeroes).
+@inline function _window_lookup(::Neon, padded, phase::Vec{16,T}, L) where {T}
+    base = Int(@inbounds phase[1])
+    Lc = T(L)
+    rel = phase - T(base)
+    rel = vifelse(rel < zero(T), rel + Lc, rel)
+    index = convert(Vec{16,Int8}, rel)
+    window = @inbounds padded[VecRange{16}(base + 1)]   # Vec{16,Int8}, always contiguous
+    _tbl1(window, index)
+end
+
 # ── relative-index DDA ───────────────────────────────────────────────────────────────
 # The value the permute consumes is the window-relative index `rel`, which fits Int8 (it
 # is ≤ 63 for AVX-512's single 64-chip window, ≤ 15 per half for AVX2's two 16-chip
@@ -286,6 +301,65 @@ function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_o
             out[VecRange{W}(chunk_start + 1)] = _window_lookup(AVX2(), padded, phase2, L); chunk_start += W
             if chunk_start + W <= num
                 out[VecRange{W}(chunk_start + 1)] = _window_lookup(AVX2(), padded, phase3, L); chunk_start += W
+            end
+        end
+    end
+    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1)
+end
+
+# NEON mirrors the AVX2 path exactly at W = 16 with a single `tbl1` window per lookup. Same
+# phase-based DDA, same Int16 (length ≤ 32767) / Int32 (longer) phase, same four interleaved
+# streams + single-stream-SIMD-tail + scalar tail. Byte-identical to the AVX2/AVX-512/Portable
+# output. Never selected/called on x86 (so its `tbl1` llvmcall is never compiled there).
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Neon)
+    _check_neon_length(table)
+    if table.length <= typemax(Int16)
+        _generate_simd_neon!(out, table, step_num, step_den, phase_offset, Int16)
+    else
+        _generate_simd_neon!(out, table, step_num, step_den, phase_offset, Int32)
+    end
+end
+@inline _check_neon_length(table::CodeTable) =
+    table.length <= typemax(Int32) || throw(ArgumentError(
+        "NEON backend supports code length ≤ $(Int(typemax(Int32))); table length is " *
+        "$(table.length). Use backend=Portable()."))
+function _generate_simd_neon!(out, table::CodeTable, step_num, step_den, phase_offset, ::Type{T}) where {T}
+    W = 16; stride = 4W
+    L = table.length; padded = table.padded
+    Lc = T(L)
+    whole_step = T(div(stride * step_num, step_den) % L)   # integer chips per stride, mod L
+    frac_step  = _RemT(mod(stride * step_num, step_den))
+    modulus    = _RemT(step_den)
+    phase1, rem1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T)
+    phase2, rem2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T)
+    phase3, rem3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T)
+    phase4, rem4 = _init_state(Val(W), step_num, step_den, L, 3W, phase_offset, T)
+    num = length(out); chunk_start = 0
+    @inbounds while chunk_start + stride <= num
+        out[VecRange{W}(chunk_start + 1)]      = _window_lookup(Neon(), padded, phase1, L)
+        out[VecRange{W}(chunk_start + W + 1)]  = _window_lookup(Neon(), padded, phase2, L)
+        out[VecRange{W}(chunk_start + 2W + 1)] = _window_lookup(Neon(), padded, phase3, L)
+        out[VecRange{W}(chunk_start + 3W + 1)] = _window_lookup(Neon(), padded, phase4, L)
+        rem1 += frac_step; rem2 += frac_step; rem3 += frac_step; rem4 += frac_step
+        c1 = rem1 >= modulus; c2 = rem2 >= modulus; c3 = rem3 >= modulus; c4 = rem4 >= modulus
+        rem1 = vifelse(c1, rem1 - modulus, rem1); rem2 = vifelse(c2, rem2 - modulus, rem2)
+        rem3 = vifelse(c3, rem3 - modulus, rem3); rem4 = vifelse(c4, rem4 - modulus, rem4)
+        phase1 += whole_step; phase2 += whole_step; phase3 += whole_step; phase4 += whole_step
+        phase1 = vifelse(c1, phase1 + one(T), phase1); phase2 = vifelse(c2, phase2 + one(T), phase2)
+        phase3 = vifelse(c3, phase3 + one(T), phase3); phase4 = vifelse(c4, phase4 + one(T), phase4)
+        # phase ∈ [0, 2L-1] after the advance → one conditional subtract restores [0, L-1]
+        phase1 = vifelse(phase1 >= Lc, phase1 - Lc, phase1); phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
+        phase3 = vifelse(phase3 >= Lc, phase3 - Lc, phase3); phase4 = vifelse(phase4 >= Lc, phase4 - Lc, phase4)
+        chunk_start += stride
+    end
+    # Leftover < 4W samples: up to 3 full W-blocks as single-stream SIMD before the scalar
+    # tail. Streams 1–3 are already positioned at chunk_start + {0,W,2W}, so reuse them.
+    @inbounds if chunk_start + W <= num
+        out[VecRange{W}(chunk_start + 1)] = _window_lookup(Neon(), padded, phase1, L); chunk_start += W
+        if chunk_start + W <= num
+            out[VecRange{W}(chunk_start + 1)] = _window_lookup(Neon(), padded, phase2, L); chunk_start += W
+            if chunk_start + W <= num
+                out[VecRange{W}(chunk_start + 1)] = _window_lookup(Neon(), padded, phase3, L); chunk_start += W
             end
         end
     end
