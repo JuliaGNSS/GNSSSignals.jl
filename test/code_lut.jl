@@ -208,3 +208,77 @@ const _BACKENDS = (CL.Portable(),
         @test CL._check_avx2_length(CL.CodeTable(ones(Int8, 8)))
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public adapter: `CodeGeneratorLUT4` — the 4-wide, finite counterpart to
+# `CodeGeneratorLUT`. It wraps `CodeLUT.generate_code4`, so its 4-tuple of
+# `Vec{W,Int8}` chunks (4·W samples per step) must concatenate byte-exactly to the
+# array produced by the plan `gen_code!` at the same rate.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "CodeGeneratorLUT4" begin
+    # SIMD width of the host's default backend (what CodeGeneratorLUT4 uses internally).
+    Wdef = _width(CL.default_backend())
+
+    # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P
+    # (its 1800-chip overlay is too long to bake) — both yield a residual secondary
+    # and are covered by the error testset below.
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]
+    for signal in sigs
+        plan = CodeReplicaLUT(signal, 1)
+        P = plan.mc.subchip_factor
+        fc = get_code_frequency(plan.signal)
+        # A couple of rates, all satisfying fs ≥ fc·P.
+        for fs in (Float64(fc) * P, Float64(fc) * P * 2.5)
+            nsteps = 6
+            num_samples = nsteps * 4 * Wdef
+            it = CodeGeneratorLUT4(plan, fs, fc, num_samples)
+
+            @test Base.IteratorSize(typeof(it)) == Base.HasLength()
+            @test length(it) == nsteps
+            @test eltype(typeof(it)) == eltype(typeof(it.inner))
+            @test eltype(typeof(it)) <: NTuple{4,<:CL.SIMD.Vec{Wdef,Int8}}
+
+            # Byte-exact: concatenated 4-tuples == first length(it)·4W samples of gen_code!.
+            oracle = Vector{Int8}(undef, num_samples)
+            gen_code!(oracle, plan, fs, fc)
+            collected = Int8[]
+            for (a, b, c, d) in it
+                for v in (a, b, c, d), j in 1:Wdef
+                    push!(collected, v[j])
+                end
+            end
+            @test length(collected) == nsteps * 4 * Wdef
+            @test collected == oracle[1:length(collected)]
+        end
+    end
+
+    @testset "allocation-free steady iteration" begin
+        plan = CodeReplicaLUT(GPSL1CA(), 1)
+        P = plan.mc.subchip_factor
+        fc = get_code_frequency(plan.signal)
+        fs = Float64(fc) * P
+        it = CodeGeneratorLUT4(plan, fs, fc, 6 * 4 * Wdef)
+        # Warm up, then assert a single step allocates nothing.
+        st = iterate(it)
+        @test st !== nothing
+        _, state = st
+        step!(itr, s) = iterate(itr, s)
+        step!(it, state)                       # compile
+        @test (@allocated step!(it, state)) == 0
+    end
+
+    @testset "errors" begin
+        fc = get_code_frequency(GPSL1CA())
+        n = 4 * Wdef
+        # Non-baked secondary (GPS L5I NH10) → error at construction.
+        l5i = CodeReplicaLUT(GPSL5I(), 1)
+        fc5 = get_code_frequency(GPSL5I())
+        @test_throws ErrorException CodeGeneratorLUT4(l5i, Float64(fc5) * l5i.mc.subchip_factor, fc5, n)
+        # fs < fc·subchip_factor → error.
+        plan = CodeReplicaLUT(GPSL1C_D(), 1)   # BOC(1,1) → subchip_factor 2
+        P = plan.mc.subchip_factor
+        @test P > 1
+        fc1c = get_code_frequency(plan.signal)
+        @test_throws ErrorException CodeGeneratorLUT4(plan, Float64(fc1c) * P / 2, fc1c, n)
+    end
+end
