@@ -15,16 +15,13 @@
 # (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
-"""
-    GNSSSignals.CodeLUT
-
-Internal submodule vendoring the GNSSSignalsLUT.jl SIMD code resampler. Not
-exported and not part of the public GNSSSignals API; use [`CodeReplicaLUT`](@ref)
-with [`gen_code!`](@ref) / [`gen_code`](@ref) instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
-`ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`,
-`AVX2`, `Portable`, `default_backend`, …) live inside this submodule so they do
-not clash with GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `Modulation`.
-"""
+# `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
+# resampler. Not exported and not part of the public GNSSSignals API; use `CodeReplicaLUT`
+# with `gen_code!` / `gen_code` instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
+# `ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`, `AVX2`,
+# `Portable`, `default_backend`, …) live inside this submodule so they do not clash with
+# GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `Modulation`. (Plain comment, not a docstring,
+# so Documenter's checkdocs doesn't require this internal module in the manual.)
 module CodeLUT
 
 using SIMD
