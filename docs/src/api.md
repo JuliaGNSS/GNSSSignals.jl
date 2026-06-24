@@ -48,6 +48,18 @@ GNSSSignals.gen_code
 GNSSSignals.gen_code!
 ```
 
+## LUT Code Generation
+
+Fast register-resident SIMD code resampling: build a [`CodeReplicaLUT`](@ref) plan once per
+`(signal, prn)`, then resample it with `gen_code!`, the continuing [`CodeGeneratorLUT`](@ref),
+or the 4-wide [`CodeGeneratorLUT4`](@ref).
+
+```@docs
+GNSSSignals.CodeReplicaLUT
+GNSSSignals.CodeGeneratorLUT
+GNSSSignals.CodeGeneratorLUT4
+```
+
 ## Code Access
 
 ```@docs
