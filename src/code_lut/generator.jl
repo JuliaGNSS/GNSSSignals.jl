@@ -242,8 +242,10 @@ function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
         CodeGenerator512(table, sn, sd, ph)
     elseif backend isa AVX2
         _check_avx2_length(table)
-        T = table.length <= typemax(Int16) ? Int16 : Int32
         CodeGeneratorPhase(table, sn, sd, ph, backend, Val(32))
+    elseif backend isa Neon
+        _check_neon_length(table)
+        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(16))
     else
         CodeGeneratorPhase(table, sn, sd, ph, backend, Val(1))
     end

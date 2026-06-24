@@ -19,15 +19,16 @@ end
 # step_num that the public `cps::Real` API derives for a given rate.
 _step_num(cps) = round(Int, cps * _SD)
 
-_width(be) = be isa CL.AVX512 ? 64 : be isa CL.AVX2 ? 32 : 1
+_width(be) = be isa CL.AVX512 ? 64 : be isa CL.AVX2 ? 32 : be isa CL.Neon ? 16 : 1
 
-# Backends to exercise: Portable always; AVX-512 / AVX2 only when the host supports them.
-# HOST_FEATURES is x86-only (`@static`-guarded), so guard the access for ARM/other archs
-# (e.g. Apple-Silicon CI), where only the Portable backend is available.
+# Backends to exercise: Portable always; AVX-512 / AVX2 only when the host supports them;
+# NEON only on aarch64 (Apple-Silicon CI). HOST_FEATURES is x86-only (`@static`-guarded),
+# so guard the access for ARM/other archs, where only Portable (+ NEON on aarch64) runs.
 _hasfeat(f) = isdefined(CL, :HOST_FEATURES) && getfield(CL.HOST_FEATURES, f)
 const _BACKENDS = (CL.Portable(),
                    (_hasfeat(:avx512vbmi) ? (CL.AVX512(),) : ())...,
-                   (_hasfeat(:avx2)       ? (CL.AVX2(),)   : ())...)
+                   (_hasfeat(:avx2)       ? (CL.AVX2(),)   : ())...,
+                   (Sys.ARCH === :aarch64 ? (CL.Neon(),)   : ())...)
 
 @testset "CodeLUT" begin
     @testset "CodeTable padding" begin
@@ -175,7 +176,7 @@ const _BACKENDS = (CL.Portable(),
                                      max_bake = bake ? typemax(Int) : 0)
                 ref = modref(primary, modulation, secondary, a, b, phase, n)
                 for be in _BACKENDS
-                    be isa CL.AVX2 && length(mc) > typemax(Int16) && continue
+                    be isa Union{CL.AVX2,CL.Neon} && length(mc) > typemax(Int16) && continue
                     out = Vector{Int8}(undef, n)
                     CL.generate_code!(out, mc; code_frequency = a, sampling_frequency = b * P,
                                       phase = phase, backend = be)
@@ -205,10 +206,21 @@ const _BACKENDS = (CL.Portable(),
                 end
                 @test col == ref[1:length(col)]
             end
+            if Sys.ARCH === :aarch64   # NEON: same Int32-phase long-table path, W = 16
+                out = Vector{Int8}(undef, n); CL.generate_code!(out, ct, cps; backend = CL.Neon())
+                @test out == ref
+                @test CL.default_backend(ct) isa CL.Neon   # not Portable
+                col = Int8[]
+                for v in CL.generate_code(ct, cps, n; backend = CL.Neon()), j in 1:16
+                    push!(col, v[j])
+                end
+                @test col == ref[1:length(col)]
+            end
         end
-        # A normal-length table passes the AVX2 length check (lengths > typemax(Int32) throw,
-        # but that is not allocatable here).
+        # A normal-length table passes the AVX2 / NEON length check (lengths > typemax(Int32)
+        # throw, but that is not allocatable here).
         @test CL._check_avx2_length(CL.CodeTable(ones(Int8, 8)))
+        @test CL._check_neon_length(CL.CodeTable(ones(Int8, 8)))
     end
 end
 
