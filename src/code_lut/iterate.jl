@@ -24,6 +24,7 @@ up the code at each (already mod-`L`) chip index via the sliding 64-chip permute
 """
 function prepare_code(table::CodeTable; backend::Backend = default_backend(table))
     backend isa AVX2 && _check_avx2_length(table)
+    backend isa Neon && _check_neon_length(table)
     PreparedCode(table.padded, backend, table.length)
 end
 
@@ -31,6 +32,8 @@ end
     _window_lookup(AVX512(), p.padded, phase, p.length)
 @inline (p::PreparedCode{AVX2})(phase::Vec{32,T}) where {T} =
     _window_lookup(AVX2(), p.padded, phase, p.length)
+@inline (p::PreparedCode{Neon})(phase::Vec{16,T}) where {T} =
+    _window_lookup(Neon(), p.padded, phase, p.length)
 @inline (p::PreparedCode{Portable})(phase::Vec{1,T}) where {T} =
     Vec{1,Int8}(@inbounds p.padded[Int(phase[1]) + 1])
 
