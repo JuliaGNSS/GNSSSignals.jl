@@ -240,12 +240,9 @@ function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
     sn = Int(step_num); sd = Int(step_den); ph = Int(phase)
     if backend isa AVX512
         CodeGenerator512(table, sn, sd, ph)
-    elseif backend isa AVX2
-        _check_avx2_length(table)
-        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(32))
-    elseif backend isa Neon
-        _check_neon_length(table)
-        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(16))
+    elseif backend isa Union{AVX2,Neon}
+        _check_windowed_length(table, backend)
+        CodeGeneratorPhase(table, sn, sd, ph, backend, _vwidth(backend))
     else
         CodeGeneratorPhase(table, sn, sd, ph, backend, Val(1))
     end

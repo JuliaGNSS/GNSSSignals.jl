@@ -219,8 +219,8 @@ const _BACKENDS = (CL.Portable(),
         end
         # A normal-length table passes the AVX2 / NEON length check (lengths > typemax(Int32)
         # throw, but that is not allocatable here).
-        @test CL._check_avx2_length(CL.CodeTable(ones(Int8, 8)))
-        @test CL._check_neon_length(CL.CodeTable(ones(Int8, 8)))
+        @test CL._check_windowed_length(CL.CodeTable(ones(Int8, 8)), CL.AVX2())
+        @test CL._check_windowed_length(CL.CodeTable(ones(Int8, 8)), CL.Neon())
     end
 end
 
