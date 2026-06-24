@@ -91,11 +91,11 @@ for (name, signal, prn, fs, fc) in _LUT_CASES
         ) evals = 10 samples = 1000
     end
 
-    # Continuing generator: DDA init paid ONCE in `gen_code` (outside the timed
-    # region), then `gen_code!(out, gen)` per integration continues the state with
-    # no rationalize / re-init and a vectorised tail — the fast repeated path.
+    # Continuing generator: DDA init paid ONCE in the CodeGeneratorLUT constructor (outside
+    # the timed region), then `gen_code!(out, gen)` per integration continues the state with
+    # no rate setup / re-init and a single-stream+scalar tail — the fast repeated path.
     if isdefined(GNSSSignals, :CodeGeneratorLUT)
-        gen = gen_code(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
         out8g = zeros(Int8, N)
         SUITE["code"]["1ms gen_code! generator"][name] = @benchmarkable gen_code!(
             $out8g, $gen,
