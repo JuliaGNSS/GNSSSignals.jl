@@ -120,3 +120,33 @@ if isdefined(GNSSSignals, :CodeReplicaLUT)
         end evals = 1 samples = 1000
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OSR sweep: original `gen_code!` vs the LUT plan across oversampling ratios, at a
+# small and a steady-state buffer. The LUT is ~flat in OSR (one permute/sample); the
+# original's run-fill speeds up with OSR — so the LUT wins most at low OSR and the
+# original catches up at high OSR (crossover ~OSR 8-16 for BPSK, later for BOC). Two
+# representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
+const _OSR_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
+    isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
+        push!(s, ("GalileoE1B_BOC11", GNSSSignals.GalileoE1B_BOC11(), 1, 2))
+    s
+end
+let fc = 1023e3Hz
+    for (name, signal, prn, P) in _OSR_SIGS
+        plan = isdefined(GNSSSignals, :CodeReplicaLUT) ? GNSSSignals.CodeReplicaLUT(signal, prn) : nothing
+        for osr in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
+            osr < P && continue                      # LUT needs fs ≥ fc·P
+            fs = osr * fc
+            key = "$name/osr$osr/$slabel"
+            o16 = zeros(Int16, n)
+            SUITE["code"]["osr: original"][key] =
+                @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
+            if plan !== nothing
+                o8 = zeros(Int8, n)
+                SUITE["code"]["osr: LUT plan"][key] =
+                    @benchmarkable gen_code!($o8, $plan, $fs, $fc, $0.0, $0) evals = 1 samples = 300
+            end
+        end
+    end
+end
