@@ -212,6 +212,17 @@ function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase
         b3 = mod(b3 + whole_step + h3, L); b4 = mod(b4 + whole_step + h4, L)
         chunk_start += stride
     end
+    # Leftover < 4W samples: do up to 3 full W-blocks as single-stream SIMD before the
+    # scalar tail. Streams 1–3 are already positioned at chunk_start + {0,W,2W}, so reuse them.
+    @inbounds if chunk_start + W <= num
+        out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel1, b1); chunk_start += W
+        if chunk_start + W <= num
+            out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel2, b2); chunk_start += W
+            if chunk_start + W <= num
+                out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel3, b3); chunk_start += W
+            end
+        end
+    end
     _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1)
 end
 
@@ -266,6 +277,17 @@ function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_o
         phase1 = vifelse(phase1 >= Lc, phase1 - Lc, phase1); phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
         phase3 = vifelse(phase3 >= Lc, phase3 - Lc, phase3); phase4 = vifelse(phase4 >= Lc, phase4 - Lc, phase4)
         chunk_start += stride
+    end
+    # Leftover < 4W samples: up to 3 full W-blocks as single-stream SIMD before the scalar
+    # tail. Streams 1–3 are already positioned at chunk_start + {0,W,2W}, so reuse them.
+    @inbounds if chunk_start + W <= num
+        out[VecRange{W}(chunk_start + 1)] = _window_lookup(AVX2(), padded, phase1, L); chunk_start += W
+        if chunk_start + W <= num
+            out[VecRange{W}(chunk_start + 1)] = _window_lookup(AVX2(), padded, phase2, L); chunk_start += W
+            if chunk_start + W <= num
+                out[VecRange{W}(chunk_start + 1)] = _window_lookup(AVX2(), padded, phase3, L); chunk_start += W
+            end
+        end
     end
     _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1)
 end
