@@ -22,8 +22,9 @@ julia = "1.6"
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "CodecZlib", "Test", "Statistics"]
+test = ["Aqua", "CodecZlib", "Random", "Test", "Statistics"]

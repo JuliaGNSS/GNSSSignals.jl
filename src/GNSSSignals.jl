@@ -4,7 +4,7 @@ using DocStringExtensions
 using FixedPointNumbers
 using SIMD: Vec, vload, vstore, vifelse, shufflevector
 using Statistics
-using Unitful: Frequency, Hz, upreferred
+using Unitful: Frequency, Hz, upreferred, ustrip, @u_str
 
 import Base.show
 
@@ -21,6 +21,8 @@ export AbstractGNSSSignal,
     TMBOC,
     gen_code!,
     gen_code,
+    CodeReplicaLUT,
+    CodeGeneratorLUT,
     get_codes,
     get_code_type,
     get_code_length,
@@ -104,4 +106,5 @@ include("gps/l1c_d.jl")
 include("gps/l1c_p.jl")
 include("galileo/e1b.jl")
 include("common.jl")
+include("code_lut.jl")
 end
