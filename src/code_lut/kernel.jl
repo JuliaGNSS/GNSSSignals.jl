@@ -528,11 +528,17 @@ end
 
 # Pick the run-fill path when there are at least `_runfill_min_m(backend)` samples per chip.
 # The threshold is the per-chip count where broadcast-fill overtakes the (flat-in-over-
-# sampling) windowed permute, and so depends on how fast that backend's permute is: AVX-512
-# (~36 ps/sample) keeps the permute a little longer than AVX2/NEON (~85 ps); Portable's
-# "permute" is a per-sample scalar lookup, so run-fill wins as soon as runs exist.
-@inline _runfill_min_m(::AVX512)              = 8
-@inline _runfill_min_m(::Union{AVX2,Neon})    = 4
-@inline _runfill_min_m(::Portable)            = 2
+# sampling) windowed permute, so it depends on how fast that backend's permute is. Tuned from
+# a run-fill-vs-permute crossover sweep (AVX-512 measured locally; AVX2/NEON on the CI
+# benchmark runners, x86 Ubuntu + Apple-Silicon macOS):
+#   • AVX-512 `vpermb` is fast (~37 ps/sample), so run-fill only wins from m ≈ 7–8.
+#   • AVX2 `vpshufb` (~85 ps) crosses around m ≈ 4.
+#   • NEON `tbl1` is a 16-wide single-window lookup (slowest permute), so run-fill wins from
+#     m = 3 (m = 2 is a tie).
+#   • Portable's "permute" is a per-sample scalar lookup → run-fill wins as soon as runs exist.
+@inline _runfill_min_m(::AVX512)   = 8
+@inline _runfill_min_m(::AVX2)     = 4
+@inline _runfill_min_m(::Neon)     = 3
+@inline _runfill_min_m(::Portable) = 2
 @inline _use_runfill(step_num::Int, step_den::Int, backend::Backend) =
     step_den ÷ step_num >= _runfill_min_m(backend)
