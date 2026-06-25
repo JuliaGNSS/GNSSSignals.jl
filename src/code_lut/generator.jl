@@ -240,8 +240,37 @@ end
     (ph, r)
 end
 
+# ---- continuing run-fill generator (high-oversampling fast path) ----
+# The continuing counterpart of `_generate_runfill!`: at high oversampling broadcast-fills
+# runs of identical baked chips (store-bandwidth bound) instead of one permute per W samples.
+# Effectively byte-identical to the permute engines (the approximate samples-per-chip DDA in
+# `_runfill_core!` matches the exact `floor(step_num·n/2^_B)` boundaries for any single fill,
+# drifting ≤ a couple of samples only over ~10⁵ continued chips). State carried across fills
+# is `(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`, and `pos`
+# = samples of the current chip already emitted (so a fill may resume mid-run).
+mutable struct CodeGeneratorRunFill
+    const chips::Vector{Int8}
+    const L::Int
+    const ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
+    const ni::Int             # padded fixed inner-store count
+    c::Int                    # current table chip index
+    acc::Int                  # chip-start fractional phase (delta & mask)
+    pos::Int                  # samples of the current chip already emitted
+end
+
+function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
+    CodeGeneratorRunFill(table.chips, table.length, _runfill_freqfix(step_num),
+                         _runfill_ni(step_num),
+                         mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+end
+
+function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill)
+    g.c, g.acc, g.pos = _runfill_dispatch!(out, g.chips, g.L, g.ff, g.ni, g.c, g.acc, g.pos)
+    out
+end
+
 # Portable (W=1): degenerate phase generator. Window emit + advance are scalar but correct.
-const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase}
+const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase,CodeGeneratorRunFill}
 
 # ---- factory: build the right backend generator from a step ratio + phase ----
 function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
@@ -251,7 +280,12 @@ function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
     (0 < step_num ≤ step_den) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
     sn = Int(step_num); sd = Int(step_den); ph = Int(phase)
-    if backend isa AVX512
+    if _use_runfill(sn, sd, backend)
+        # High oversampling: broadcast-fill runs (see `_generate_runfill!`) instead of paying
+        # a permute per window. Same windowed-length requirement as the AVX2/NEON permute.
+        backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
+        CodeGeneratorRunFill(table, sn, sd, ph)
+    elseif backend isa AVX512
         CodeGenerator512(table, sn, sd, ph)
     elseif backend isa Union{AVX2,Neon}
         _check_windowed_length(table, backend)
