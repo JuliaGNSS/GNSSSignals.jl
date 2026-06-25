@@ -170,9 +170,20 @@ mutable struct CodeGeneratorPhase{W,T,Prep}
     rem::Vec{W,_RemT}
 end
 
+# Branch on the table length so each arm passes a *literal* phase type (Int16/Int32) into the
+# `_build_phase` barrier. `_phase_type(L)` returns a runtime type *value*; using it directly
+# made `_init_state` a dynamic dispatch and boxed the whole construction (the one-shot /
+# threaded allocation hot spot). The two arms give inference a small 2-way Union instead.
 function CodeGeneratorPhase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                            backend::Backend, ::Val{W}) where {W}
-    L = table.length; T = _phase_type(L)
+                            backend::Backend, vw::Val{W}) where {W}
+    table.length <= typemax(Int16) ?
+        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int16) :
+        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int32)
+end
+
+@inline function _build_phase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                              backend::Backend, ::Val{W}, ::Type{T}) where {W,T}
+    L = table.length
     phase, rem = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T)
     prepared = prepare_code(table; backend = backend)
     CodeGeneratorPhase{W,T,typeof(prepared)}(prepared, step_num, step_den,

@@ -79,9 +79,18 @@ function generate_code(table::CodeTable, num_samples::Integer;
     generate_code(table, chips_per_sample(code_frequency, sampling_frequency), num_samples; kw...)
 end
 
+# Branch on the table length so each arm passes a literal phase type into `_build_code`,
+# keeping `_init_state` a static dispatch — see the same fix in CodeGeneratorPhase.
 function _make_code(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                    backend, ::Val{W}) where {W}
-    L = table.length; T = _phase_type(L)
+                    backend, vw::Val{W}) where {W}
+    table.length <= typemax(Int16) ?
+        _build_code(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int16) :
+        _build_code(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int32)
+end
+
+@inline function _build_code(table::CodeTable, step_num, step_den, num_samples, phase_offset,
+                             backend, ::Val{W}, ::Type{T}) where {W,T}
+    L = table.length
     phase_init, rem_init = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T)
     prepared = prepare_code(table; backend = backend)
     CodeIterator{W,T,typeof(prepared)}(prepared, phase_init, rem_init,
@@ -246,9 +255,18 @@ struct CodeIterator4{W,T,Prep}
     num_steps::Int
 end
 
+# Branch on the table length so each arm passes a literal phase type into `_build_code4`,
+# keeping `_init_state` a static dispatch — see the same fix in CodeGeneratorPhase.
 function _make_code4(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                     backend, ::Val{W}) where {W}
-    L = table.length; T = _phase_type(L)
+                     backend, vw::Val{W}) where {W}
+    table.length <= typemax(Int16) ?
+        _build_code4(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int16) :
+        _build_code4(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int32)
+end
+
+@inline function _build_code4(table::CodeTable, step_num, step_den, num_samples, phase_offset,
+                              backend, ::Val{W}, ::Type{T}) where {W,T}
+    L = table.length
     p1, r1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T)
     p2, r2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T)
     p3, r3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T)
