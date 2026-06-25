@@ -293,10 +293,11 @@ end
     # SIMD width of the host's default backend (what CodeGeneratorLUT4 uses internally).
     Wdef = _width(CL.default_backend())
 
-    # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P
-    # (its 1800-chip overlay is too long to bake) — both yield a residual secondary
-    # and are covered by the error testset below.
-    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]
+    # Mix of baked-secondary / no-secondary signals AND non-baked-secondary signals:
+    # GPSL5I (NH10) and GPSL1C_P (its 1800-chip overlay is too long to bake) both yield a
+    # residual secondary that the 4-wide iterator folds in per primary period. All must
+    # concatenate byte-exactly to the array `gen_code!` (which applies the same secondary).
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11(), GPSL5I(), GPSL1C_P()]
     for signal in sigs
         plan = CodeReplicaLUT(signal, 1)
         P = plan.mc.subchip_factor
@@ -327,33 +328,33 @@ end
     end
 
     @testset "allocation-free steady iteration" begin
-        plan = CodeReplicaLUT(GPSL1CA(), 1)
-        P = plan.mc.subchip_factor
-        fc = get_code_frequency(plan.signal)
-        fs = Float64(fc) * P
-        it = CodeGeneratorLUT4(plan, fs, fc, 6 * 4 * Wdef)
-        # Warm up, then assert a single step allocates nothing.
-        st = iterate(it)
-        @test st !== nothing
-        _, state = st
-        step!(itr, s) = iterate(itr, s)
-        step!(it, state)                       # compile
-        # 0-alloc fused iteration is verified on Julia ≥ 1.11; 1.10's iteration-state
-        # inference leaks a small box through the wrapped iterator, so only assert where
-        # it's reliable (the inner generate_code4 is 0-alloc on all backends).
-        if VERSION >= v"1.11"
-            @test (@allocated step!(it, state)) == 0
+        # Both a baked-secondary signal (L1CA, no per-chunk secondary work) and a non-baked
+        # one (L5I NH10, whose sign-fold runs every step) must iterate allocation-free.
+        for signal in (GPSL1CA(), GPSL5I())
+            plan = CodeReplicaLUT(signal, 1)
+            P = plan.mc.subchip_factor
+            fc = get_code_frequency(plan.signal)
+            fs = Float64(fc) * P
+            it = CodeGeneratorLUT4(plan, fs, fc, 6 * 4 * Wdef)
+            # Warm up, then assert a single step allocates nothing.
+            st = iterate(it)
+            @test st !== nothing
+            _, state = st
+            step!(itr, s) = iterate(itr, s)
+            step!(it, state)                       # compile
+            # 0-alloc fused iteration is verified on Julia ≥ 1.11; 1.10's iteration-state
+            # inference leaks a small box through the wrapped iterator, so only assert where
+            # it's reliable (the inner generate_code4 is 0-alloc on all backends).
+            if VERSION >= v"1.11"
+                @test (@allocated step!(it, state)) == 0
+            end
         end
     end
 
     @testset "errors" begin
-        fc = get_code_frequency(GPSL1CA())
         n = 4 * Wdef
-        # Non-baked secondary (GPS L5I NH10) → error at construction.
-        l5i = CodeReplicaLUT(GPSL5I(), 1)
-        fc5 = get_code_frequency(GPSL5I())
-        @test_throws ErrorException CodeGeneratorLUT4(l5i, Float64(fc5) * l5i.mc.subchip_factor, fc5, n)
-        # fs < fc·subchip_factor → error.
+        # fs < fc·subchip_factor → error (the one remaining construction error; a non-baked
+        # secondary is now supported, see the main testset above).
         plan = CodeReplicaLUT(GPSL1C_D(), 1)   # BOC(1,1) → subchip_factor 2
         P = plan.mc.subchip_factor
         @test P > 1
@@ -390,5 +391,47 @@ end
             end
             @test got == oneshot
         end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# `CodeGeneratorLUT` register iteration (`for v in gen`) with a non-baked secondary.
+# Folding the per-primary-period sign into each yielded `Vec{W,Int8}` chunk must reproduce
+# the array `gen_code!` byte-for-byte — including chunks that straddle a secondary-period
+# boundary (the per-lane sign-vector path) and the high-oversampling run-fill engine.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "CodeGeneratorLUT iteration with non-baked secondary" begin
+    # (signal, oversampling-over-subchip): L5I NH10 (permute + run-fill), L1C_P 1800-chip
+    # overlay (long TMBOC table), and L1CA (no secondary — regression guard for the fast path).
+    cases = [
+        (GPSL5I(),   3),    # permute path, NH10
+        (GPSL5I(),   16),   # run-fill path, NH10
+        (GPSL1C_P(), 2),    # long table + 1800-chip overlay
+        (GPSL1CA(),  4),    # no secondary
+    ]
+    for (signal, osr) in cases
+        plan = CodeReplicaLUT(signal, 1)
+        P = plan.mc.subchip_factor
+        fc = get_code_frequency(plan.signal)
+        fs = Float64(fc) * P * osr
+        per = plan.mc.period_subchips
+        samples_per_period = round(Int, per * osr)        # = per · fs/(fc·P)
+        W = GNSSSignals.CodeLUT.gen_width(CodeGeneratorLUT(plan, fs, fc).engine)
+        # Span >2 secondary periods so chunks straddle boundaries (no-op for L1CA's Ls=1).
+        n = ((2 * samples_per_period + 3 * W) ÷ W) * W
+        oracle = Vector{Int8}(undef, n)
+        gen_code!(oracle, plan, fs, fc)
+        gen = CodeGeneratorLUT(plan, fs, fc)
+        got = Vector{Int8}(undef, n)
+        idx = 1
+        for v in gen
+            idx > n && break
+            for j in 1:W
+                idx > n && break
+                got[idx] = v[j]
+                idx += 1
+            end
+        end
+        @test got == oracle
     end
 end

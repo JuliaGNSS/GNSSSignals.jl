@@ -211,7 +211,9 @@ secondary-period counter for signals with a non-baked secondary (e.g. GPS L5I's 
 Build it once (the DDA init runs here), then call [`gen_code!`](@ref)`(out, gen)` per
 integration — that hot path does no rate setup and no DDA re-init, just the windowed
 permute loop with a single-stream + scalar tail. It can also be iterated to yield `Vec{W,Int8}`
-chunks (advancing the state) for fused, allocation-free correlation against a carrier.
+chunks (advancing the state) for fused, allocation-free correlation against a carrier; a
+non-baked secondary (e.g. GPS L5I's NH10) is folded into each chunk per primary period, so
+the iterated chunks are the fully-modulated replica just like `gen_code!`'s output.
 
 Not thread-safe (it mutates its DDA state); use one generator per stream/channel.
 """
@@ -225,6 +227,14 @@ mutable struct CodeGeneratorLUT{S<:AbstractGNSSSignal,G<:CodeLUT.CodeGeneratorAn
     const step_den::Int
     const phase_sub::Int            # initial sub-chip phase offset
     n_abs::Int                      # absolute sample offset of the next sample to emit
+    # Lazily-synced secondary cursor for the iteration path (`for v in gen`): the primary
+    # period the next yielded chunk starts in, its ±1 sign, and the absolute sample index of
+    # the next period boundary. Re-synced from `n_abs` on each step, so interleaving
+    # `gen_code!(out, gen)` (which advances `n_abs`) with iteration stays correct. Unused
+    # when the secondary is baked / absent.
+    sec_p::Int
+    sec_nb::Int
+    sec_sign::Int8
 end
 
 """
@@ -266,8 +276,13 @@ function CodeGeneratorLUT(
     sn, sd = CodeLUT._fixed_point_step(cps)   # ← fixed-point step (one multiply + round)
     phase_sub = phase * P
     engine = CodeLUT.make_generator(mc.table, sn, sd; phase = phase_sub, backend = backend)
+    # Initial secondary cursor at absolute sample 0 (the first sample this generator emits).
+    sec_p, sec_nb, sec_sign = length(mc.secondary) > 1 ?
+        _sec_cursor(mc.secondary, mc.period_subchips, sn, sd, phase_sub, 0) :
+        (0, typemax(Int), one(Int8))
     CodeGeneratorLUT{typeof(plan.signal),typeof(engine)}(
         plan, engine, mc.secondary, mc.period_subchips, P, sn, sd, phase_sub, 0,
+        sec_p, sec_nb, sec_sign,
     )
 end
 
@@ -331,6 +346,65 @@ end
     out
 end
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Secondary application for the register-level iterator paths.
+#
+# `gen_code!`'s array path negates whole contiguous sample ranges per primary period
+# (`_apply_secondary_continue!`). The fused iterators (`CodeGeneratorLUT` /
+# `CodeGeneratorLUT4`) never write to memory, so instead they fold the per-period ±1 sign
+# directly into each yielded `Vec{W,Int8}` chunk. The sign is constant over a whole primary
+# period (`period_subchips` sub-chips), and every GNSS signal that carries a secondary has a
+# primary code of at least 10230 chips, so one period always spans far more than `W ≤ 64`
+# samples. Hence the common case is a single broadcast sign per chunk, and a chunk straddles
+# a period boundary at most once. Both helpers reproduce `_apply_secondary_continue!`'s exact
+# sub-chip→period arithmetic, so the iterator output is byte-identical to the array path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Secondary cursor for absolute (0-based) sample `n0`: the primary-period index `p` it falls
+# in, that period's ±1 sign, and the absolute sample index `nb` where the NEXT period begins.
+@inline function _sec_cursor(sec::Vector{Int8}, per::Int, sn::Int, sd::Int, ps::Int, n0::Int)
+    Ls = length(sec)
+    p = ((n0 * sn) ÷ sd + ps) ÷ per
+    sign = @inbounds sec[mod(p, Ls) + 1]
+    T1 = (p + 1) * per - ps
+    nb = T1 <= 0 ? 0 : cld(T1 * sd, sn)
+    (p, nb, sign)
+end
+
+# Advance a cursor `(p, nb, sign)` forward until `nb > n0`. Handles `n0` having jumped past
+# one or more period boundaries since the cursor was last synced (e.g. after a `gen_code!`
+# fill advanced `n_abs`). One `cld` per period crossed — amortised to ~0 per chunk, since a
+# period spans thousands of samples.
+@inline function _sec_advance(sec::Vector{Int8}, per::Int, sn::Int, sd::Int, ps::Int,
+                              n0::Int, p::Int, nb::Int, sign::Int8)
+    Ls = length(sec)
+    @inbounds while n0 >= nb
+        p += 1
+        sign = sec[mod(p, Ls) + 1]
+        T1 = (p + 1) * per - ps
+        nb = T1 <= 0 ? 0 : cld(T1 * sd, sn)
+    end
+    (p, nb, sign)
+end
+
+# Fold the secondary sign into one `W`-wide chunk `v` covering absolute samples [n0, n0+W).
+# The cursor `(p, nb, sign)` must already be synced for `n0` (i.e. `nb > n0`). Returns the
+# signed chunk. The whole-window case (no boundary inside) is a single conditional negate;
+# the rare straddling case builds a per-lane ±1 sign vector (≤ one boundary, see above).
+@inline function _sec_apply_chunk(v::Vec{W,Int8}, sec::Vector{Int8}, per::Int, sn::Int,
+                                  sd::Int, ps::Int, n0::Int, p::Int, nb::Int,
+                                  sign::Int8) where {W}
+    if n0 + W <= nb
+        return sign == one(Int8) ? v : -v
+    end
+    Ls = length(sec)
+    s_next = @inbounds sec[mod(p + 1, Ls) + 1]
+    b = nb - n0                                  # lanes 0..b-1 are still in period p
+    lane = Vec{W,Int}(ntuple(j -> j - 1, Val(W)))
+    sv = vifelse(lane < b, Vec{W,Int8}(sign), Vec{W,Int8}(s_next))
+    v * sv
+end
+
 """
     gen_code!(sampled_code, plan::CodeReplicaLUT, sampling_frequency,
               code_frequency = get_code_frequency(plan.signal),
@@ -365,13 +439,23 @@ Base.IteratorSize(::Type{<:CodeGeneratorLUT}) = Base.SizeUnknown()
 Base.eltype(::Type{CodeGeneratorLUT{S,G}}) where {S,G} = eltype(CodeLUT.GeneratorChunks{G})
 
 @inline function Base.iterate(gen::CodeGeneratorLUT, ::Nothing = nothing)
-    length(gen.secondary) > 1 &&
-        error("iterating a CodeGeneratorLUT with a non-baked secondary is not supported; use gen_code!")
     W = CodeLUT.gen_width(gen.engine)
-    chunks = CodeLUT.GeneratorChunks(gen.engine, typemax(Int))
+    chunks = CodeLUT.GeneratorChunks(gen.engine, 1)
     r = iterate(chunks)
     r === nothing && return nothing
     vec, _ = r
+    # Fold in any non-baked secondary (e.g. GPS L5I's NH10) as a per-primary-period sign on
+    # the just-produced chunk. The cursor is re-synced from `n_abs` so this stays correct
+    # even if `gen_code!(out, gen)` advanced the stream between iteration steps.
+    if length(gen.secondary) > 1
+        n0 = gen.n_abs
+        p, nb, sgn = _sec_advance(gen.secondary, gen.period_subchips, gen.step_num,
+                                  gen.step_den, gen.phase_sub, n0, gen.sec_p, gen.sec_nb,
+                                  gen.sec_sign)
+        vec = _sec_apply_chunk(vec, gen.secondary, gen.period_subchips, gen.step_num,
+                               gen.step_den, gen.phase_sub, n0, p, nb, sgn)
+        gen.sec_p = p; gen.sec_nb = nb; gen.sec_sign = sgn
+    end
     gen.n_abs += W
     (vec, nothing)
 end
@@ -403,13 +487,20 @@ for fusing against SinCosLUT's `CarrierIterator4` into an allocation-free
 Unlike the *continuing* [`CodeGeneratorLUT`](@ref) (whose single-stream AVX2 engine
 carries state across calls), `CodeGeneratorLUT4`'s 4-way engine is finite, so it
 takes `num_samples` up front. Same oversampling requirement and integer-chip phase
-limitation as the plan [`gen_code!`](@ref) method; non-baked-secondary signals (e.g.
-GPS L5I's NH10) and `sampling_frequency < code_frequency·subchip_factor` raise an
-error at construction (use [`gen_code!`](@ref) / [`CodeGeneratorLUT`](@ref) instead).
+limitation as the plan [`gen_code!`](@ref) method. A non-baked secondary (e.g. GPS L5I's
+NH10 or GPS L1C-P's 1800-chip overlay) is folded into the yielded chunks per primary
+period, so signals with one are supported; only `sampling_frequency <
+code_frequency·subchip_factor` raises an error at construction.
 """
 struct CodeGeneratorLUT4{S<:AbstractGNSSSignal,It}
     plan::CodeReplicaLUT{S}
     inner::It                       # the CodeLUT.generate_code4 iterator over the baked sub-chip table
+    secondary::Vector{Int8}         # residual (non-baked) secondary; [1] if baked / none
+    period_subchips::Int            # sub-chips per primary period
+    step_num::Int                   # sub-chip step over the *sub-chip* table
+    step_den::Int
+    phase_sub::Int                  # initial sub-chip phase offset
+    width::Int                      # W: SIMD width of the wrapped 4-way iterator
 end
 
 """
@@ -443,9 +534,6 @@ function CodeGeneratorLUT4(
     fs < fc * P && error(
         "CodeGeneratorLUT4 needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! / CodeGeneratorLUT.",
     )
-    length(mc.secondary) > 1 && error(
-        "CodeGeneratorLUT4 does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / CodeGeneratorLUT.",
-    )
     # Integer primary-chip phase (matches gen_code!'s start_phase_including_shift; the
     # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
     eff_chips = start_phase + start_index_shift * fc / fs
@@ -455,18 +543,67 @@ function CodeGeneratorLUT4(
     sn, sd = CodeLUT._fixed_point_step((fc * P) / fs)
     phase_sub = phase * P
     inner = CodeLUT.generate_code4(mc.table, sn, sd, Int(num_samples); phase = phase_sub, backend = backend)
-    CodeGeneratorLUT4{typeof(plan.signal),typeof(inner)}(plan, inner)
+    W = backend isa CodeLUT.AVX512 ? 64 :
+        backend isa CodeLUT.AVX2 ? 32 :
+        backend isa CodeLUT.Neon ? 16 : 1
+    CodeGeneratorLUT4{typeof(plan.signal),typeof(inner)}(
+        plan, inner, mc.secondary, mc.period_subchips, sn, sd, phase_sub, W,
+    )
 end
 
 # Default code_frequency, keeping num_samples a required argument.
 CodeGeneratorLUT4(plan::CodeReplicaLUT, sampling_frequency, num_samples::Integer; kwargs...) =
     CodeGeneratorLUT4(plan, sampling_frequency, get_code_frequency(plan.signal), num_samples; kwargs...)
 
-# Forward iteration + traits to the wrapped generate_code4 iterator.
+# Forward traits to the wrapped generate_code4 iterator.
 Base.IteratorSize(::Type{<:CodeGeneratorLUT4}) = Base.HasLength()
 Base.length(g::CodeGeneratorLUT4) = length(g.inner)
 Base.eltype(::Type{CodeGeneratorLUT4{S,It}}) where {S,It} = eltype(It)
+
+# Apply the secondary sign to the four `W`-wide chunks of one step (covering absolute samples
+# [base, base+4W)), threading the cursor across the chunks. Returns `(signed_quad, p, nb, sign)`
+# with the cursor advanced for the NEXT step. Used only when a non-baked secondary is present.
+@inline function _sec_apply_quad(g::CodeGeneratorLUT4, quad::NTuple{4,Vec{W,Int8}}, base::Int,
+                                 p::Int, nb::Int, sign::Int8) where {W}
+    sec = g.secondary; per = g.period_subchips; sn = g.step_num; sd = g.step_den; ps = g.phase_sub
+    n1 = base
+    p, nb, sign = _sec_advance(sec, per, sn, sd, ps, n1, p, nb, sign)
+    v1 = _sec_apply_chunk(quad[1], sec, per, sn, sd, ps, n1, p, nb, sign)
+    n2 = base + W
+    p, nb, sign = _sec_advance(sec, per, sn, sd, ps, n2, p, nb, sign)
+    v2 = _sec_apply_chunk(quad[2], sec, per, sn, sd, ps, n2, p, nb, sign)
+    n3 = base + 2W
+    p, nb, sign = _sec_advance(sec, per, sn, sd, ps, n3, p, nb, sign)
+    v3 = _sec_apply_chunk(quad[3], sec, per, sn, sd, ps, n3, p, nb, sign)
+    n4 = base + 3W
+    p, nb, sign = _sec_advance(sec, per, sn, sd, ps, n4, p, nb, sign)
+    v4 = _sec_apply_chunk(quad[4], sec, per, sn, sd, ps, n4, p, nb, sign)
+    ((v1, v2, v3, v4), p, nb, sign)
+end
+
 # Two explicit methods (not a `st...` varargs forward — that splat boxes the state and
 # allocates on Julia 1.10's varargs-specialization heuristics; the inner iterator is 0-alloc).
-@inline Base.iterate(g::CodeGeneratorLUT4) = iterate(g.inner)
-@inline Base.iterate(g::CodeGeneratorLUT4, state) = iterate(g.inner, state)
+# State is `(inner_state, base, p, nb, sign)`: the wrapped iterator's state, the absolute
+# sample offset of the next step, and the secondary cursor (dummy values when baked / absent).
+@inline function Base.iterate(g::CodeGeneratorLUT4)
+    r = iterate(g.inner)
+    r === nothing && return nothing
+    quad, ist = r
+    if length(g.secondary) <= 1
+        return (quad, (ist, 0, 0, 0, one(Int8)))
+    end
+    p0, nb0, s0 = _sec_cursor(g.secondary, g.period_subchips, g.step_num, g.step_den, g.phase_sub, 0)
+    out, p, nb, s = _sec_apply_quad(g, quad, 0, p0, nb0, s0)
+    (out, (ist, 4 * g.width, p, nb, s))
+end
+@inline function Base.iterate(g::CodeGeneratorLUT4, state)
+    ist, base, p, nb, sign = state
+    r = iterate(g.inner, ist)
+    r === nothing && return nothing
+    quad, ist2 = r
+    if length(g.secondary) <= 1
+        return (quad, (ist2, 0, 0, 0, one(Int8)))
+    end
+    out, p, nb, sign = _sec_apply_quad(g, quad, base, p, nb, sign)
+    (out, (ist2, base + 4 * g.width, p, nb, sign))
+end
