@@ -76,7 +76,7 @@ jobs:
             --url=${{ github.event.repository.clone_url }} \
             --rev=${{ github.event.pull_request.base.sha }},${{ github.event.pull_request.head.sha }} \
             --bench-on=${{ github.event.pull_request.head.sha }} \
-            --add=Unitful \
+            --add=Unitful,SIMD,SinCosLUT \
             --output-dir=results/ \
             --tune
 
