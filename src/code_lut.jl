@@ -10,9 +10,11 @@
 #
 # The LUT resampler bakes the BOC/TMBOC subcarrier (and short secondary codes)
 # into an expanded ±1 Int8 table and resamples it with a single AVX-512 `vpermb`
-# / AVX2 `vpshufb` sliding-window permute over a drift-free integer DDA. It is
-# Int8/±1 only (no CBOC / cosine-BOC) and requires sub-chip oversampling
-# (`sampling_frequency ≥ code_frequency · subchip_factor`).
+# / AVX2 `vpshufb` sliding-window permute over a drift-free integer DDA — or, once the
+# baked table is heavily oversampled (so consecutive samples repeat a chip), a broadcast
+# run-fill that matches the original `gen_code!`'s store-bound speed instead of paying a
+# permute per window. It is Int8/±1 only (no CBOC / cosine-BOC) and requires sub-chip
+# oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
@@ -158,6 +160,13 @@ frequency, so a single plan serves any rate.
   contribution are rounded to the nearest *primary* chip; the fractional
   sub-chip residual is dropped (up to ~1 sub-chip vs the plain `gen_code!`).
   `start_phase = 0.0, start_index_shift = 0` gives `phase = 0` exactly.
+- **High-oversampling run-fill is approximate to ≤ a couple of samples.** Above
+  ~8× sub-chip oversampling the resampler broadcast-fills runs of identical chips
+  (matching the original `gen_code!`'s speed there) using a fixed-point samples-
+  per-chip DDA. Its chip boundaries are exact for any single fill and drift at
+  most a couple of samples only over a *very* long continued stream (~10⁶ chips) —
+  the same order as the permute path's own rate-quantisation drift, and well
+  inside the integer-chip-phase rounding above.
 """
 struct CodeReplicaLUT{S<:AbstractGNSSSignal}
     signal::S
