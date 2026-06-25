@@ -475,37 +475,48 @@ end
     end
 end
 
-# Dispatch on the (padded) fixed inner count `ni`. `Val(ni)` from a runtime `ni` costs one
-# dynamic dispatch per call (negligible against a whole-buffer fill) and — unlike an
-# `@generated`/if-ladder over all of `4:_RUNFILL_MAX_NI` — only forces inference + codegen of
-# the `Val{NI}` specialisations actually used at a given rate, keeping first-call latency low.
-@inline function _runfill_call!(out, chips, L::Int, ff::Int, c::Int, acc::Int, pos::Int, ni::Int)
-    ni > _RUNFILL_MAX_NI ?
-        _runfill_core_generic!(out, chips, L, ff, c, acc, pos, ni) :
-        _runfill_core!(out, chips, L, ff, c, acc, pos, Val(ni))
-end
-
 # Fill `out` (any length) continuing from `(c, acc, pos)`, segmenting into ≤ _RUNFILL_MAXFILL
-# chunks so the per-call `delta` cannot overflow. Returns the advanced carried state.
-function _runfill_dispatch!(out, chips, L::Int, ff::Int, ni::Int, c::Int, acc::Int, pos::Int)
+# chunks so the per-call `delta` cannot overflow. `NI` is a compile-time constant (the inner
+# store trip count), so the `Val{NI}` kernel dispatches statically — 0 allocations per call.
+function _runfill_seg!(out, chips, L::Int, ff::Int, c::Int, acc::Int, pos::Int, ::Val{NI}) where {NI}
     N = length(out)
     if N <= _RUNFILL_MAXFILL
-        return _runfill_call!(out, chips, L, ff, c, acc, pos, ni)
+        return _runfill_core!(out, chips, L, ff, c, acc, pos, Val(NI))
     end
     o = 0
     while o < N
         seg = min(N - o, _RUNFILL_MAXFILL)
-        c, acc, pos = _runfill_call!(view(out, o+1:o+seg), chips, L, ff, c, acc, pos, ni)
+        c, acc, pos = _runfill_core!(view(out, o+1:o+seg), chips, L, ff, c, acc, pos, Val(NI))
+        o += seg
+    end
+    (c, acc, pos)
+end
+
+# Generic (runtime-`NI`) segmented wrapper for oversampling above the `Val` ladder.
+function _runfill_seg_generic!(out, chips, L::Int, ff::Int, ni::Int, c::Int, acc::Int, pos::Int)
+    N = length(out)
+    if N <= _RUNFILL_MAXFILL
+        return _runfill_core_generic!(out, chips, L, ff, c, acc, pos, ni)
+    end
+    o = 0
+    while o < N
+        seg = min(N - o, _RUNFILL_MAXFILL)
+        c, acc, pos = _runfill_core_generic!(view(out, o+1:o+seg), chips, L, ff, c, acc, pos, ni)
         o += seg
     end
     (c, acc, pos)
 end
 
 # One-shot run-fill from chip phase, sample 0 (acc = mask gives the `ceil`-boundary rounding
-# that matches the permute path; pos = 0).
+# that matches the permute path; pos = 0). `Val(ni)` is a runtime lift here (one box per
+# one-shot call — negligible, the call already builds a generator); the *continuing*
+# generator stays 0-alloc by carrying `NI` in its type (see `CodeGeneratorRunFill`).
 function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
-    _runfill_dispatch!(out, table.chips, table.length, _runfill_freqfix(step_num),
-                       _runfill_ni(step_num), mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+    ff = _runfill_freqfix(step_num); ni = _runfill_ni(step_num)
+    c = mod(phase_offset, table.length); chips = table.chips; L = table.length
+    ni > _RUNFILL_MAX_NI ?
+        _runfill_seg_generic!(out, chips, L, ff, ni, c, _RUNFILL_MASK, 0) :
+        _runfill_seg!(out, chips, L, ff, c, _RUNFILL_MASK, 0, Val(ni))
 end
 
 # Pick the run-fill path when there are at least `_runfill_min_m(backend)` samples per chip.
