@@ -248,24 +248,32 @@ end
 # drifting ≤ a couple of samples only over ~10⁵ continued chips). State carried across fills
 # is `(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`, and `pos`
 # = samples of the current chip already emitted (so a fill may resume mid-run).
-mutable struct CodeGeneratorRunFill
+#
+# `NI` (the padded fixed inner-store count) is a *type* parameter so `fill_continue!` calls
+# the `Val{NI}`-specialised kernel statically — a runtime `Val(ni)` would box and allocate
+# every call, breaking the 0-alloc steady-state guarantee. `NI == 0` is the sentinel for the
+# generic (`ni > _RUNFILL_MAX_NI`) kernel, whose runtime count lives in the `ni` field.
+mutable struct CodeGeneratorRunFill{NI}
     const chips::Vector{Int8}
     const L::Int
     const ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
-    const ni::Int             # padded fixed inner-store count
+    const ni::Int             # padded inner count (used by the NI==0 generic path)
     c::Int                    # current table chip index
     acc::Int                  # chip-start fractional phase (delta & mask)
     pos::Int                  # samples of the current chip already emitted
 end
 
 function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
-    CodeGeneratorRunFill(table.chips, table.length, _runfill_freqfix(step_num),
-                         _runfill_ni(step_num),
-                         mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+    ni = _runfill_ni(step_num)
+    NI = ni <= _RUNFILL_MAX_NI ? ni : 0      # 0 ⇒ generic kernel (runtime `ni`)
+    CodeGeneratorRunFill{NI}(table.chips, table.length, _runfill_freqfix(step_num),
+                            ni, mod(phase_offset, table.length), _RUNFILL_MASK, 0)
 end
 
-function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill)
-    g.c, g.acc, g.pos = _runfill_dispatch!(out, g.chips, g.L, g.ff, g.ni, g.c, g.acc, g.pos)
+function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill{NI}) where {NI}
+    g.c, g.acc, g.pos = NI == 0 ?
+        _runfill_seg_generic!(out, g.chips, g.L, g.ff, g.ni, g.c, g.acc, g.pos) :
+        _runfill_seg!(out, g.chips, g.L, g.ff, g.c, g.acc, g.pos, Val(NI))
     out
 end
 
