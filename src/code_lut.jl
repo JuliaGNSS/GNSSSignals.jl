@@ -251,14 +251,30 @@ function CodeGeneratorLUT(
     # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
     eff_chips = start_phase + start_index_shift * fc / fs
     phase = round(Int, eff_chips)
-    backend = CodeLUT.default_backend(mc.table)
+    # Parameterless default_backend() const-folds to the host's concrete backend; the
+    # table-aware overload's length guard (fall back to Portable for tables larger than
+    # typemax(Int32)) is dead code for GNSS codes and would erase that inference, boxing
+    # the runtime-typed engine on every construction.
+    backend = CodeLUT.default_backend()
     # Resample the baked sub-chip table at fc·P; phase is scaled to sub-chips.
     cps = (fc * P) / fs
     sn, sd = CodeLUT._fixed_point_step(cps)   # ← fixed-point step (one multiply + round)
     phase_sub = phase * P
     engine = CodeLUT.make_generator(mc.table, sn, sd; phase = phase_sub, backend = backend)
-    CodeGeneratorLUT{typeof(plan.signal),typeof(engine)}(
-        plan, engine, mc.secondary, mc.period_subchips, P, sn, sd, phase_sub, 0,
+    return _wrap_code_generator_lut(plan, engine, mc.secondary, mc.period_subchips, P, sn, sd, phase_sub)
+end
+
+# Function barrier. `make_generator` returns a small Union over the phase type (Int16 vs
+# Int32, chosen by _phase_type from the runtime table length), so the engine is Union-typed
+# at the call site. Splitting on the concrete engine type `G` here keeps the
+# CodeGeneratorLUT construction type-stable — without it the runtime-typed engine is boxed
+# into the struct on every construction (the one-shot/threaded allocation hot spot).
+function _wrap_code_generator_lut(
+    plan::CodeReplicaLUT{S}, engine::G, secondary, period_subchips,
+    subchip_factor, step_num, step_den, phase_sub,
+) where {S,G<:CodeLUT.CodeGeneratorAny}
+    CodeGeneratorLUT{S,G}(
+        plan, engine, secondary, period_subchips, subchip_factor, step_num, step_den, phase_sub, 0,
     )
 end
 
@@ -327,10 +343,15 @@ end
               code_frequency = get_code_frequency(plan.signal),
               start_phase = 0.0, start_index_shift = 0, PHASET = Int32)
 
-Convenience one-shot: builds a [`CodeGeneratorLUT`](@ref) (paying the DDA init) and fills
-`sampled_code` once from phase zero of the requested rate. Fine for one-off use; for
-repeated integrations build `gen = CodeGeneratorLUT(plan, fs, fc)` once and call
-`gen_code!(out, gen)` per integration to amortise the init.
+Convenience one-shot: fills `sampled_code` once from the requested integer-chip phase of the
+given rate, paying a fresh DDA setup each call. Fine for one-off use; for repeated
+integrations build `gen = CodeGeneratorLUT(plan, fs, fc)` once and call `gen_code!(out, gen)`
+per integration to amortise the init.
+
+Unlike the continuing [`CodeGeneratorLUT`](@ref), this drives the *immutable* one-shot
+windowed fill ([`CodeLUT.generate_code!`](@ref)) directly — no mutable generator is built,
+so the fill is allocation-free (the continuing generator's mutable DDA state is unnecessary
+when filling exactly once).
 
 `sampled_code` is most naturally `Int8` (written directly); other integer element types go
 through a cached `Int8` scratch buffer + broadcast convert. Returns `sampled_code`.
@@ -344,9 +365,30 @@ function gen_code!(
     start_index_shift::Integer = 0,
     PHASET = Int32,
 )
-    gen = CodeGeneratorLUT(plan, sampling_frequency, code_frequency;
-                           start_phase = start_phase, start_index_shift = start_index_shift)
-    gen_code!(sampled_code, gen)
+    mc = plan.mc
+    fc = _to_hz(code_frequency)
+    fs = _to_hz(sampling_frequency)
+    P = mc.subchip_factor
+    fs < fc * P && error(
+        "CodeReplicaLUT gen_code! needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
+    )
+    # Integer primary-chip phase (matches CodeGeneratorLUT; the fractional sub-chip residual
+    # is dropped — see the CodeReplicaLUT docstring).
+    phase = round(Int, start_phase + start_index_shift * fc / fs)
+    # Parameterless default_backend() const-folds to a concrete backend, keeping
+    # generate_code! type-stable (the table-aware overload would erase that inference).
+    backend = CodeLUT.default_backend()
+    if eltype(sampled_code) == Int8
+        CodeLUT.generate_code!(sampled_code, mc;
+            code_frequency = fc, sampling_frequency = fs, phase = phase, backend = backend)
+    else
+        N = length(sampled_code)
+        scratch = get!(() -> Vector{Int8}(undef, N), _GEN_CODE_LUT_SCRATCH, N)
+        CodeLUT.generate_code!(scratch, mc;
+            code_frequency = fc, sampling_frequency = fs, phase = phase, backend = backend)
+        sampled_code .= scratch
+    end
+    return sampled_code
 end
 
 # ---- iteration: yield Vec{W,Int8} chunks, advancing the generator state ----
@@ -441,12 +483,21 @@ function CodeGeneratorLUT4(
     # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
     eff_chips = start_phase + start_index_shift * fc / fs
     phase = round(Int, eff_chips)
-    backend = CodeLUT.default_backend(mc.table)
+    # See the CodeGeneratorLUT constructor: parameterless default_backend() keeps the
+    # engine type inferable; the table-aware overload would box it.
+    backend = CodeLUT.default_backend()
     # Resample the baked sub-chip table at fc·P; phase is scaled to sub-chips.
     sn, sd = CodeLUT._fixed_point_step((fc * P) / fs)
     phase_sub = phase * P
     inner = CodeLUT.generate_code4(mc.table, sn, sd, Int(num_samples); phase = phase_sub, backend = backend)
-    CodeGeneratorLUT4{typeof(plan.signal),typeof(inner)}(plan, inner)
+    return _wrap_code_generator_lut4(plan, inner)
+end
+
+# Function barrier, mirroring _wrap_code_generator_lut: generate_code4's iterator is
+# Union-typed over the phase type, so split on the concrete `It` here to keep the
+# CodeGeneratorLUT4 construction type-stable instead of boxing the iterator.
+function _wrap_code_generator_lut4(plan::CodeReplicaLUT{S}, inner::It) where {S,It}
+    CodeGeneratorLUT4{S,It}(plan, inner)
 end
 
 # Default code_frequency, keeping num_samples a required argument.
