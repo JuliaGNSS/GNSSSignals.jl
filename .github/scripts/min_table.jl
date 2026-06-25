@@ -50,7 +50,11 @@ names = sort(collect(union(keys(base), keys(head))))
 filter!(!=("time_to_load"), names)
 (haskey(base, "time_to_load") || haskey(head, "time_to_load")) && push!(names, "time_to_load")
 
-headlbl = length(head_rev) >= 8 ? head_rev[1:8] * "…" : head_rev
+# Truncate long revs (e.g. a base/head commit SHA) for display; the full rev is still used
+# above to locate the result JSONs.
+shortrev(rev) = length(rev) >= 16 && !occursin('/', rev) ? rev[1:8] * "…" : rev
+headlbl = shortrev(head_rev)
+baselbl = shortrev(base_rev)
 
 io = IOBuffer()
 title = isempty(label) ? "Benchmark Results (minimum time)" :
@@ -58,7 +62,7 @@ title = isempty(label) ? "Benchmark Results (minimum time)" :
 println(io, "## $title")
 println(io)
 println(io, "Reporting the **minimum** over all samples (robust to shared-runner contention), ",
-            "not the median. Ratio = $base_rev / $headlbl: **>1 means the PR is faster**. ",
+            "not the median. Ratio = $baselbl / $headlbl: **>1 means the PR is faster**. ",
             "✅ ≥ 5 % faster, ⚠️ ≥ 5 % slower. A blank cell means that benchmark exists on only ",
             "one revision (🆕 = new on the PR, 🗑 = removed).")
 println(io)
@@ -66,7 +70,7 @@ println(io)
 # --- time table ---
 println(io, "<details open><summary>Time benchmarks</summary>")
 println(io)
-println(io, "|  | $base_rev | $headlbl | $base_rev / $headlbl |")
+println(io, "|  | $baselbl | $headlbl | $baselbl / $headlbl |")
 println(io, "|:--|--:|--:|--:|")
 for n in names
     b = get(base, n, nothing); h = get(head, n, nothing)
@@ -87,7 +91,7 @@ println(io)
 # --- memory table ---
 println(io, "<details><summary>Memory benchmarks</summary>")
 println(io)
-println(io, "|  | $base_rev | $headlbl |")
+println(io, "|  | $baselbl | $headlbl |")
 println(io, "|:--|--:|--:|")
 for n in names
     b = get(base, n, nothing); h = get(head, n, nothing)
