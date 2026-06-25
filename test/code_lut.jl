@@ -151,6 +151,65 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
+    @testset "high-oversampling run-fill path" begin
+        # At high oversampling `make_generator` / `generate_code!` switch from the windowed
+        # permute to a broadcast run-fill (`_runfill_*`). Its approximate samples-per-chip DDA
+        # matches the exact `floor(step_num·n/2^_B)` fixed-point reference for any single fill
+        # (the rounding drift only reaches ≤1 sample after ~10⁶ chips — see the drift test
+        # below), so here it must be byte-identical. Sweep `m = samples/chip` across the
+        # `Val`-specialised ladder AND the `m > 64` generic kernel, with non-power-of-two
+        # rates (`m`/`m+1` mixed runs), several phases/lengths, and chunked continuation.
+        rng = MersenneTwister(99)
+        for L in (1023, 257, 64)
+            chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
+            # cps chosen to hit a spread of samples-per-chip incl. exact (power-of-two) and
+            # fractional, the ladder rungs (≈16,20,24,32,48,64), and the generic m>64 path.
+            for cps in (1 / 8, 1 / 16, 0.0613, 1 / 32, 0.019, 1 / 64, 0.013, 0.004)
+                sn = _step_num(cps)
+                for phase in (0, 7, L - 1)
+                    n = 4 * 1024 + 37                     # not stride-aligned
+                    ref = _ref(chips, sn, phase, n)
+                    for be in _BACKENDS
+                        # one-shot
+                        out = Vector{Int8}(undef, n)
+                        CL.generate_code!(out, ct, cps; phase = phase, backend = be)
+                        @test out == ref
+                        # continuing, uneven chunks across run boundaries
+                        gen = CL.make_generator(ct, cps; phase = phase, backend = be)
+                        got = Int8[]
+                        for chunk in (1, 333, 64, 2048, n - 1 - 333 - 64 - 2048)
+                            buf = Vector{Int8}(undef, chunk)
+                            CL.fill_continue!(buf, gen)
+                            append!(got, buf)
+                        end
+                        @test got == ref
+                    end
+                end
+            end
+        end
+    end
+
+    @testset "run-fill long-sequence drift + >MAXFILL segmentation" begin
+        chips = rand(MersenneTwister(7), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
+        # Drift bound: over a long single fill (millions of chips) the approximate DDA may
+        # differ from the exact floor reference, but only by a couple of samples at boundaries.
+        for cps in (1 / 8, 0.0613)            # exact and fractional run-fill rates
+            sn = _step_num(cps); n = 3_000_000
+            ref = _ref(chips, sn, 0, n)
+            out = Vector{Int8}(undef, n)
+            CL.generate_code!(out, ct, cps; backend = CL.Portable())
+            @test count(!=(0), out .- ref) <= 4      # ≤ a few sub-chip-boundary shifts
+        end
+        # Buffers longer than `_RUNFILL_MAXFILL` exercise the internal segmentation loop (which
+        # caps the per-call accumulator). The segmented output must still track the floor
+        # reference to within the same small drift bound.
+        n = CL._RUNFILL_MAXFILL + 12345; sn = _step_num(1 / 16)
+        @test n > CL._RUNFILL_MAXFILL                       # segmentation actually triggered
+        out = Vector{Int8}(undef, n)
+        CL.generate_code!(out, ct, sn, CL._STEP_DEN; backend = CL.Portable())
+        @test count(!=(0), out .- _ref(chips, sn, 0, n)) <= 4
+    end
+
     @testset "modulation (BOC / TMBOC / secondary)" begin
         # Independent reference: build the FULL primary×secondary×subcarrier ±1 table and
         # index it at the sub-chip fixed-point rate `a/b` (sub-chips/sample, ≤ 1). The
@@ -300,5 +359,36 @@ end
         @test P > 1
         fc1c = get_code_frequency(plan.signal)
         @test_throws ErrorException CodeGeneratorLUT4(plan, Float64(fc1c) * P / 2, fc1c, n)
+    end
+
+    # End-to-end public adapter at HIGH oversampling, where the engine uses the broadcast
+    # run-fill rather than the permute. The one-shot `gen_code!(out, plan, …)` and a *warm*
+    # continuing `gen_code!(out, gen)` must produce the identical fill, and chunked
+    # continuation must concatenate to one big generation — exercising the run-fill across
+    # call boundaries together with the per-primary-period secondary negate (GPS L5I NH10).
+    @testset "plan/generator run-fill at high oversampling (L1CA + L5I secondary)" begin
+        for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
+            plan = CodeReplicaLUT(signal, 1)
+            fc = get_code_frequency(plan.signal)
+            fs = Float64(fc) * osr * plan.mc.subchip_factor
+            N = 7000
+            # one-shot (builds + run-fills from phase 0)
+            oneshot = Vector{Int8}(undef, N)
+            gen_code!(oneshot, plan, fs, fc)
+            # warm continuing generator, single fill of N
+            gen = CodeGeneratorLUT(plan, fs, fc)
+            warm = Vector{Int8}(undef, N)
+            gen_code!(warm, gen)
+            @test warm == oneshot
+            # chunked continuation == one big generation (crosses run + secondary-period boundaries)
+            gen2 = CodeGeneratorLUT(plan, fs, fc)
+            got = Int8[]
+            for chunk in (1, 999, 64, 4096, N - 1 - 999 - 64 - 4096)
+                buf = Vector{Int8}(undef, chunk)
+                gen_code!(buf, gen2)
+                append!(got, buf)
+            end
+            @test got == oneshot
+        end
     end
 end

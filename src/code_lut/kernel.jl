@@ -80,7 +80,11 @@ function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_numerator ≤ step_denominator) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample, chips/sample ≤ 1)"))
-    _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend)
+    if _use_runfill(Int(step_numerator), Int(step_denominator), backend)
+        _generate_runfill!(out, table, Int(step_numerator), Int(step_denominator), Int(phase))
+    else
+        _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend)
+    end
     out
 end
 function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable, cps::Real; kw...)
@@ -328,3 +332,189 @@ end
     end
     out
 end
+
+# ── run-length fill (high-oversampling fast path) ─────────────────────────────────────
+# When the chip rate is far below the sample rate (`m = step_den ÷ step_num` samples per
+# chip is large), the windowed permute is wasteful: a whole W-sample window covers only
+# `W/m` distinct chips, yet the permute recomputes all W lanes. The original `gen_code!`
+# wins here by *broadcast-filling* runs of identical chips — store-bandwidth bound, no
+# per-sample lookup. We do the same directly on the baked ±1 table.
+#
+# DDA. Samples-per-chip `2^_B / step_num` is held in `_RUNFILL_FP`-bit fixed point as
+# `freqfix = round(2^_B · 2^_RUNFILL_FP / step_num)`; a running `delta += freqfix` gives the
+# next chip boundary as `delta >> _RUNFILL_FP`. This is a single short carried add (the store
+# positions pipeline at memory bandwidth) — an exact multiplicative-inverse `base(c)` or a
+# Bresenham remainder recurrence both measured ~2–3× slower (extra multiply / a serialising
+# per-chip compare). The cost is a *rounding* approximation: the boundary can differ from the
+# permute path's exact `ceil(c·2^_B/step_num)` by ≤1–2 samples, but only after ~10⁵ chips —
+# for any single fill the output is byte-identical, and over a long continued stream the
+# drift stays at a couple of samples (same order as the permute path's own documented rate-
+# quantisation drift, and well inside the integer-chip-phase rounding the plan already makes).
+#
+# Like the original's worker, each chip stores a compile-time-fixed `NI ≥ run length` copies
+# (run is `m` or `m+1`) and the next chip's `base` overwrites the ≤ `NI−run` overhang; the
+# main loop is bounds-counted (no per-chip branch) and a scalar tail finishes the remainder.
+# Continuation across fills carries `(chip, acc, pos)`: the table chip index, the fractional
+# accumulator `acc = delta & mask` (chip-start phase), and `pos` = samples of the current
+# chip already emitted (so a fill may resume mid-run). `delta` is re-seeded from `acc` each
+# fill, so it stays bounded by `N·2^_RUNFILL_FP` (no unbounded growth across a long stream).
+
+const _RUNFILL_FP   = 40                       # fractional bits for samples-per-chip
+const _RUNFILL_MASK = (Int(1) << _RUNFILL_FP) - 1
+# Cap a single core call so `delta ≈ N·2^_RUNFILL_FP` stays in Int64 (2^22·2^40 = 2^62);
+# longer buffers are processed in back-to-back segments via the (exact) carried state.
+const _RUNFILL_MAXFILL = 1 << 22
+const _RUNFILL_MAX_NI  = 64                     # largest `Val`-specialised inner count
+
+# samples-per-chip in `_RUNFILL_FP` fixed point. Int128 intermediate: 2^_B·2^FP = 2^70.
+@inline _runfill_freqfix(step_num::Int) =
+    Int((Int128(_STEP_DEN) << _RUNFILL_FP + (step_num >> 1)) ÷ step_num)
+
+# Pad the fixed inner-store count to a value LLVM emits a clean wide store for; min 4 so the
+# `Val` dispatcher always has a branch. Mirrors `GNSSSignals._pad_inner_iterations` but kept
+# local (the baked table is Int8, not the original's Int16, so the ladder may diverge); the
+# over-store is harmless (overwritten), only mild extra store bandwidth.
+@inline function _runfill_pad(x::Int)
+    x <= 4  ? 4  :
+    x <= 8  ? 8  :
+    x == 9  ? 9  :
+    x <= 12 ? 12 :
+    x <= 16 ? 16 :
+    x <= 18 ? x  :
+    x <= 20 ? 20 :
+    x <= 23 ? 24 : x
+end
+
+# Padded inner count for a step (samples/chip ≈ `2^_B / step_num`, run length `m` or `m+1`).
+@inline function _runfill_ni(step_num::Int)
+    m = _STEP_DEN ÷ step_num
+    _runfill_pad(_STEP_DEN % step_num > 0 ? m + 1 : m)
+end
+
+# Fill `out[1:N]` (N ≤ _RUNFILL_MAXFILL) continuing from carried state `(c, acc, pos)`:
+# `c` = table chip index, `acc` = chip-c start phase (delta & mask), `pos` = samples of chip
+# c already emitted. Returns the carried state advanced by N samples. `ff = freqfix`.
+@inline function _runfill_core!(out, chips, L::Int, ff::Int, c::Int, acc::Int, pos::Int, ::Val{NI}) where {NI}
+    N = length(out); FP = _RUNFILL_FP; mask = _RUNFILL_MASK
+    @inbounds begin
+        delta = acc                          # base = delta >> FP = 0 (acc < 2^FP)
+        # head: finish the current chip's run (its first `pos` samples were emitted before)
+        rem_run = ((delta + ff) >> FP) - pos
+        hi = ifelse(rem_run < N, rem_run, N)
+        v = chips[c + 1]
+        for j = 1:hi
+            out[j] = v
+        end
+        hi < rem_run && return (c, acc, pos + N)     # buffer ended inside the current chip
+        # bias `delta` by `pos<<FP` (zero low bits ⇒ `delta & mask` unchanged) so that
+        # `delta >> FP` reads as the buffer position directly (no per-store subtraction).
+        delta += ff - (pos << FP)
+        base = delta >> FP                   # = rem_run (first full-chip boundary)
+        c += 1; c >= L && (c -= L)
+        # main: counted full chips with Val over-store (no per-chip bound check). Conservative
+        # count: base(k)+NI ≤ N is implied by k ≤ (N-NI-1)·2^FP / ff (base(k) < 1 + k·ff/2^FP).
+        rem_samps = N - base
+        nmc = rem_samps > NI ? Int(((Int128(rem_samps - NI)) << FP) ÷ ff) : 0
+        done = 0
+        while done < nmc
+            seg = L - c
+            seg > nmc - done && (seg = nmc - done)
+            for t = 0:seg-1
+                vv = chips[c + t + 1]
+                for j = 1:NI
+                    out[base + j] = vv
+                end
+                delta += ff; base = delta >> FP
+            end
+            c += seg; done += seg
+            c >= L && (c -= L)
+        end
+        # tail: bounds-checked, one run at a time, until the buffer is full
+        while base < N
+            v3 = chips[c + 1]
+            nb = (delta + ff) >> FP
+            hit = ifelse(nb < N, nb, N)
+            for j = base+1:hit
+                out[j] = v3
+            end
+            nb > N && return (c, delta & mask, N - base)   # buffer ended mid-run
+            delta += ff; base = nb
+            c += 1; c >= L && (c -= L)
+        end
+        return (c, delta & mask, 0)          # ended exactly on a chip boundary
+    end
+end
+
+# Runtime-`NI` generic kernel for oversampling above the `Val`-specialised ladder.
+@inline function _runfill_core_generic!(out, chips, L::Int, ff::Int, c::Int, acc::Int, pos::Int, NI::Int)
+    N = length(out); FP = _RUNFILL_FP; mask = _RUNFILL_MASK
+    @inbounds begin
+        delta = acc
+        rem_run = ((delta + ff) >> FP) - pos
+        hi = ifelse(rem_run < N, rem_run, N)
+        v = chips[c + 1]
+        @simd ivdep for j = 1:hi
+            out[j] = v
+        end
+        hi < rem_run && return (c, acc, pos + N)
+        delta += ff - (pos << FP)
+        base = delta >> FP
+        c += 1; c >= L && (c -= L)
+        while base < N
+            v3 = chips[c + 1]
+            nb = (delta + ff) >> FP
+            hit = ifelse(nb < N, nb, N)
+            @simd ivdep for j = base+1:hit
+                out[j] = v3
+            end
+            nb > N && return (c, delta & mask, N - base)
+            delta += ff; base = nb
+            c += 1; c >= L && (c -= L)
+        end
+        return (c, delta & mask, 0)
+    end
+end
+
+# Dispatch on the (padded) fixed inner count `ni`. `Val(ni)` from a runtime `ni` costs one
+# dynamic dispatch per call (negligible against a whole-buffer fill) and — unlike an
+# `@generated`/if-ladder over all of `4:_RUNFILL_MAX_NI` — only forces inference + codegen of
+# the `Val{NI}` specialisations actually used at a given rate, keeping first-call latency low.
+@inline function _runfill_call!(out, chips, L::Int, ff::Int, c::Int, acc::Int, pos::Int, ni::Int)
+    ni > _RUNFILL_MAX_NI ?
+        _runfill_core_generic!(out, chips, L, ff, c, acc, pos, ni) :
+        _runfill_core!(out, chips, L, ff, c, acc, pos, Val(ni))
+end
+
+# Fill `out` (any length) continuing from `(c, acc, pos)`, segmenting into ≤ _RUNFILL_MAXFILL
+# chunks so the per-call `delta` cannot overflow. Returns the advanced carried state.
+function _runfill_dispatch!(out, chips, L::Int, ff::Int, ni::Int, c::Int, acc::Int, pos::Int)
+    N = length(out)
+    if N <= _RUNFILL_MAXFILL
+        return _runfill_call!(out, chips, L, ff, c, acc, pos, ni)
+    end
+    o = 0
+    while o < N
+        seg = min(N - o, _RUNFILL_MAXFILL)
+        c, acc, pos = _runfill_call!(view(out, o+1:o+seg), chips, L, ff, c, acc, pos, ni)
+        o += seg
+    end
+    (c, acc, pos)
+end
+
+# One-shot run-fill from chip phase, sample 0 (acc = mask gives the `ceil`-boundary rounding
+# that matches the permute path; pos = 0).
+function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
+    _runfill_dispatch!(out, table.chips, table.length, _runfill_freqfix(step_num),
+                       _runfill_ni(step_num), mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+end
+
+# Pick the run-fill path when there are at least `_runfill_min_m(backend)` samples per chip.
+# The threshold is the per-chip count where broadcast-fill overtakes the (flat-in-over-
+# sampling) windowed permute, and so depends on how fast that backend's permute is: AVX-512
+# (~36 ps/sample) keeps the permute a little longer than AVX2/NEON (~85 ps); Portable's
+# "permute" is a per-sample scalar lookup, so run-fill wins as soon as runs exist.
+@inline _runfill_min_m(::AVX512)              = 8
+@inline _runfill_min_m(::Union{AVX2,Neon})    = 4
+@inline _runfill_min_m(::Portable)            = 2
+@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend) =
+    step_den ÷ step_num >= _runfill_min_m(backend)

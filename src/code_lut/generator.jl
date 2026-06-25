@@ -227,8 +227,40 @@ end
     (ph, r)
 end
 
+# ---- continuing run-fill generator (high-oversampling fast path) ----
+# The continuing counterpart of `_generate_runfill!`: at high oversampling broadcast-fills
+# runs of identical baked chips (store-bandwidth bound) instead of one permute per W samples.
+# Effectively byte-identical to the permute engines (the approximate samples-per-chip DDA in
+# `_runfill_core!` matches the exact `floor(step_num·n/2^_B)` boundaries for any single fill,
+# drifting ≤ a couple of samples only over ~10⁵ continued chips). State carried across fills
+# is `(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`, and `pos`
+# = samples of the current chip already emitted (so a fill may resume mid-run). `W` is the
+# would-be permute width of the backend, carried only so iteration (`GeneratorChunks`) can
+# still yield `Vec{W,Int8}`; `win` is its reused scratch.
+mutable struct CodeGeneratorRunFill{W}
+    const chips::Vector{Int8}
+    const L::Int
+    const ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
+    const ni::Int             # padded fixed inner-store count
+    const win::Vector{Int8}   # length-W scratch, reused by `GeneratorChunks` iteration only
+    c::Int                    # current table chip index
+    acc::Int                  # chip-start fractional phase (delta & mask)
+    pos::Int                  # samples of the current chip already emitted
+end
+
+function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int, ::Val{W}) where {W}
+    CodeGeneratorRunFill{W}(table.chips, table.length, _runfill_freqfix(step_num),
+                            _runfill_ni(step_num), Vector{Int8}(undef, W),
+                            mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+end
+
+function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill)
+    g.c, g.acc, g.pos = _runfill_dispatch!(out, g.chips, g.L, g.ff, g.ni, g.c, g.acc, g.pos)
+    out
+end
+
 # Portable (W=1): degenerate phase generator. Window emit + advance are scalar but correct.
-const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase}
+const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase,CodeGeneratorRunFill}
 
 # ---- factory: build the right backend generator from a step ratio + phase ----
 function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
@@ -238,7 +270,12 @@ function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
     (0 < step_num ≤ step_den) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
     sn = Int(step_num); sd = Int(step_den); ph = Int(phase)
-    if backend isa AVX512
+    if _use_runfill(sn, sd, backend)
+        # High oversampling: broadcast-fill runs (see `_generate_runfill!`). Carry the
+        # backend's permute width so `for v in gen` iteration can still yield Vec{W,Int8}.
+        backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
+        CodeGeneratorRunFill(table, sn, sd, ph, _vwidth(backend))
+    elseif backend isa AVX512
         CodeGenerator512(table, sn, sd, ph)
     elseif backend isa Union{AVX2,Neon}
         _check_windowed_length(table, backend)
@@ -258,6 +295,7 @@ end
 # SIMD width of a generator (for tail handling / iteration chunk size).
 gen_width(::CodeGenerator512) = 64
 gen_width(::CodeGeneratorPhase{W}) where {W} = W
+gen_width(::CodeGeneratorRunFill{W}) where {W} = W   # {W} matches CodeGeneratorRunFill{W,Inv}
 
 # ---- iteration: yield one Vec{W,Int8} per step, advancing the carried state ----
 # Iterating MUTATES the generator's state (it is a continuing stream), so length is the
@@ -271,6 +309,7 @@ Base.length(it::GeneratorChunks) = it.nchunks
 Base.IteratorSize(::Type{<:GeneratorChunks}) = Base.HasLength()
 Base.eltype(::Type{GeneratorChunks{CodeGenerator512}}) = Vec{64,Int8}
 Base.eltype(::Type{GeneratorChunks{CodeGeneratorPhase{W,T,P}}}) where {W,T,P} = Vec{W,Int8}
+Base.eltype(::Type{GeneratorChunks{CodeGeneratorRunFill{W}}}) where {W} = Vec{W,Int8}
 
 # Iteration drives a single canonical stream (stream 1) one W-window per step. After
 # iterating, streams 2..4 are stale — rebuild the generator before mixing with `gen_code!`.
@@ -287,4 +326,13 @@ end
     result = g.prepared(g.phase)
     g.phase, g.rem = _advance_window_phase(g.phase, g.rem, g.whole_W, g.frac_W, g.modulus, g.code_length)
     (result, chunk + 1)
+end
+# Run-fill engine: materialise one W-sample window into the reused scratch (advancing the
+# carried state by W), then load it as a Vec{W,Int8}. The broadcast-fill makes individual
+# windows cheap; this keeps `for v in gen` working at high oversampling too.
+@inline function Base.iterate(it::GeneratorChunks{CodeGeneratorRunFill{W}}, chunk = 0) where {W}
+    chunk >= it.nchunks && return nothing
+    g = it.gen
+    fill_continue!(g.win, g)
+    (g.win[VecRange{W}(1)], chunk + 1)
 end

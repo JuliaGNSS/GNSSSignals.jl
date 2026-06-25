@@ -130,9 +130,11 @@ end
 # the level is labelled as a multiplier (2x = sample twice per chip). Grouped by signal /
 # oversampling / size under `code/oversampling sweep/…` so "original" and "LUT" sit
 # adjacent. Same N + fs/fc for both, and the LUT side uses the warm generator (0-alloc),
-# matching the original's 0-alloc fill. The LUT is ~flat in the oversampling ratio (one
-# permute/sample); the original's run-fill speeds up as it grows — so the LUT wins most at
-# low oversampling and the original catches up high (crossover ~8-16x BPSK, later BOC).
+# matching the original's 0-alloc fill. The LUT uses the windowed permute (flat in the
+# oversampling ratio) at low oversampling and switches to a broadcast run-fill once the
+# baked table is oversampled ≳8× (AVX-512) / ≳4× (AVX2), so it tracks the original's
+# run-fill speed-up at high oversampling instead of staying flat. It still wins outright at
+# low oversampling and for modulated signals (baked subcarrier).
 # Two representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
 const _SWEEP_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
     isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
