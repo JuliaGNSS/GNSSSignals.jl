@@ -159,3 +159,37 @@ let fc = 1023e3Hz
         end
     end
 end
+
+# ═════════════════════════════════════════════════════════════════════════════
+# TEMPORARY (do not merge): fine-grained run-fill-vs-permute crossover probe.
+# Builds BOTH the run-fill engine and the permute engine of the HOST backend at the
+# same rate and times each, across a fine oversampling grid, so the crossover m can be
+# read per architecture (AVX-512 / AVX2 on Ubuntu, NEON on macOS) from the CI table.
+# Rows: code/_crossover/<signal>/<os>/runfill and .../permute (compare the two).
+# ═════════════════════════════════════════════════════════════════════════════
+if isdefined(GNSSSignals, :CodeReplicaLUT)
+    let CL = GNSSSignals.CodeLUT
+        _permute_engine(table, sn, sd, be) =
+            be isa CL.AVX512 ? CL.CodeGenerator512(table, sn, sd, 0) :
+            be isa Union{CL.AVX2,CL.Neon} ? CL.CodeGeneratorPhase(table, sn, sd, 0, be, CL._vwidth(be)) :
+            CL.CodeGeneratorPhase(table, sn, sd, 0, be, Val(1))
+        for (name, sig, P) in (("GPSL1CA", _GPSL1(), 1),
+                               ("GalileoE1B_BOC11",
+                                isdefined(GNSSSignals, :GalileoE1B_BOC11) ? GNSSSignals.GalileoE1B_BOC11() : _GPSL1(),
+                                2))
+            plan = GNSSSignals.CodeReplicaLUT(sig, 1)
+            table = plan.mc.table
+            be = CL.default_backend(table)
+            n = 65536
+            o8 = zeros(Int8, n)
+            for os_subchip in (2, 3, 4, 5, 6, 8, 12, 16, 24)   # m = samples per BAKED (sub)chip
+                sn, sd = CL._fixed_point_step(1 / os_subchip)
+                g = SUITE["code"]["_crossover"][name]["$(lpad(os_subchip,2,'0'))x"]
+                rf = CL.CodeGeneratorRunFill(table, sn, sd, 0, CL._vwidth(be))
+                pm = _permute_engine(table, sn, sd, be)
+                g["runfill"] = @benchmarkable GNSSSignals.CodeLUT.fill_continue!($o8, $rf) evals = 1 samples = 300
+                g["permute"] = @benchmarkable GNSSSignals.CodeLUT.fill_continue!($o8, $pm) evals = 1 samples = 300
+            end
+        end
+    end
+end
