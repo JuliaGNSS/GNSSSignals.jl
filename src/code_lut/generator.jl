@@ -22,7 +22,9 @@
     rem2 = vifelse(carry, rem2 - modulus, rem2)
     h = Int(carry[1])
     rel2 = rel + vifelse(carry, one(Vec{64,Int8}), zero(Vec{64,Int8})) - Int8(h)
-    base2 = mod(base + whole_W + h, L)
+    # `whole_W` is pre-reduced mod L by the caller (CodeGenerator512 / _make_engine), so
+    # `base + whole_W + h ∈ [0, 2L-1]` and a single conditional subtract replaces the idiv.
+    base2 = _wrapL(base + whole_W + h, L)
     (rel2, rem2, base2)
 end
 
@@ -57,8 +59,8 @@ function CodeGenerator512(table::CodeTable, step_num::Int, step_den::Int, phase_
     rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset)
     rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset)
     CodeGenerator512(table.padded, step_num, step_den, L,
-        _RemT(mod(W * step_num, step_den)), div(W * step_num, step_den),
-        _RemT(mod(4W * step_num, step_den)), div(4W * step_num, step_den), _RemT(step_den),
+        _RemT(mod(W * step_num, step_den)), div(W * step_num, step_den) % L,
+        _RemT(mod(4W * step_num, step_den)), div(4W * step_num, step_den) % L, _RemT(step_den),
         rel1, rem1, b1, rel2, rem2, b2, rel3, rem3, b3, rel4, rem4, b4)
 end
 
@@ -150,7 +152,7 @@ end
         r = vifelse(carry, r2 - modulus, r2)
         h = Int(carry[1])
         rl = rl + vifelse(carry, one(Vec{64,Int8}), zero(Vec{64,Int8})) - Int8(h)
-        b = mod(b + whole1 + h, L)
+        b = _wrapL(b + whole1 + h, L)   # whole1 ∈ {0,1} < L ⇒ sum < 2L
     end
     (rl, r, b)
 end
