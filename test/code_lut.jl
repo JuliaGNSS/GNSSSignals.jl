@@ -101,35 +101,48 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
-    @testset "iterator (generate_code) matches array fill" begin
+    @testset "value-based engine (K=1) matches array fill" begin
         chips = rand(MersenneTwister(7), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
         for be in _BACKENDS, cps in (0.2046, 1 / 3, 0.999)
             W = _width(be)
             n = 4W * 80
             out = Vector{Int8}(undef, n)
             CL.generate_code!(out, ct, cps; backend = be)
+            eng = CL.code_engine(ct, cps, Val(1); backend = be)
+            @test CL.code_width(eng) == W
             collected = Int8[]
-            for code_vec in CL.generate_code(ct, cps, n; backend = be)
-                append!(collected, [code_vec[j] for j in 1:W])
+            st = CL.code_state(eng)
+            for _ in 1:(n ÷ W)
+                v = CL.code_lookup(eng, st)
+                append!(collected, [v[j] for j in 1:W])
+                st = CL.code_advance(eng, st)
             end
             @test collected == out[1:length(collected)]
         end
     end
 
-    @testset "4-way iterator (generate_code4) matches array fill" begin
+    @testset "value-based engine (K=4 interleaved) matches array fill" begin
         chips = rand(MersenneTwister(11), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
         for be in _BACKENDS, (cps, ph) in ((0.2046, 0), (0.999, 0), (1 / 3, 9))
             W = _width(be)
             n = 4W * 80
             out = Vector{Int8}(undef, n)
             CL.generate_code!(out, ct, cps; phase = ph, backend = be)
-            collected = Int8[]
-            for quad in CL.generate_code4(ct, cps, n; phase = ph, backend = be)
-                for v in quad, j in 1:W
-                    push!(collected, v[j])
+            # 4 streams W samples apart, each advancing 4·W samples per step.
+            eng = CL.code_engine(ct, cps, Val(4); phase = ph, backend = be)
+            collected = Vector{Int8}(undef, n)
+            sts = ntuple(k -> CL.code_state(eng, k - 1), 4)
+            for step in 0:(n ÷ (4W) - 1)
+                base = step * 4W
+                for k in 1:4
+                    v = CL.code_lookup(eng, sts[k])
+                    for j in 1:W
+                        collected[base + (k - 1) * W + j] = v[j]
+                    end
                 end
+                sts = ntuple(k -> CL.code_advance(eng, sts[k]), 4)
             end
-            @test collected == out[1:length(collected)]
+            @test collected == out
         end
     end
 
@@ -199,10 +212,13 @@ const _BACKENDS = (CL.Portable(),
                 out = Vector{Int8}(undef, n); CL.generate_code!(out, ct, cps; backend = CL.AVX2())
                 @test out == ref
                 @test CL.default_backend(ct) isa Union{CL.AVX512, CL.AVX2}   # not Portable
-                # iterator path too
-                col = Int8[]
-                for v in CL.generate_code(ct, cps, n; backend = CL.AVX2()), j in 1:32
-                    push!(col, v[j])
+                # value-based engine path too (long table → widened Int32 phase)
+                eng = CL.code_engine(ct, cps, Val(1); backend = CL.AVX2())
+                W = CL.code_width(eng); col = Int8[]; st = CL.code_state(eng)
+                for _ in 1:(n ÷ W)
+                    v = CL.code_lookup(eng, st)
+                    for j in 1:W; push!(col, v[j]); end
+                    st = CL.code_advance(eng, st)
                 end
                 @test col == ref[1:length(col)]
             end
@@ -210,9 +226,12 @@ const _BACKENDS = (CL.Portable(),
                 out = Vector{Int8}(undef, n); CL.generate_code!(out, ct, cps; backend = CL.Neon())
                 @test out == ref
                 @test CL.default_backend(ct) isa CL.Neon   # not Portable
-                col = Int8[]
-                for v in CL.generate_code(ct, cps, n; backend = CL.Neon()), j in 1:16
-                    push!(col, v[j])
+                eng = CL.code_engine(ct, cps, Val(1); backend = CL.Neon())
+                W = CL.code_width(eng); col = Int8[]; st = CL.code_state(eng)
+                for _ in 1:(n ÷ W)
+                    v = CL.code_lookup(eng, st)
+                    for j in 1:W; push!(col, v[j]); end
+                    st = CL.code_advance(eng, st)
                 end
                 @test col == ref[1:length(col)]
             end
@@ -225,13 +244,14 @@ const _BACKENDS = (CL.Portable(),
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Public adapter: `CodeGeneratorLUT4` — the 4-wide, finite counterpart to
-# `CodeGeneratorLUT`. It wraps `CodeLUT.generate_code4`, so its 4-tuple of
-# `Vec{W,Int8}` chunks (4·W samples per step) must concatenate byte-exactly to the
-# array produced by the plan `gen_code!` at the same rate.
+# Value-based code engine: `code_engine` / `code_state` / `code_lookup` /
+# `code_advance` over a `CodeReplicaLUT` plan — the allocation-free, register-resident
+# counterpart to filling an array with `gen_code!`. A K-way interleaved loop (built with
+# `Val(K)`) holds K states `W` samples apart and advances each by K chunks per step; the
+# concatenated `Vec{W,Int8}` lookups must reproduce the `gen_code!` array byte-exactly.
 # ─────────────────────────────────────────────────────────────────────────────
-@testset "CodeGeneratorLUT4" begin
-    # SIMD width of the host's default backend (what CodeGeneratorLUT4 uses internally).
+@testset "code_engine (value-based)" begin
+    # SIMD width of the host's default backend (what the engine uses internally).
     Wdef = _width(CL.default_backend())
 
     # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P
@@ -244,26 +264,45 @@ end
         fc = get_code_frequency(plan.signal)
         # A couple of rates, all satisfying fs ≥ fc·P.
         for fs in (Float64(fc) * P, Float64(fc) * P * 2.5)
+            eng = code_engine(plan, fs, fc, Val(1))
+            W = code_width(eng)
+            @test W == Wdef
             nsteps = 6
-            num_samples = nsteps * 4 * Wdef
-            it = CodeGeneratorLUT4(plan, fs, fc, num_samples)
+            num_samples = nsteps * 4 * W
 
-            @test Base.IteratorSize(typeof(it)) == Base.HasLength()
-            @test length(it) == nsteps
-            @test eltype(typeof(it)) == eltype(typeof(it.inner))
-            @test eltype(typeof(it)) <: NTuple{4,<:CL.SIMD.Vec{Wdef,Int8}}
-
-            # Byte-exact: concatenated 4-tuples == first length(it)·4W samples of gen_code!.
+            # Byte-exact oracle.
             oracle = Vector{Int8}(undef, num_samples)
             gen_code!(oracle, plan, fs, fc)
-            collected = Int8[]
-            for (a, b, c, d) in it
-                for v in (a, b, c, d), j in 1:Wdef
-                    push!(collected, v[j])
+
+            # K=1: one stream reproduces the oracle chunk by chunk.
+            out = Vector{Int8}(undef, num_samples)
+            st = code_state(eng); i = 1
+            for _ in 1:(num_samples ÷ W)
+                v = code_lookup(eng, st)
+                for j in 1:W
+                    out[i + j - 1] = v[j]
                 end
+                i += W
+                st = code_advance(eng, st)
             end
-            @test length(collected) == nsteps * 4 * Wdef
-            @test collected == oracle[1:length(collected)]
+            @test out == oracle
+
+            # K=4 interleaved: 4 states W apart, each advancing 4·W samples per step.
+            eng4 = code_engine(plan, fs, fc, Val(4))
+            @test code_width(eng4) == W
+            out4 = Vector{Int8}(undef, num_samples)
+            sts = ntuple(k -> code_state(eng4, k - 1), 4)
+            for step in 0:(nsteps - 1)
+                base = step * 4W
+                for k in 1:4
+                    v = code_lookup(eng4, sts[k])
+                    for j in 1:W
+                        out4[base + (k - 1) * W + j] = v[j]
+                    end
+                end
+                sts = ntuple(k -> code_advance(eng4, sts[k]), 4)
+            end
+            @test out4 == oracle
         end
     end
 
@@ -272,33 +311,36 @@ end
         P = plan.mc.subchip_factor
         fc = get_code_frequency(plan.signal)
         fs = Float64(fc) * P
-        it = CodeGeneratorLUT4(plan, fs, fc, 6 * 4 * Wdef)
-        # Warm up, then assert a single step allocates nothing.
-        st = iterate(it)
-        @test st !== nothing
-        _, state = st
-        step!(itr, s) = iterate(itr, s)
-        step!(it, state)                       # compile
-        # 0-alloc fused iteration is verified on Julia ≥ 1.11; 1.10's iteration-state
-        # inference leaks a small box through the wrapped iterator, so only assert where
-        # it's reliable (the inner generate_code4 is 0-alloc on all backends).
+        eng = code_engine(plan, fs, fc, Val(1))
+        # Drive the value-based loop inside a barrier so the engine type is concrete at
+        # the @allocated site — both lookup and the renew-by-value advance must be 0-alloc.
+        function drive(eng, n)
+            W = code_width(eng); st = code_state(eng); a = Int32(0)
+            for _ in 1:(n ÷ W)
+                a += Int32(sum(code_lookup(eng, st)))
+                st = code_advance(eng, st)
+            end
+            a
+        end
+        drive(eng, 6 * 4 * code_width(eng))    # compile
+        # 0-alloc value-based stepping is verified on Julia ≥ 1.11; 1.10's weaker inference
+        # leaks a small box around the isbits state, so only assert where it's reliable.
         if VERSION >= v"1.11"
-            @test (@allocated step!(it, state)) == 0
+            @test (@allocated drive(eng, 6 * 4 * code_width(eng))) == 0
         end
     end
 
     @testset "errors" begin
         fc = get_code_frequency(GPSL1CA())
-        n = 4 * Wdef
         # Non-baked secondary (GPS L5I NH10) → error at construction.
         l5i = CodeReplicaLUT(GPSL5I(), 1)
         fc5 = get_code_frequency(GPSL5I())
-        @test_throws ErrorException CodeGeneratorLUT4(l5i, Float64(fc5) * l5i.mc.subchip_factor, fc5, n)
+        @test_throws ErrorException code_engine(l5i, Float64(fc5) * l5i.mc.subchip_factor, fc5, Val(1))
         # fs < fc·subchip_factor → error.
         plan = CodeReplicaLUT(GPSL1C_D(), 1)   # BOC(1,1) → subchip_factor 2
         P = plan.mc.subchip_factor
         @test P > 1
         fc1c = get_code_frequency(plan.signal)
-        @test_throws ErrorException CodeGeneratorLUT4(plan, Float64(fc1c) * P / 2, fc1c, n)
+        @test_throws ErrorException code_engine(plan, Float64(fc1c) * P / 2, fc1c, Val(1))
     end
 end
