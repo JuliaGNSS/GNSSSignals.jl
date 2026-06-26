@@ -349,7 +349,7 @@ integrations build `gen = CodeGeneratorLUT(plan, fs, fc)` once and call `gen_cod
 per integration to amortise the init.
 
 Unlike the continuing [`CodeGeneratorLUT`](@ref), this drives the *immutable* one-shot
-windowed fill ([`CodeLUT.generate_code!`](@ref)) directly — no mutable generator is built,
+windowed fill (`CodeLUT.generate_code!`) directly — no mutable generator is built,
 so the fill is allocation-free (the continuing generator's mutable DDA state is unnecessary
 when filling exactly once).
 
@@ -391,124 +391,52 @@ function gen_code!(
     return sampled_code
 end
 
-# ---- iteration: yield Vec{W,Int8} chunks, advancing the generator state ----
-CodeLUT.gen_width(gen::CodeGeneratorLUT) = CodeLUT.gen_width(gen.engine)
-
-Base.IteratorSize(::Type{<:CodeGeneratorLUT}) = Base.SizeUnknown()
-Base.eltype(::Type{CodeGeneratorLUT{S,G}}) where {S,G} = eltype(CodeLUT.GeneratorChunks{G})
-
-@inline function Base.iterate(gen::CodeGeneratorLUT, ::Nothing = nothing)
-    length(gen.secondary) > 1 &&
-        error("iterating a CodeGeneratorLUT with a non-baked secondary is not supported; use gen_code!")
-    W = CodeLUT.gen_width(gen.engine)
-    chunks = CodeLUT.GeneratorChunks(gen.engine, typemax(Int))
-    r = iterate(chunks)
-    r === nothing && return nothing
-    vec, _ = r
-    gen.n_abs += W
-    (vec, nothing)
-end
-
 # ─────────────────────────────────────────────────────────────────────────────
-# `CodeGeneratorLUT4`: the 4-wide, FINITE counterpart to `CodeGeneratorLUT`.
-#
-# It wraps `CodeLUT.generate_code4` — the 4-way interleaved iterator yielding an
-# `NTuple{4, Vec{W,Int8}}` per step (4·W samples). Use it to fuse a `code4 ×
-# carrier4` replica against SinCosLUT's `CarrierIterator4`. Note the asymmetry vs
-# the 1-wide type: `CodeGeneratorLUT` is a *continuing* generator (its AVX2 engine
-# is single-stream), whereas the 4-way engine is finite, so `CodeGeneratorLUT4`
-# takes `num_samples` and runs `num_samples ÷ (4W)` steps — mirroring SinCosLUT's
-# `CarrierIterator` / `CarrierIterator4` pair.
+# Value-based code engine: top-level adapter over `CodeLUT.code_engine` for a
+# `CodeReplicaLUT` plan. Build one engine per interleave factor `K` (`Val(K)`), hold K
+# isbits `code_state`s (W apart), and drive them with `code_lookup` / `code_advance` — the
+# allocation-free, register-resident counterpart to filling an array with `gen_code!`, and
+# the code-side partner for SinCosLUT's `carrier_engine`. (See CodeLUT's iterate.jl for the
+# per-backend note: AVX-512 ≈ 8× the AVX2/NEON rate, an ISA limit, not a tuning miss.)
 # ─────────────────────────────────────────────────────────────────────────────
 
-"""
-    CodeGeneratorLUT4
-
-The 4-wide, *finite* counterpart to [`CodeGeneratorLUT`](@ref), built from a
-[`CodeReplicaLUT`](@ref) plan, a sampling/code rate, and a sample count via its
-constructor (`CodeGeneratorLUT4(plan, fs, fc, num_samples)`). Iterating it yields an
-`NTuple{4, Vec{W,Int8}}` per step (`4·W` samples; `W = 64` on AVX-512, `32` on AVX2,
-`1` on the portable fallback) over `num_samples ÷ (4W)` steps — destructure the
-4-tuple in the loop header (`for (a, b, c, d) in gen`). It is the code-side partner
-for fusing against SinCosLUT's `CarrierIterator4` into an allocation-free
-`code4 × carrier4` replica.
-
-Unlike the *continuing* [`CodeGeneratorLUT`](@ref) (whose single-stream AVX2 engine
-carries state across calls), `CodeGeneratorLUT4`'s 4-way engine is finite, so it
-takes `num_samples` up front. Same oversampling requirement and integer-chip phase
-limitation as the plan [`gen_code!`](@ref) method; non-baked-secondary signals (e.g.
-GPS L5I's NH10) and `sampling_frequency < code_frequency·subchip_factor` raise an
-error at construction (use [`gen_code!`](@ref) / [`CodeGeneratorLUT`](@ref) instead).
-"""
-struct CodeGeneratorLUT4{S<:AbstractGNSSSignal,It}
-    plan::CodeReplicaLUT{S}
-    inner::It                       # the CodeLUT.generate_code4 iterator over the baked sub-chip table
-end
+using .CodeLUT: code_state, code_lookup, code_advance, code_width
 
 """
-    CodeGeneratorLUT4(plan::CodeReplicaLUT, sampling_frequency,
-                      code_frequency = get_code_frequency(plan.signal),
-                      num_samples::Integer; start_phase = 0.0,
-                      start_index_shift = 0) -> CodeGeneratorLUT4
+    code_engine(plan::CodeReplicaLUT, sampling_frequency,
+                code_frequency = get_code_frequency(plan.signal), Val(K);
+                start_phase = 0.0, start_index_shift = 0) -> CodeLUT.CodeEngine
 
-Construct a finite 4-wide code iterator over `plan` at the given rate. The one-time
-DDA setup runs here; afterwards `for (a, b, c, d) in gen` yields four `Vec{W,Int8}`
-chunks (`4·W` samples) per step over `num_samples ÷ (4W)` steps. The 4-way
-counterpart to [`CodeGeneratorLUT`](@ref) for register-fused correlation against
-SinCosLUT's `CarrierIterator4`; for a continuing single-stream generator use
-[`CodeGeneratorLUT`](@ref).
-
-Same oversampling requirement and integer-chip phase limitation as the plan
-[`gen_code!`](@ref) method.
+Build a loop-invariant, value-based code engine over `plan` for a `K`-way interleaved
+fused loop. Pair with `K` states `code_state(eng, k)` (`k = 0..K-1`, `W` samples apart) and
+drive each with [`code_lookup`](@ref) / [`code_advance`](@ref); nothing is materialised or
+heap-allocated. The code-side counterpart to SinCosLUT's `carrier_engine`. Same oversampling
+requirement and integer-chip phase limitation as the plan [`gen_code!`](@ref) method; a
+non-baked secondary (e.g. GPS L5I's NH10) or `sampling_frequency < code_frequency·subchip_factor`
+raises an error (use [`gen_code!`](@ref) / [`CodeGeneratorLUT`](@ref) instead).
 """
-function CodeGeneratorLUT4(
-    plan::CodeReplicaLUT,
-    sampling_frequency,
-    code_frequency,
-    num_samples::Integer;
-    start_phase = 0.0,
-    start_index_shift::Integer = 0,
-)
+function code_engine(plan::CodeReplicaLUT, sampling_frequency, code_frequency, ::Val{K};
+                     start_phase = 0.0, start_index_shift::Integer = 0) where {K}
     mc = plan.mc
     fc = _to_hz(code_frequency)
     fs = _to_hz(sampling_frequency)
     P = mc.subchip_factor
     fs < fc * P && error(
-        "CodeGeneratorLUT4 needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! / CodeGeneratorLUT.",
+        "code_engine needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! / CodeGeneratorLUT.",
     )
     length(mc.secondary) > 1 && error(
-        "CodeGeneratorLUT4 does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / CodeGeneratorLUT.",
+        "code_engine does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / CodeGeneratorLUT.",
     )
     # Integer primary-chip phase (matches gen_code!'s start_phase_including_shift; the
     # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
     eff_chips = start_phase + start_index_shift * fc / fs
     phase = round(Int, eff_chips)
-    # See the CodeGeneratorLUT constructor: parameterless default_backend() keeps the
-    # engine type inferable; the table-aware overload would box it.
-    backend = CodeLUT.default_backend()
-    # Resample the baked sub-chip table at fc·P; phase is scaled to sub-chips.
-    sn, sd = CodeLUT._fixed_point_step((fc * P) / fs)
-    phase_sub = phase * P
-    inner = CodeLUT.generate_code4(mc.table, sn, sd, Int(num_samples); phase = phase_sub, backend = backend)
-    return _wrap_code_generator_lut4(plan, inner)
+    # Resample the baked sub-chip table at fc·P, phase scaled to sub-chips. Parameterless
+    # default_backend() const-folds to the host's concrete backend (keeps the engine type
+    # inferable; the table-aware overload would box it).
+    CodeLUT.code_engine(mc.table, (fc * P) / fs, Val(K);
+                        phase = phase * P, backend = CodeLUT.default_backend())
 end
 
-# Function barrier, mirroring _wrap_code_generator_lut: generate_code4's iterator is
-# Union-typed over the phase type, so split on the concrete `It` here to keep the
-# CodeGeneratorLUT4 construction type-stable instead of boxing the iterator.
-function _wrap_code_generator_lut4(plan::CodeReplicaLUT{S}, inner::It) where {S,It}
-    CodeGeneratorLUT4{S,It}(plan, inner)
-end
-
-# Default code_frequency, keeping num_samples a required argument.
-CodeGeneratorLUT4(plan::CodeReplicaLUT, sampling_frequency, num_samples::Integer; kwargs...) =
-    CodeGeneratorLUT4(plan, sampling_frequency, get_code_frequency(plan.signal), num_samples; kwargs...)
-
-# Forward iteration + traits to the wrapped generate_code4 iterator.
-Base.IteratorSize(::Type{<:CodeGeneratorLUT4}) = Base.HasLength()
-Base.length(g::CodeGeneratorLUT4) = length(g.inner)
-Base.eltype(::Type{CodeGeneratorLUT4{S,It}}) where {S,It} = eltype(It)
-# Two explicit methods (not a `st...` varargs forward — that splat boxes the state and
-# allocates on Julia 1.10's varargs-specialization heuristics; the inner iterator is 0-alloc).
-@inline Base.iterate(g::CodeGeneratorLUT4) = iterate(g.inner)
-@inline Base.iterate(g::CodeGeneratorLUT4, state) = iterate(g.inner, state)
+code_engine(plan::CodeReplicaLUT, sampling_frequency, vk::Val; kwargs...) =
+    code_engine(plan, sampling_frequency, get_code_frequency(plan.signal), vk; kwargs...)

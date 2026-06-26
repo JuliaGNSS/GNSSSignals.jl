@@ -1,12 +1,14 @@
-# Allocation-free iterator: a drift-free DDA carried in the (isbits) iteration state,
-# yielding `Vec{W,Int8}` chunks of resampled code. Fuse it straight into your own loop —
-# e.g. zip it with SinCosLUT.generate_carrier to build a local replica (code · carrier)
-# without ever writing the code to memory:
+# Allocation-free, value-based code resampling: a loop-invariant `CodeEngine` plus a
+# drift-free DDA carried in an isbits `CodeState`, yielding `Vec{W,Int8}` chunks of
+# resampled code. Renew the state by value each iteration and fuse it straight into your
+# own loop — e.g. pair it with SinCosLUT's value-based carrier engine to build a local
+# replica (code · carrier) without ever writing the code to memory:
 #
-#     for (code_vec, (sin_vec, cos_vec)) in zip(generate_code(ct, cps_code, n),
-#                                                generate_carrier(sct, cps_carrier, n))
-#         replica_i = code_vec * sin_vec      # Vec{W,Int8} lanes
-#         ...
+#     ceng = code_engine(ct, sn, sd, Val(1)); cst = code_state(ceng)
+#     for _ in 1:nchunks
+#         code_vec = code_lookup(ceng, cst)   # Vec{W,Int8} lanes
+#         ...                                 # mix with the carrier chunk
+#         cst = code_advance(ceng, cst)
 #     end
 
 # ---- stateless primitive: hold the padded code + backend, map a phase Vec -> code Vec ----
@@ -36,268 +38,150 @@ end
 @inline (p::PreparedCode{Portable})(phase::Vec{1,T}) where {T} =
     Vec{1,Int8}(@inbounds p.padded[Int(phase[1]) + 1])
 
-# ---- stateful iterator: drift-free phase, yields Vec{W,Int8} ----
-# `T` is the phase type (Int16 for short tables, Int32 for long ones — see _phase_type).
-struct CodeIterator{W,T,Prep}
-    prepared::Prep
-    phase_init::Vec{W,T}
-    remainder_init::Vec{W,_RemT}
-    whole_step::T
-    frac_step::_RemT
-    modulus::_RemT
-    code_length::T
-    num_chunks::Int
-end
+# ─────────────────────────────────────────────────────────────────────────────
+# Value-based code engine: a loop-invariant `CodeEngine` (table + baked DDA deltas) plus an
+# isbits `CodeState` (the per-stream DDA position) renewed by value every step. The state
+# holds no table data, so it stays in registers; fuse it straight into a correlation loop.
+# Mirrors SinCosLUT's CarrierEngine/CarrierState. Build one engine per interleave factor `K`
+# (`Val(K)`); hold K states `code_state(eng, k-1)` (W apart) and `code_advance` each per step.
+#
+# Per-backend by necessity — and the gap is large:
+#   • AVX-512 (`CodeState512`): the incremental rel/scalar-base form. One `vpermb` over a
+#     64-chip window per chunk; the advance only shifts an Int8 `rel` + a scalar `base`.
+#     ~50 ps/sample.
+#   • AVX2/NEON/portable (`CodeStatePhase`): `vpermb` does not exist, so the chip index is
+#     carried as a full per-lane phase vector and the lookup is a windowed `vpshufb`/`tbl`.
+#     The DDA advance (not the lookup) dominates and runs ~8× slower (~420 ps/sample) — this
+#     gap is fundamental to the ISA (no 64-wide cross-lane byte permute), not a tuning miss.
+# ─────────────────────────────────────────────────────────────────────────────
 
-"""
-    generate_code(table, step_numerator, step_denominator, num_samples; phase=0, backend=…)
-    generate_code(table, chips_per_sample::Real, num_samples;            phase=0, backend=…)
-    generate_code(table, num_samples; code_frequency, sampling_frequency, phase=0, backend=…)
-
-Iterator over `num_samples ÷ W` chunks (W = SIMD width), each yielding a `Vec{W,Int8}`
-of resampled code chips. The chip index advances by an exact `step_numerator /
-step_denominator` chips per sample via a drift-free DDA in the iteration state — no code
-array is allocated. Same oversampling / denominator requirements as [`generate_code!`](@ref).
-Any `num_samples % W` tail is not produced (handle it yourself if needed).
-"""
-function generate_code(table::CodeTable, step_numerator::Integer, step_denominator::Integer,
-                       num_samples::Integer; phase::Integer = 0,
-                       backend::Backend = default_backend(table))
-    (0 < step_denominator ≤ _STEP_DEN) ||
-        throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
-    (0 < step_numerator ≤ step_denominator) ||
-        throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
-    _make_code(table, Int(step_numerator), Int(step_denominator), Int(num_samples),
-               Int(phase), backend, _vwidth(backend))
-end
-function generate_code(table::CodeTable, cps::Real, num_samples::Integer; kw...)
-    sn, sd = _fixed_point_step(cps)
-    generate_code(table, sn, sd, num_samples; kw...)
-end
-function generate_code(table::CodeTable, num_samples::Integer;
-                       code_frequency::Real, sampling_frequency::Real, kw...)
-    generate_code(table, chips_per_sample(code_frequency, sampling_frequency), num_samples; kw...)
-end
-
-# Branch on the table length so each arm passes a literal phase type into `_build_code`,
-# keeping `_init_state` a static dispatch — see the same fix in CodeGeneratorPhase.
-function _make_code(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                    backend, vw::Val{W}) where {W}
-    table.length <= typemax(Int16) ?
-        _build_code(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int16) :
-        _build_code(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int32)
-end
-
-@inline function _build_code(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                             backend, ::Val{W}, ::Type{T}) where {W,T}
-    L = table.length
-    phase_init, rem_init = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T)
-    prepared = prepare_code(table; backend = backend)
-    CodeIterator{W,T,typeof(prepared)}(prepared, phase_init, rem_init,
-        T(div(W * step_num, step_den) % L), _RemT(mod(W * step_num, step_den)),
-        _RemT(step_den), T(L), num_samples ÷ W)
-end
-
-Base.length(it::CodeIterator) = it.num_chunks
-Base.IteratorSize(::Type{<:CodeIterator}) = Base.HasLength()
-Base.eltype(::Type{<:CodeIterator{W}}) where {W} = Vec{W,Int8}
-
-@inline function Base.iterate(it::CodeIterator{W,T},
-                              state = (it.phase_init, it.remainder_init, 0)) where {W,T}
-    phase, remainder, chunk = state
-    chunk >= it.num_chunks && return nothing
-    result = it.prepared(phase)
-    remainder += it.frac_step
-    carry = remainder >= it.modulus
-    remainder = vifelse(carry, remainder - it.modulus, remainder)
-    phase = vifelse(carry, phase + it.whole_step + one(T), phase + it.whole_step)
-    phase = vifelse(phase >= it.code_length, phase - it.code_length, phase)
-    (result, (phase, remainder, chunk + 1))
-end
-
-# ---- AVX-512 iterator: relative-index DDA (see kernel.jl), yields Vec{64,Int8} ----
-struct CodeIterator512
+# ---- AVX-512 engine + state (incremental rel / scalar base) ----
+struct CodeEngine512
     padded::Vector{Int8}
-    rel_init::Vec{64,Int8}
-    rem_init::Vec{64,_RemT}
-    base_init::Int
-    whole_step::Int
-    frac_step::_RemT
+    step_num::Int
+    step_den::Int
+    phase_offset::Int
     modulus::_RemT
-    code_length::Int
-    num_chunks::Int
+    frac_stride::_RemT     # remainder advance over the baked K·W stride
+    whole_stride::Int      # whole chips advanced over the stride (base does mod L)
+    L::Int
+end
+struct CodeState512
+    rel::Vec{64,Int8}
+    rem::Vec{64,_RemT}
+    base::Int
 end
 
-function _make_code(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                    ::AVX512, ::Val{64})
-    L = table.length
-    rel_init, rem_init, base_init = _init_rel(Val(64), step_num, step_den, L, 0, phase_offset)
-    CodeIterator512(table.padded, rel_init, rem_init, base_init,
-        div(64 * step_num, step_den), _RemT(mod(64 * step_num, step_den)),
-        _RemT(step_den), L, num_samples ÷ 64)
-end
-
-Base.length(it::CodeIterator512) = it.num_chunks
-Base.IteratorSize(::Type{CodeIterator512}) = Base.HasLength()
-Base.eltype(::Type{CodeIterator512}) = Vec{64,Int8}
-
-@inline function Base.iterate(it::CodeIterator512,
-                              state = (it.rel_init, it.rem_init, it.base_init, 0))
-    rel, remainder, base, chunk = state
-    chunk >= it.num_chunks && return nothing
-    result = _rel_lookup(AVX512(), it.padded, rel, base)
-    remainder += it.frac_step
-    carry = remainder >= it.modulus
-    remainder = vifelse(carry, remainder - it.modulus, remainder)
-    h = Int(carry[1])
-    rel = rel + vifelse(carry, one(Vec{64,Int8}), zero(Vec{64,Int8})) - Int8(h)
-    base = mod(base + it.whole_step + h, it.code_length)
-    (result, (rel, remainder, base, chunk + 1))
-end
-
-# ===== generate_code4: 4-way interleaved iterator =====
-# Yields an `NTuple{4,Vec{W,Int8}}` per step (4·W samples), running four interleaved DDA
-# states so their carry chains overlap — reaching full loop throughput even for trivial
-# consumers (array fill, sum). Use plain `generate_code` when fusing into nontrivial work
-# (that work supplies its own instruction-level parallelism). Mirrors
-# `SinCosLUT.generate_carrier4`; destructure the 4-tuple in the loop header.
-
-"""
-    generate_code4(table, step_numerator, step_denominator, num_samples; phase=0, backend=…)
-    generate_code4(table, chips_per_sample::Real, num_samples;            phase=0, backend=…)
-    generate_code4(table, num_samples; code_frequency, sampling_frequency, phase=0, backend=…)
-
-Like [`generate_code`](@ref) but yields four `Vec{W,Int8}` chunks per step (`4·W`
-samples), running four interleaved DDA states so the carry chains overlap — full
-throughput even for trivial consumers. **Destructure the 4-tuple in the loop header**
-(`for (a,b,c,d) in generate_code4(...)`). Produces `num_samples ÷ (4W)` steps; handle any
-tail yourself.
-"""
-function generate_code4(table::CodeTable, step_numerator::Integer, step_denominator::Integer,
-                        num_samples::Integer; phase::Integer = 0,
-                        backend::Backend = default_backend(table))
-    (0 < step_denominator ≤ _STEP_DEN) ||
-        throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
-    (0 < step_numerator ≤ step_denominator) ||
-        throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
-    _make_code4(table, Int(step_numerator), Int(step_denominator), Int(num_samples),
-                Int(phase), backend, _vwidth(backend))
-end
-function generate_code4(table::CodeTable, cps::Real, num_samples::Integer; kw...)
-    sn, sd = _fixed_point_step(cps)
-    generate_code4(table, sn, sd, num_samples; kw...)
-end
-function generate_code4(table::CodeTable, num_samples::Integer;
-                        code_frequency::Real, sampling_frequency::Real, kw...)
-    generate_code4(table, chips_per_sample(code_frequency, sampling_frequency), num_samples; kw...)
-end
-
-# ---- AVX-512 4-way: relative-index DDA (== the generate_code! AVX-512 loop, yielded) ----
-struct CodeIterator4_512
-    padded::Vector{Int8}
-    rel1::Vec{64,Int8}; rel2::Vec{64,Int8}; rel3::Vec{64,Int8}; rel4::Vec{64,Int8}
-    rem1::Vec{64,_RemT}; rem2::Vec{64,_RemT}; rem3::Vec{64,_RemT}; rem4::Vec{64,_RemT}
-    b1::Int; b2::Int; b3::Int; b4::Int
-    whole_step::Int
-    frac_step::_RemT
-    modulus::_RemT
-    code_length::Int
-    num_steps::Int
-end
-
-function _make_code4(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                     ::AVX512, ::Val{64})
-    W = 64; L = table.length
-    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset)
-    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset)
-    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset)
-    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset)
-    CodeIterator4_512(table.padded, rel1, rel2, rel3, rel4, rem1, rem2, rem3, rem4,
-        b1, b2, b3, b4, div(4W * step_num, step_den), _RemT(mod(4W * step_num, step_den)),
-        _RemT(step_den), L, num_samples ÷ (4W))
-end
-
-Base.length(it::CodeIterator4_512) = it.num_steps
-Base.IteratorSize(::Type{CodeIterator4_512}) = Base.HasLength()
-Base.eltype(::Type{CodeIterator4_512}) = NTuple{4,Vec{64,Int8}}
-
-@inline function Base.iterate(it::CodeIterator4_512,
-                              state = (it.rel1, it.rel2, it.rel3, it.rel4,
-                                       it.rem1, it.rem2, it.rem3, it.rem4,
-                                       it.b1, it.b2, it.b3, it.b4, 0))
-    rel1, rel2, rel3, rel4, rem1, rem2, rem3, rem4, b1, b2, b3, b4, step = state
-    step >= it.num_steps && return nothing
-    pd = it.padded
-    result = (_rel_lookup(AVX512(), pd, rel1, b1), _rel_lookup(AVX512(), pd, rel2, b2),
-              _rel_lookup(AVX512(), pd, rel3, b3), _rel_lookup(AVX512(), pd, rel4, b4))
-    frac = it.frac_step; modulus = it.modulus; whole = it.whole_step; L = it.code_length
-    z = zero(Vec{64,Int8}); o = one(Vec{64,Int8})
-    a1 = rem1 + frac; c1 = a1 >= modulus; nrem1 = vifelse(c1, a1 - modulus, a1); h1 = Int(c1[1])
-    a2 = rem2 + frac; c2 = a2 >= modulus; nrem2 = vifelse(c2, a2 - modulus, a2); h2 = Int(c2[1])
-    a3 = rem3 + frac; c3 = a3 >= modulus; nrem3 = vifelse(c3, a3 - modulus, a3); h3 = Int(c3[1])
-    a4 = rem4 + frac; c4 = a4 >= modulus; nrem4 = vifelse(c4, a4 - modulus, a4); h4 = Int(c4[1])
-    nrel1 = rel1 + vifelse(c1, o, z) - Int8(h1); nrel2 = rel2 + vifelse(c2, o, z) - Int8(h2)
-    nrel3 = rel3 + vifelse(c3, o, z) - Int8(h3); nrel4 = rel4 + vifelse(c4, o, z) - Int8(h4)
-    nb1 = mod(b1 + whole + h1, L); nb2 = mod(b2 + whole + h2, L)
-    nb3 = mod(b3 + whole + h3, L); nb4 = mod(b4 + whole + h4, L)
-    (result, (nrel1, nrel2, nrel3, nrel4, nrem1, nrem2, nrem3, nrem4, nb1, nb2, nb3, nb4, step + 1))
-end
-
-# ---- AVX2 / Portable 4-way: phase-based DDA via the prepared callable ----
-struct CodeIterator4{W,T,Prep}
+# ---- phase engine + state (AVX2 / NEON / portable) ----
+struct CodeEnginePhase{W,T,Prep}
     prepared::Prep
-    phase1::Vec{W,T}; phase2::Vec{W,T}; phase3::Vec{W,T}; phase4::Vec{W,T}
-    rem1::Vec{W,_RemT}; rem2::Vec{W,_RemT}; rem3::Vec{W,_RemT}; rem4::Vec{W,_RemT}
-    whole_step::T
-    frac_step::_RemT
+    step_num::Int
+    step_den::Int
+    phase_offset::Int
     modulus::_RemT
-    code_length::T
-    num_steps::Int
+    frac_stride::_RemT
+    whole_stride::T        # whole chips per stride, already reduced mod L (< L)
+    L::Int
+end
+struct CodeStatePhase{W,T}
+    phase::Vec{W,T}
+    rem::Vec{W,_RemT}
 end
 
-# Branch on the table length so each arm passes a literal phase type into `_build_code4`,
-# keeping `_init_state` a static dispatch — see the same fix in CodeGeneratorPhase.
-function _make_code4(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                     backend, vw::Val{W}) where {W}
-    table.length <= typemax(Int16) ?
-        _build_code4(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int16) :
-        _build_code4(table, step_num, step_den, num_samples, phase_offset, backend, vw, Int32)
+"""
+    code_engine(table, step_num, step_den, Val(K); phase=0, backend=…) -> CodeEngine
+    code_engine(table, chips_per_sample::Real, Val(K); …)
+    code_engine(table, Val(K); code_frequency, sampling_frequency, …)
+
+Build the loop-invariant code engine for `table`, baking the drift-free fixed-point DDA
+deltas for a `K`-way interleaved loop (stride `K·W`, `W` = backend SIMD width). Pair it with
+`K` states `code_state(eng, k)` (`k = 0..K-1`, `W` samples apart) and drive each with
+[`code_lookup`](@ref) / [`code_advance`](@ref). `phase` is an integer chip phase offset.
+Same oversampling / denominator requirements as `generate_code!`.
+"""
+function code_engine(table::CodeTable, step_num::Integer, step_den::Integer, ::Val{K};
+                     phase::Integer = 0, backend::Backend = default_backend(table)) where {K}
+    (0 < step_den ≤ _STEP_DEN) ||
+        throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
+    (0 < step_num ≤ step_den) ||
+        throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
+    _make_engine(table, Int(step_num), Int(step_den), Int(phase), Val(K), backend, _vwidth(backend))
+end
+function code_engine(table::CodeTable, cps::Real, vk::Val; kw...)
+    sn, sd = _fixed_point_step(cps)
+    code_engine(table, sn, sd, vk; kw...)
+end
+function code_engine(table::CodeTable, vk::Val; code_frequency::Real, sampling_frequency::Real, kw...)
+    code_engine(table, chips_per_sample(code_frequency, sampling_frequency), vk; kw...)
 end
 
-@inline function _build_code4(table::CodeTable, step_num, step_den, num_samples, phase_offset,
-                              backend, ::Val{W}, ::Type{T}) where {W,T}
-    L = table.length
-    p1, r1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T)
-    p2, r2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T)
-    p3, r3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T)
-    p4, r4 = _init_state(Val(W), step_num, step_den, L, 3W, phase_offset, T)
+function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, ::AVX512, ::Val{64}) where {K}
+    W = 64; stride = K * W
+    CodeEngine512(table.padded, sn, sd, ph, _RemT(sd),
+        _RemT(mod(stride * sn, sd)), div(stride * sn, sd), table.length)
+end
+function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, backend, ::Val{W}) where {K,W}
+    backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
+    stride = K * W; L = table.length; T = _phase_type(L)
     prepared = prepare_code(table; backend = backend)
-    CodeIterator4{W,T,typeof(prepared)}(prepared, p1, p2, p3, p4, r1, r2, r3, r4,
-        T(div(4W * step_num, step_den) % L), _RemT(mod(4W * step_num, step_den)),
-        _RemT(step_den), T(L), num_samples ÷ (4W))
+    CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, _RemT(sd),
+        _RemT(mod(stride * sn, sd)), T(div(stride * sn, sd) % L), L)
 end
 
-Base.length(it::CodeIterator4) = it.num_steps
-Base.IteratorSize(::Type{<:CodeIterator4}) = Base.HasLength()
-Base.eltype(::Type{<:CodeIterator4{W}}) where {W} = NTuple{4,Vec{W,Int8}}
+"""
+    code_state(eng::CodeEngine, stream::Integer = 0) -> CodeState
 
-@inline function Base.iterate(it::CodeIterator4{W,T},
-                              state = (it.phase1, it.phase2, it.phase3, it.phase4,
-                                       it.rem1, it.rem2, it.rem3, it.rem4, 0)) where {W,T}
-    phase1, phase2, phase3, phase4, rem1, rem2, rem3, rem4, step = state
-    step >= it.num_steps && return nothing
-    p = it.prepared
-    result = (p(phase1), p(phase2), p(phase3), p(phase4))
-    frac = it.frac_step; modulus = it.modulus; whole = it.whole_step; Lc = it.code_length
-    a1 = rem1 + frac; c1 = a1 >= modulus; nrem1 = vifelse(c1, a1 - modulus, a1)
-    a2 = rem2 + frac; c2 = a2 >= modulus; nrem2 = vifelse(c2, a2 - modulus, a2)
-    a3 = rem3 + frac; c3 = a3 >= modulus; nrem3 = vifelse(c3, a3 - modulus, a3)
-    a4 = rem4 + frac; c4 = a4 >= modulus; nrem4 = vifelse(c4, a4 - modulus, a4)
-    np1 = vifelse(c1, phase1 + whole + one(T), phase1 + whole)
-    np2 = vifelse(c2, phase2 + whole + one(T), phase2 + whole)
-    np3 = vifelse(c3, phase3 + whole + one(T), phase3 + whole)
-    np4 = vifelse(c4, phase4 + whole + one(T), phase4 + whole)
-    np1 = vifelse(np1 >= Lc, np1 - Lc, np1); np2 = vifelse(np2 >= Lc, np2 - Lc, np2)
-    np3 = vifelse(np3 >= Lc, np3 - Lc, np3); np4 = vifelse(np4 >= Lc, np4 - Lc, np4)
-    (result, (np1, np2, np3, np4, nrem1, nrem2, nrem3, nrem4, step + 1))
+Initial DDA state for the `stream`-th interleaved lane (first sample at `stream·W`).
+"""
+@inline function code_state(eng::CodeEngine512, stream::Integer = 0)
+    rel, rem, base = _init_rel(Val(64), eng.step_num, eng.step_den, eng.L, stream * 64, eng.phase_offset)
+    CodeState512(rel, rem, base)
 end
+@inline function code_state(eng::CodeEnginePhase{W,T}, stream::Integer = 0) where {W,T}
+    p, r = _init_state(Val(W), eng.step_num, eng.step_den, eng.L, stream * W, eng.phase_offset, T)
+    CodeStatePhase{W,T}(p, r)
+end
+
+"""
+    code_lookup(eng::CodeEngine, st::CodeState) -> Vec{W,Int8}
+
+The resampled ±1 code chunk at `st`'s current chip position. Pure read; does not advance.
+"""
+@inline code_lookup(eng::CodeEngine512, st::CodeState512) =
+    _rel_lookup(AVX512(), eng.padded, st.rel, st.base)
+@inline code_lookup(eng::CodeEnginePhase{W}, st::CodeStatePhase{W}) where {W} =
+    eng.prepared(st.phase)
+
+# phase DDA step (carry-propagating fixed-point advance), returning the new (phase, rem)
+@inline function _advance_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, frac::_RemT,
+                                whole::T, modulus::_RemT, Lc::T) where {W,T}
+    a = rem + frac
+    carry = a >= modulus
+    rem2 = vifelse(carry, a - modulus, a)
+    p = vifelse(carry, phase + whole + one(T), phase + whole)
+    p = vifelse(p >= Lc, p - Lc, p)
+    (p, rem2)
+end
+
+"""
+    code_advance(eng::CodeEngine, st::CodeState) -> CodeState
+
+Advance the stream by one engine stride (`K·W` samples), returning a new immutable state.
+"""
+@inline function code_advance(eng::CodeEngine512, st::CodeState512)
+    rel, rem, base = _advance_window_512(st.rel, st.rem, st.base,
+                                         eng.frac_stride, eng.whole_stride, eng.modulus, eng.L)
+    CodeState512(rel, rem, base)
+end
+@inline function code_advance(eng::CodeEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
+    p, r = _advance_phase(st.phase, st.rem, eng.frac_stride, eng.whole_stride, eng.modulus, T(eng.L))
+    CodeStatePhase{W,T}(p, r)
+end
+
+"""
+    code_width(eng::CodeEngine) -> Int
+
+SIMD lane count `W` of the engine (samples per chunk).
+"""
+@inline code_width(::CodeEngine512) = 64
+@inline code_width(::CodeEnginePhase{W}) where {W} = W

@@ -60,12 +60,18 @@ GNSSSignals.gen_code!
 
 Fast register-resident SIMD code resampling: build a [`CodeReplicaLUT`](@ref) plan once per
 `(signal, prn)`, then resample it with `gen_code!`, the continuing [`CodeGeneratorLUT`](@ref),
-or the 4-wide [`CodeGeneratorLUT4`](@ref).
+or — for an allocation-free, fused loop — the value-based [`code_engine`](@ref) and its
+state stepping ([`code_state`](@ref) / [`code_lookup`](@ref) / [`code_advance`](@ref) /
+[`code_width`](@ref)).
 
 ```@docs
 GNSSSignals.CodeReplicaLUT
 GNSSSignals.CodeGeneratorLUT
-GNSSSignals.CodeGeneratorLUT4
+GNSSSignals.code_engine
+GNSSSignals.code_state
+GNSSSignals.code_lookup
+GNSSSignals.code_advance
+GNSSSignals.code_width
 ```
 
 ## Code Access
