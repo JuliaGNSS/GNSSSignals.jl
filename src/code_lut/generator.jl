@@ -13,7 +13,7 @@
 # advances (≈20 ns, byte-identical to `_init_rel`) — not re-initialised.
 
 # ---- per-W single-stream advance (AVX-512 rel/scalar-base form) ----
-# Advance one W=64 stream by exactly W samples. Mirrors `CodeIterator512`'s state update
+# Advance one W=64 stream by exactly W samples. Mirrors `CodeState512`'s state update
 # but with per-W deltas (frac_W / whole_W) passed in, so it works for any window position.
 @inline function _advance_window_512(rel::Vec{64,Int8}, rem::Vec{64,_RemT}, base::Int,
                                      frac_W::_RemT, whole_W::Int, modulus::_RemT, L::Int)
@@ -264,38 +264,4 @@ function make_generator(table::CodeTable, cps::Real; kw...)
 end
 function make_generator(table::CodeTable; code_frequency::Real, sampling_frequency::Real, kw...)
     make_generator(table, chips_per_sample(code_frequency, sampling_frequency); kw...)
-end
-
-# SIMD width of a generator (for tail handling / iteration chunk size).
-gen_width(::CodeGenerator512) = 64
-gen_width(::CodeGeneratorPhase{W}) where {W} = W
-
-# ---- iteration: yield one Vec{W,Int8} per step, advancing the carried state ----
-# Iterating MUTATES the generator's state (it is a continuing stream), so length is the
-# number of whole-W chunks that fit before a given sample budget. We expose an explicit
-# `take_chunks(gen, nchunks)` iterator wrapper for bounded fused loops.
-struct GeneratorChunks{G<:CodeGeneratorAny}
-    gen::G
-    nchunks::Int
-end
-Base.length(it::GeneratorChunks) = it.nchunks
-Base.IteratorSize(::Type{<:GeneratorChunks}) = Base.HasLength()
-Base.eltype(::Type{GeneratorChunks{CodeGenerator512}}) = Vec{64,Int8}
-Base.eltype(::Type{GeneratorChunks{CodeGeneratorPhase{W,T,P}}}) where {W,T,P} = Vec{W,Int8}
-
-# Iteration drives a single canonical stream (stream 1) one W-window per step. After
-# iterating, streams 2..4 are stale — rebuild the generator before mixing with `gen_code!`.
-@inline function Base.iterate(it::GeneratorChunks{<:CodeGenerator512}, chunk = 0)
-    chunk >= it.nchunks && return nothing
-    g = it.gen
-    result = _rel_lookup(AVX512(), g.padded, g.rel1, g.b1)
-    g.rel1, g.rem1, g.b1 = _advance_window_512(g.rel1, g.rem1, g.b1, g.frac_W, g.whole_W, g.modulus, g.L)
-    (result, chunk + 1)
-end
-@inline function Base.iterate(it::GeneratorChunks{<:CodeGeneratorPhase}, chunk = 0)
-    chunk >= it.nchunks && return nothing
-    g = it.gen
-    result = g.prepared(g.phase)
-    g.phase, g.rem = _advance_window_phase(g.phase, g.rem, g.whole_W, g.frac_W, g.modulus, g.code_length)
-    (result, chunk + 1)
 end
