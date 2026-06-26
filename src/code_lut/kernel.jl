@@ -33,6 +33,13 @@ const _RemT   = UInt32
 const _B       = 30
 const _STEP_DEN = Int(1) << _B          # = 2^_B
 
+# Wrap a scalar chip index back into [0, L) with a single conditional subtract instead of
+# an integer `mod` (idiv). Valid whenever the pre-wrap value is < 2L — which holds for the
+# AVX-512 base advance once the per-stride whole-chip step is pre-reduced mod L (so
+# `base + whole + carry ∈ [0, 2L-1]`), exactly the assumption the AVX2/NEON windowed phase
+# DDA already makes. Removes the only idiv from the AVX-512 steady-state loop.
+@inline _wrapL(x::Int, L::Int) = x >= L ? x - L : x
+
 # Per-lane index vectors `[0, 1, …, W-1]`, built once at load. The AVX-512 init (`_init_rel`)
 # materialises the running product `p = step_num·sample` for all 64 lanes at once with a real
 # SIMD Int64 multiply (AVX-512 has `vpmullq`), then derives rel/remainder from `p` with a
@@ -203,7 +210,7 @@ end
 function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase_offset)
     W = 64; stride = 4W
     L = table.length; padded = table.padded
-    whole_step = div(stride * step_num, step_den)            # chips per stride (base wraps mod L)
+    whole_step = div(stride * step_num, step_den) % L        # chips per stride, pre-reduced mod L
     frac_step  = _RemT(mod(stride * step_num, step_den)); modulus = _RemT(step_den)
     zero8 = zero(Vec{64,Int8}); one8 = one(Vec{64,Int8})
     rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset)
@@ -223,8 +230,8 @@ function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase
         h1 = Int(c1[1]); h2 = Int(c2[1]); h3 = Int(c3[1]); h4 = Int(c4[1])  # lane-0 carry
         rel1 += vifelse(c1, one8, zero8) - Int8(h1); rel2 += vifelse(c2, one8, zero8) - Int8(h2)
         rel3 += vifelse(c3, one8, zero8) - Int8(h3); rel4 += vifelse(c4, one8, zero8) - Int8(h4)
-        b1 = mod(b1 + whole_step + h1, L); b2 = mod(b2 + whole_step + h2, L)
-        b3 = mod(b3 + whole_step + h3, L); b4 = mod(b4 + whole_step + h4, L)
+        b1 = _wrapL(b1 + whole_step + h1, L); b2 = _wrapL(b2 + whole_step + h2, L)
+        b3 = _wrapL(b3 + whole_step + h3, L); b4 = _wrapL(b4 + whole_step + h4, L)
         chunk_start += stride
     end
     # Leftover < 4W samples: do up to 3 full W-blocks as single-stream SIMD before the

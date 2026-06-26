@@ -118,7 +118,7 @@ end
 function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, ::AVX512, ::Val{64}) where {K}
     W = 64; stride = K * W
     CodeEngine512(table.padded, sn, sd, ph, _RemT(sd),
-        _RemT(mod(stride * sn, sd)), div(stride * sn, sd), table.length)
+        _RemT(mod(stride * sn, sd)), div(stride * sn, sd) % table.length, table.length)
 end
 function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, backend, ::Val{W}) where {K,W}
     backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
