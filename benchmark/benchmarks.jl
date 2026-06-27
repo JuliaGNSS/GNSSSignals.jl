@@ -339,6 +339,31 @@ function correlate_epl_unfused!(ext::Vector{Int8}, csin::Vector{Int8}, ccos::Vec
     ((sum(IE), sum(QE)), (sum(IP), sum(QP)), (sum(IL), sum(QL)))
 end
 
+# ── HYBRID E/P/L: materialise ONLY the code (fast run-fill `gen_code!`, same `ext` layout as
+# unfused), but keep the CARRIER in-register via the value-based engine and FUSE the wipe +
+# E/P/L accumulate. Code is read at Early/Prompt/Late offsets from `ext` (cheap loads); the
+# carrier never touches memory. So this writes/reads ONE scratch buffer per channel (≈ N Int8)
+# instead of the unfused's three (code + sin + cos), while still getting run-fill's fast code
+# generation that the fully-fused path lacks. Arithmetic is bit-identical to both kernels.
+function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, code_gen, reng, N::Int,
+                               ::Val{W}, ::Val{D}) where {W,D}
+    gen_code!(view(ext, (D + 1):(D + N + D)), code_gen)     # samples 0 … N+D−1 (ext[1:D] stay 0)
+    IE = zero(Vec{W,Int32}); QE = zero(Vec{W,Int32}); IP = zero(Vec{W,Int32})
+    QP = zero(Vec{W,Int32}); IL = zero(Vec{W,Int32}); QL = zero(Vec{W,Int32})
+    rs = carrier_state(reng, 0)
+    n = 0; lim = length(meas) ÷ 2
+    @inbounds while n < lim
+        sinv, cosv = carrier_lookup(reng, rs); rs = carrier_advance(reng, rs, 1)
+        DI, DQ = _wipe(vload(Vec{2W,Int16}, meas, 2n + 1), sinv, cosv)
+        cE = _wide32(vload(Vec{W,Int8}, ext, n + 1))
+        cP = _wide32(vload(Vec{W,Int8}, ext, n + D + 1))
+        cL = _wide32(vload(Vec{W,Int8}, ext, n + 2D + 1))
+        IE, QE, IP, QP, IL, QL = _accum_epl(IE, QE, IP, QP, IL, QL, cE, cP, cL, DI, DQ)
+        n += W
+    end
+    ((sum(IE), sum(QE)), (sum(IP), sum(QP)), (sum(IL), sum(QL)))
+end
+
 # Prompt code engine (a single stream — Early/Late are derived by lane-shift) + carrier engine.
 # Built once and reused. `code_engine`'s parameterless `default_backend()` const-folds to the
 # host backend, so the engine types are concrete and the fused kernel stays 0-alloc.
@@ -381,12 +406,16 @@ if isdefined(GNSSSignals, :code_engine)
                 $ext, $csin, $ccos, $meas, $code_gen, $tbl, $fs, $freq, $N,
                 $(Val(_CORR_W)), $(Val(D)),
             ) evals = 1 samples = 1000
+            g["hybrid"] = @benchmarkable correlate_epl_hybrid!(
+                $ext, $meas, $code_gen, $reng, $N, $(Val(_CORR_W)), $(Val(D)),
+            ) evals = 1 samples = 1000
         end
     end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PARALLEL multi-channel correlation — FUSED vs UNFUSED across many satellites (Polyester).
+# PARALLEL multi-channel correlation — FUSED vs UNFUSED vs HYBRID across many satellites
+# (Polyester).
 #
 # This is where the fused/unfused trade-off INVERTS. Per channel (single thread) the fused is
 # execution-port bound and ~10% slower than the unfused (see the single-channel rows above).
@@ -398,17 +427,26 @@ end
 # memory bandwidth: the unfused stops scaling with cores while the fused keeps scaling, because
 # it never touches the bus. So the fused WINS once the working set exceeds the LLC.
 #
-# The crossover is therefore governed by `n_channels · 3 · N_samples` vs the LLC size, and the
-# effect only appears with `Threads.nthreads() > 1` (run julia with `-t auto` /
-# `JULIA_NUM_THREADS`). Two representative points at 40 MHz, 10 channels, on a 12-core / 24 MB-L3
-# machine: 5 ms (≈6 MB, fits L3 → fused still ~10% behind) and 20 ms (≈24 MB, spills L3 → fused
-# ~1.2× faster; +47% at 30 ms). At lower sample rates / fewer channels the working set is
-# smaller, so the crossover moves to longer integration.
+# The HYBRID is the best of both: it materialises only the CODE (the fast run-fill `gen_code!`
+# the fully-fused path can't use) and keeps the carrier in-register, so it touches ONE buffer
+# per channel (≈ N Int8) instead of three. It beats fused everywhere (cheap `ext` loads replace
+# the per-chunk value-engine permute + DDA) and, once the working set spills the LLC, also beats
+# unfused (a third of the bandwidth). Measured (40 MHz, 10 ch, 24 threads, 12-core / 24 MB-L3):
+# at 20 ms it is ~0.88× fused and ~0.67× unfused; at 30 ms ~0.94× fused and ~0.47× unfused —
+# the fastest of the three. At 5 ms (fits L3) the unfused still wins single-buffer-bandwidth and
+# the hybrid is second. So: unfused for cache-resident work, hybrid once it spills, fused only
+# when zero per-channel scratch is required.
 #
-# Each channel gets its own PRN, Doppler, code/carrier engines and (unfused) scratch buffers;
-# the measurement is shared. State is bundled in `_EPLChannels` so Polyester sees only a struct
-# and the loop index — it does NOT rewrite the per-channel vectors into stride-arrays (which
-# would not match the kernels' `Vector` signatures). One channel per `@batch` task.
+# The crossover is governed by working-set vs LLC size, and the effect only appears with
+# `Threads.nthreads() > 1` (run julia with `-t auto` / `JULIA_NUM_THREADS`). Two representative
+# points at 40 MHz, 10 channels: 5 ms (≈6 MB, fits L3) and 20 ms (≈24 MB, spills L3). At lower
+# sample rates / fewer channels the working set is smaller, so the crossover moves to longer
+# integration.
+#
+# Each channel gets its own PRN, Doppler, code/carrier engines and (unfused/hybrid) scratch
+# buffers; the measurement is shared. State is bundled in `_EPLChannels` so Polyester sees only
+# a struct and the loop index — it does NOT rewrite the per-channel vectors into stride-arrays
+# (which would not match the kernels' `Vector` signatures). One channel per `@batch` task.
 # ─────────────────────────────────────────────────────────────────────────────
 # Defined unconditionally (a struct must be top level); the drivers/registration that use
 # Polyester's `@batch` are guarded below.
@@ -417,6 +455,7 @@ struct _EPLChannels{W,D,CE,RE,CG,TB}
     cengs::Vector{CE}
     rengs::Vector{RE}
     exts::Vector{Vector{Int8}}
+    extsH::Vector{Vector{Int8}}   # hybrid's own code buffer (so it never aliases the unfused's)
     csins::Vector{Vector{Int8}}
     ccoss::Vector{Vector{Int8}}
     code_gens::Vector{CG}
@@ -445,10 +484,11 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         rengs = [e[2] for e in engs]
         code_gens = [GNSSSignals.CodeGeneratorLUT(plans[s], fs, fc) for s in 1:nch]
         exts = [zeros(Int8, Npad + 2D) for _ in 1:nch]
+        extsH = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         csins = [zeros(Int8, Npad) for _ in 1:nch]
         ccoss = [zeros(Int8, Npad) for _ in 1:nch]
         ch = _EPLChannels{W,D,eltype(cengs),eltype(rengs),eltype(code_gens),eltype(tbls)}(
-            meas, cengs, rengs, exts, csins, ccoss, code_gens, tbls, Float64(fs), freqs, N,
+            meas, cengs, rengs, exts, extsH, csins, ccoss, code_gens, tbls, Float64(fs), freqs, N,
             zeros(Int, nch))
         ch
     end
@@ -466,10 +506,18 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
+    @inline function _epl_one_hybrid!(ch::_EPLChannels{W,D}, s) where {W,D}
+        @inbounds r = correlate_epl_hybrid!(ch.extsH[s], ch.meas, ch.code_gens[s], ch.rengs[s],
+            ch.N, Val(W), Val(D))
+        @inbounds ch.out[s] = r[2][1]
+        nothing
+    end
     _epl_fused_par!(ch::_EPLChannels) =
         (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_fused!(ch, s); end; ch.out)
     _epl_unfused_par!(ch::_EPLChannels) =
         (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_unfused!(ch, s); end; ch.out)
+    _epl_hybrid_par!(ch::_EPLChannels) =
+        (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_hybrid!(ch, s); end; ch.out)
 
     let nch = 10, fs = 40e6, fc = 1.023e6
         for ms in (5, 20)                              # 5 ms: fits L3; 20 ms: spills L3 (see note)
@@ -477,6 +525,7 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
             g = SUITE["correlation"]["GPSL1CA E/P/L 40MHz $(nch)ch $(ms)ms ‖"]
             g["fused"]   = @benchmarkable _epl_fused_par!($ch) evals = 1 samples = 200
             g["unfused"] = @benchmarkable _epl_unfused_par!($ch) evals = 1 samples = 200
+            g["hybrid"]  = @benchmarkable _epl_hybrid_par!($ch) evals = 1 samples = 200
         end
     end
 end
