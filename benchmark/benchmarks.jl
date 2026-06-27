@@ -6,6 +6,16 @@ using SinCosLUT: SinCosTable, generate_carrier!, cycles_per_sample,
                  carrier_engine, carrier_state, carrier_lookup, carrier_advance, carrier_width
 using Unitful: Hz, ustrip, @u_str
 
+# Polyester is optional: it only backs the parallel multi-channel correlation rows below.
+# Guard the import so the rest of the suite still loads (and diffs against a baseline) on an
+# environment without it. Added to the benchpkg env via the workflow's `--add` list.
+const _HAS_POLYESTER = try
+    @eval import Polyester
+    true
+catch
+    false
+end
+
 # Strip a Unitful frequency to a plain Float64 Hz value (for computing N).
 ustrip_hz(x) = Float64(ustrip(u"Hz", x))
 
@@ -369,6 +379,102 @@ if isdefined(GNSSSignals, :code_engine)
                 $ext, $csin, $ccos, $meas, $code_gen, $tbl, $fs, $freq, $N,
                 $(Val(_CORR_W)), $(Val(D)),
             ) evals = 1 samples = 1000
+        end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARALLEL multi-channel correlation — FUSED vs UNFUSED across many satellites (Polyester).
+#
+# This is where the fused/unfused trade-off INVERTS. Per channel (single thread) the fused is
+# execution-port bound and ~10% slower than the unfused (see the single-channel rows above).
+# But the fused materialises NOTHING — it drives the code+carrier engines straight into the
+# correlation, so its only memory traffic is reading the shared measurement. The unfused
+# instead writes a per-channel extended-code + carrier scratch (≈ 3·N Int8 per channel) and
+# reads it back. Run one channel per core and that per-channel scratch — `n_channels · 3 · N`
+# bytes in flight at once — eventually overflows the shared last-level cache and saturates
+# memory bandwidth: the unfused stops scaling with cores while the fused keeps scaling, because
+# it never touches the bus. So the fused WINS once the working set exceeds the LLC.
+#
+# The crossover is therefore governed by `n_channels · 3 · N_samples` vs the LLC size, and the
+# effect only appears with `Threads.nthreads() > 1` (run julia with `-t auto` /
+# `JULIA_NUM_THREADS`). Two representative points at 40 MHz, 10 channels, on a 12-core / 24 MB-L3
+# machine: 5 ms (≈6 MB, fits L3 → fused still ~10% behind) and 20 ms (≈24 MB, spills L3 → fused
+# ~1.2× faster; +47% at 30 ms). At lower sample rates / fewer channels the working set is
+# smaller, so the crossover moves to longer integration.
+#
+# Each channel gets its own PRN, Doppler, code/carrier engines and (unfused) scratch buffers;
+# the measurement is shared. State is bundled in `_EPLChannels` so Polyester sees only a struct
+# and the loop index — it does NOT rewrite the per-channel vectors into stride-arrays (which
+# would not match the kernels' `Vector` signatures). One channel per `@batch` task.
+# ─────────────────────────────────────────────────────────────────────────────
+# Defined unconditionally (a struct must be top level); the drivers/registration that use
+# Polyester's `@batch` are guarded below.
+struct _EPLChannels{W,D,CE,RE,CG,TB}
+    meas::Vector{Int16}
+    cengs::Vector{CE}
+    rengs::Vector{RE}
+    exts::Vector{Vector{Int8}}
+    csins::Vector{Vector{Int8}}
+    ccoss::Vector{Vector{Int8}}
+    code_gens::Vector{CG}
+    tbls::Vector{TB}
+    fs::Float64
+    freqs::Vector{Float64}
+    N::Int
+    out::Vector{Int}     # per-channel sink (prompt I) — prevents dead-code elimination
+end
+
+if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
+    # Build `nch` independent channels (distinct PRN + Doppler) sharing one measurement.
+    function _build_channels(nch::Int, fs, fc, ms)
+        W = _CORR_W
+        N = round(Int, fs * 1e-3 * ms)
+        D = round(Int, 0.5 * fs / fc)
+        Npad = cld(N, W) * W
+        lim = Int16(1) << 11                                   # 12-bit ADC
+        meas = zeros(Int16, 2 * Npad)
+        meas[1:2N] .= rand(-lim:(lim - Int16(1)), 2N)
+        plans = [GNSSSignals.CodeReplicaLUT(_GPSL1(), prn) for prn in 1:nch]
+        freqs = [1234.0 + 137.0 * (s - 1) for s in 1:nch]      # spread the residual Dopplers
+        tbls = [SinCosTable(Int8; steps = 64, amplitude = 8) for _ in 1:nch]
+        engs = [_epl_engines(plans[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
+        cengs = [e[1] for e in engs]
+        rengs = [e[2] for e in engs]
+        code_gens = [GNSSSignals.CodeGeneratorLUT(plans[s], fs, fc) for s in 1:nch]
+        exts = [zeros(Int8, Npad + 2D) for _ in 1:nch]
+        csins = [zeros(Int8, Npad) for _ in 1:nch]
+        ccoss = [zeros(Int8, Npad) for _ in 1:nch]
+        ch = _EPLChannels{W,D,eltype(cengs),eltype(rengs),eltype(code_gens),eltype(tbls)}(
+            meas, cengs, rengs, exts, csins, ccoss, code_gens, tbls, Float64(fs), freqs, N,
+            zeros(Int, nch))
+        ch
+    end
+
+    # One channel of work (indexing lives here, not in the `@batch` body, so Polyester leaves
+    # the per-channel vectors as plain `Vector`s).
+    @inline function _epl_one_fused!(ch::_EPLChannels{W,D}, s) where {W,D}
+        @inbounds r = correlate_epl_fused(ch.meas, ch.cengs[s], ch.rengs[s], Val(W), Val(D))
+        @inbounds ch.out[s] = r[2][1]
+        nothing
+    end
+    @inline function _epl_one_unfused!(ch::_EPLChannels{W,D}, s) where {W,D}
+        @inbounds r = correlate_epl_unfused!(ch.exts[s], ch.csins[s], ch.ccoss[s], ch.meas,
+            ch.code_gens[s], ch.tbls[s], ch.fs, ch.freqs[s], ch.N, Val(W), Val(D))
+        @inbounds ch.out[s] = r[2][1]
+        nothing
+    end
+    _epl_fused_par!(ch::_EPLChannels) =
+        (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_fused!(ch, s); end; ch.out)
+    _epl_unfused_par!(ch::_EPLChannels) =
+        (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_unfused!(ch, s); end; ch.out)
+
+    let nch = 10, fs = 40e6, fc = 1.023e6
+        for ms in (5, 20)                              # 5 ms: fits L3; 20 ms: spills L3 (see note)
+            ch = _build_channels(nch, fs, fc, ms)
+            g = SUITE["correlation"]["GPSL1CA E/P/L 40MHz $(nch)ch $(ms)ms ‖"]
+            g["fused"]   = @benchmarkable _epl_fused_par!($ch) evals = 1 samples = 200
+            g["unfused"] = @benchmarkable _epl_unfused_par!($ch) evals = 1 samples = 200
         end
     end
 end
