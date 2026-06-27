@@ -146,6 +146,36 @@ get_code_type(e1b)           # Int16
 
 Use [`GalileoE1B`](@ref) for the full CBOC spec output (Float32); use [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) when the 0.45 dB loss is acceptable and Int16 / lower sampling rate is preferable.
 
+### Galileo E5a-I
+
+Galileo E5a-I (the data-carrying component of Galileo E5a) uses a 10230-chip primary code at 10.23 Mcps with a 20-bit CS20 secondary code (shared by all SVIDs, giving a 20 ms tiered code). It is transmitted on the same RF carrier as GPS L5 — [`get_band`](@ref) returns [`L5`](@ref GNSSSignals.L5) for both. The wideband E5 signal is AltBOC(15,10), but like GNSS-SDR and PocketSDR this implementation models the E5a sideband on its own as BPSK(10):
+
+```julia
+e5a_i = GalileoE5aI()
+get_code_length(e5a_i)           # 10230
+get_band(e5a_i)                  # L5()
+get_center_frequency(e5a_i)      # 1176450000 Hz
+get_code_frequency(e5a_i)        # 10230000 Hz
+get_data_frequency(e5a_i)        # 50 Hz (F/NAV symbol rate)
+get_secondary_code_length(e5a_i) # 20
+get_modulation(e5a_i)            # LOC()
+```
+
+### Galileo E5a-Q
+
+Galileo E5a-Q is the pilot (dataless) component of Galileo E5a. It shares the E5a-I primary-code generator (different per-SVID register seeds) and overlays a 100-bit per-SVID CS100 secondary code (a 100 ms tiered code, exposed as a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode)). PRNs 1-50 are supported:
+
+```julia
+e5a_q = GalileoE5aQ()
+get_code_length(e5a_q)           # 10230
+get_band(e5a_q)                  # L5()
+get_center_frequency(e5a_q)      # 1176450000 Hz
+get_code_frequency(e5a_q)        # 10230000 Hz
+get_data_frequency(e5a_q)        # 0 Hz (dataless)
+get_secondary_code_length(e5a_q) # 100
+get_modulation(e5a_q)            # LOC()
+```
+
 ## Bands
 
 A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two signals with the same band can be driven by a single carrier NCO in a receiver — that is the architectural reason this abstraction exists.
