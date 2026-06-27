@@ -514,16 +514,31 @@ function _runfill_seg_generic!(out, chips, L::Int, ff::Int, ni::Int, c::Int, acc
     (c, acc, pos)
 end
 
+# Statically dispatch a runtime padded `ni` to the matching `Val{NI}` run-fill kernel via an
+# explicit branch ladder (`i = 4:_RUNFILL_MAX_NI`); above the ladder the runtime-`NI` generic
+# kernel takes over. Lifting a runtime `Val(ni)` instead would box once per call, so this keeps
+# the one-shot path 0-alloc — the same trick (and ladder range) as `dispatch_sample_code_worker!`
+# for the original `gen_code!`. `_runfill_ni` floors at 4, so the ladder never sees 1..3.
+@generated function _runfill_seg_dispatch!(out, chips, L::Int, ff::Int, ni::Int,
+                                           c::Int, acc::Int, pos::Int)
+    branches = [
+        :(ni == $i && return _runfill_seg!(out, chips, L, ff, c, acc, pos, Val($i)))
+        for i = 4:_RUNFILL_MAX_NI
+    ]
+    quote
+        $(branches...)
+        return _runfill_seg_generic!(out, chips, L, ff, ni, c, acc, pos)
+    end
+end
+
 # One-shot run-fill from chip phase, sample 0 (acc = mask gives the `ceil`-boundary rounding
-# that matches the permute path; pos = 0). `Val(ni)` is a runtime lift here (one box per
-# one-shot call — negligible, the call already builds a generator); the *continuing*
-# generator stays 0-alloc by carrying `NI` in its type (see `CodeGeneratorRunFill`).
+# that matches the permute path; pos = 0). Dispatches to the `Val{NI}`-specialised kernel
+# allocation-free; the *continuing* generator stays 0-alloc by carrying `NI` in its type
+# (see `CodeGeneratorRunFill`).
 function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
     ff = _runfill_freqfix(step_num); ni = _runfill_ni(step_num)
-    c = mod(phase_offset, table.length); chips = table.chips; L = table.length
-    ni > _RUNFILL_MAX_NI ?
-        _runfill_seg_generic!(out, chips, L, ff, ni, c, _RUNFILL_MASK, 0) :
-        _runfill_seg!(out, chips, L, ff, c, _RUNFILL_MASK, 0, Val(ni))
+    c = mod(phase_offset, table.length)
+    _runfill_seg_dispatch!(out, table.chips, table.length, ff, ni, c, _RUNFILL_MASK, 0)
 end
 
 # Pick the run-fill path when there are at least `_runfill_min_m(backend)` samples per chip.
