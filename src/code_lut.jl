@@ -188,7 +188,7 @@ amplitudes only scale the replica, the **sign pattern is identical to the float
   sub-chip residual is dropped (up to ~1 sub-chip vs the plain `gen_code!`).
   `start_phase = 0.0, start_index_shift = 0` gives `phase = 0` exactly.
 - **High-oversampling run-fill is approximate to ≤ a couple of samples.** Above
-  ~8× sub-chip oversampling the resampler broadcast-fills runs of identical chips
+  ~7× sub-chip oversampling (AVX-512; ~4× on AVX2) the resampler broadcast-fills runs of identical chips
   (matching the original `gen_code!`'s speed there) using a fixed-point samples-
   per-chip DDA. Its chip boundaries are exact for any single fill and drift at
   most a couple of samples only over a *very* long continued stream (~10⁶ chips) —
