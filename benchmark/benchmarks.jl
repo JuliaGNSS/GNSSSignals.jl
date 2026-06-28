@@ -120,6 +120,39 @@ for (name, signal, prn, fs, fc) in _LUT_CASES
     end
 end
 
+# ── Galileo E1B full CBOC, head to head — same `code/1 ms integration/GalileoE1B/…` group
+# as the rows above, but special-cased because CBOC differs from the ±1 cases:
+#   • the ORIGINAL `gen_code!` needs a Float32 buffer (the CBOC subcarrier amplitudes are
+#     irrational), whereas the LUT bakes an Int8 integer approximation (default (19,6));
+#   • the LUT plan only supports CBOC on this branch, so the LUT rows are probed and skipped
+#     on a baseline (the PR base #69) that errors on CBOC — the `original` row still compares.
+# fs ≥ fc·subchip_factor = 12·1.023 MHz; use 15 MHz (matches the legacy E1B row).
+const _LUT_CBOC_OK = isdefined(GNSSSignals, :CodeReplicaLUT) && try
+    GNSSSignals.CodeReplicaLUT(GalileoE1B(), 1)   # CBOC supported here, errors on the baseline
+    true
+catch
+    false
+end
+let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
+    N = round(Int, ustrip_hz(fs) * 1e-3)
+    g = SUITE["code"]["1 ms integration"]["GalileoE1B"]
+    out_f32 = zeros(Float32, N)
+    g["original"] = @benchmarkable gen_code!(
+        $out_f32, $signal, $prn, $fs, $fc, $0.0, $0,
+    ) evals = 10 samples = 1000
+    if _LUT_CBOC_OK
+        gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        out8g = zeros(Int8, N)
+        g["LUT generator"] = @benchmarkable gen_code!($out8g, $gen) evals = 10 samples = 1000
+
+        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
+        out8 = zeros(Int8, N)
+        g["LUT one-shot"] = @benchmarkable gen_code!(
+            $out8, $plan, $fs, $fc, $0.0, $0,
+        ) evals = 10 samples = 1000
+    end
+end
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Threaded multi-channel: build a Vector{CodeReplicaLUT} for 8 PRNs once, then
 # time filling 8 per-channel buffers in parallel with `Threads.@threads`. The
