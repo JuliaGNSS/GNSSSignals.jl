@@ -192,13 +192,15 @@ end
 # independent correlations. The wipe is a per-sample complex multiply: deinterleave mᵣ/mᵢ and
 # multiply by the carrier. The arithmetic width is chosen at compile time (see `choose_carrier`):
 #   • Int16 fast path — when 2·max|meas|·amplitude ≤ typemax(Int16) (true for the 12-bit ADC at the
-#     auto-chosen amplitude), DI/DQ stay Int16 (`vpmullw`, half the AVX register width). The code
-#     step Σ codeₓ·DI is then a `vpmaddwd` (Int16×Int16→Int32 pairwise-add) — a dot-product reduction
-#     into half-width accumulators. NOTE: `vpmaddwd` pays off for the *reduced-sum* code step, but
-#     NOT for the per-sample wipe (its tiling shuffles + 4× carrier bandwidth lose there — measured);
-#     so the wipe stays a straight deinterleave-multiply. Net ~2× on AVX-512, ~1.2× on AVX2.
+#     auto-chosen amplitude), DI/DQ stay Int16 (`vpmullw`, half the SIMD register width). The code
+#     step Σ codeₓ·DI is then a fused widening multiply-add: `vpmaddwd` (Int16×Int16→Int32 pairwise)
+#     into half-width accumulators on AVX2/AVX-512, or `SMLAL`/`vmlal` (per-lane widening MAC) into
+#     full-width accumulators on NEON. NOTE: this fused MAC pays off for the *reduced-sum* code step,
+#     but NOT for the per-sample wipe (`vpmaddwd`'s tiling shuffles + 4× carrier bandwidth lose there
+#     — measured); so the wipe stays a straight deinterleave-multiply. Net ~2× on AVX-512, ~1.2× on
+#     AVX2; NEON expected to gain from the narrower wipe + SMLAL (verified on the macos-14 runner).
 #   • Int32 fallback — exact for any amplitude (per-sample products can reach 2048·127·2 > Int16), and
-#     the only path on NEON/portable (no `vpmaddwd`). Deinterleave, widen to Int32, `vpmulld`.
+#     the only path on the scalar `Portable` backend. Deinterleave, widen to Int32, `vpmulld`.
 # Both paths are bit-identical (the Int16 path provably cannot overflow when selected). The
 # amplitude is auto-maximised within the Int16-safe bound, so a coarser ADC keeps a finer carrier.
 #
@@ -243,20 +245,23 @@ const _CORR_BLK = 8192
 
 # ── Int16 carrier-wipe fast path ────────────────────────────────────────────
 # The shared wipe DI = mᵣ·cos + mᵢ·sin / DQ = mᵢ·cos − mᵣ·sin is the dominant per-sample cost.
-# It can run entirely in Int16 (half the AVX register width of the Int32 form — and feeding a
-# `vpmaddwd` code accumulate) *iff* it cannot overflow: |DI| ≤ 2·max|meas|·amplitude ≤ typemax(Int16).
-# `vpmaddwd` exists on AVX2/AVX-512 only, so the fast path is gated on the backend too.
-const _HAS_MADDWD = _CORR_W in (32, 64)        # AVX2 (W=32) / AVX-512 (W=64)
+# It can run entirely in Int16 (half the SIMD register width of the Int32 form) *iff* it cannot
+# overflow: |DI| ≤ 2·max|meas|·amplitude ≤ typemax(Int16). The code accumulate Σ codeₓ·DI then uses
+# a fused widening multiply-add: `vpmaddwd` on AVX2/AVX-512 (pairwise, half-width accumulators) or
+# `SMLAL`/`vmlal` on AArch64 NEON (per-lane widening MAC, full-width accumulators — emitted by LLVM
+# from the widening pattern). So the fast path runs on any SIMD backend (W>1); only the truly scalar
+# `Portable` (W=1) backend forgoes it.
+const _HAS_INT16 = _CORR_W in (16, 32, 64)     # NEON (W=16) / AVX2 (W=32) / AVX-512 (W=64)
 
 # Pick (carrier amplitude, wipe intermediate type) for a declared maximum |measurement component|.
 # REQUIRED input, NO default: under-declaring `max_meas` would silently overflow the Int16 wipe and
 # corrupt results, while over-declaring only forgoes the speedup. We take the LARGEST Int16-safe
 # amplitude (carrier rounding error is ±0.5 regardless of amplitude, so relative error ≈ 0.5/amp —
 # bigger amp = finer carrier), capped at the Int8 storage limit. If no amplitude ≥1 is safe (very
-# large `max_meas`) or the backend lacks `vpmaddwd`, fall back to the exact Int32 wipe at full Int8
+# large `max_meas`) or the backend is scalar, fall back to the exact Int32 wipe at full Int8
 # amplitude (Int32 has the headroom, so best fidelity there).
 function choose_carrier(max_meas::Integer)
-    _HAS_MADDWD || return (Int(typemax(Int8)), Int32)
+    _HAS_INT16 || return (Int(typemax(Int8)), Int32)
     a = Int(typemax(Int16)) ÷ (2 * Int(max_meas))           # ⌊32767 / (2·max_meas)⌋, may be 0
     a >= 1 ? (min(a, Int(typemax(Int8))), Int16) : (Int(typemax(Int8)), Int32)
 end
@@ -327,16 +332,26 @@ end
 end
 
 # Six E/P/L accumulators as a tuple (IE,QE,IP,QP,IL,QL); `_acc_zeros`/`_acc_sum` bracket the loop
-# and `_acc` folds one chunk. The accumulate dispatches on the DI/DQ element type the wipe produced:
-#   Int32 DI → widen code to Int32, vpmulld into full-width (Vec{W,Int32}) accumulators.
-#   Int16 DI → widen code to Int16, vpmaddwd into half-width (Vec{W÷2,Int32}) accumulators.
+# and `_acc` folds one chunk. The accumulate dispatches on the DI/DQ element type the wipe produced,
+# and (for the Int16 path) on the backend width:
+#   Int32 DI                → widen code to Int32, vpmulld into full-width (Vec{W,Int32}) accumulators.
+#   Int16 DI, W∈{32,64} AVX  → vpmaddwd (pairwise) into HALF-width (Vec{W÷2,Int32}) accumulators.
+#   Int16 DI, W=16   NEON    → per-lane widening MAC → SMLAL, into FULL-width (Vec{16,Int32}) accs.
 @inline _acc_zeros(::Type{Int32}, ::Val{W}) where {W} = ntuple(_ -> zero(Vec{W,Int32}), Val(6))
-@inline _acc_zeros(::Type{Int16}, ::Val{W}) where {W} = ntuple(_ -> zero(Vec{W ÷ 2,Int32}), Val(6))
+@inline _acc_zeros(::Type{Int16}, ::Val{16}) = ntuple(_ -> zero(Vec{16,Int32}), Val(6))      # NEON: per-lane
+@inline _acc_zeros(::Type{Int16}, ::Val{W}) where {W} = ntuple(_ -> zero(Vec{W ÷ 2,Int32}), Val(6))  # AVX: pairwise
 @inline _acc_sum(a) = ((sum(a[1]), sum(a[2])), (sum(a[3]), sum(a[4])), (sum(a[5]), sum(a[6])))
 @inline function _acc(a, cE::Vec{W,Int8}, cP::Vec{W,Int8}, cL::Vec{W,Int8}, DI::Vec{W,Int32}, DQ::Vec{W,Int32}) where {W}
     e = _wide32(cE); p = _wide32(cP); l = _wide32(cL)
     (a[1] + e * DI, a[2] + e * DQ, a[3] + p * DI, a[4] + p * DQ, a[5] + l * DI, a[6] + l * DQ)
 end
+# NEON Int16 path (W=16): widen code & DI to Int32 from Int16 so LLVM emits SMLAL (sext-i16 operands).
+@inline function _acc(a, cE::Vec{16,Int8}, cP::Vec{16,Int8}, cL::Vec{16,Int8}, DI::Vec{16,Int16}, DQ::Vec{16,Int16})
+    e = _wide32(_wide16(cE)); p = _wide32(_wide16(cP)); l = _wide32(_wide16(cL))
+    di = _wide32(DI); dq = _wide32(DQ)
+    (a[1] + e * di, a[2] + e * dq, a[3] + p * di, a[4] + p * dq, a[5] + l * di, a[6] + l * dq)
+end
+# AVX Int16 path (W∈{32,64}): vpmaddwd pairwise into half-width accumulators.
 @inline function _acc(a, cE::Vec{W,Int8}, cP::Vec{W,Int8}, cL::Vec{W,Int8}, DI::Vec{W,Int16}, DQ::Vec{W,Int16}) where {W}
     e = _wide16(cE); p = _wide16(cP); l = _wide16(cL)
     (a[1] + _maddacc(e, DI), a[2] + _maddacc(e, DQ), a[3] + _maddacc(p, DI),
