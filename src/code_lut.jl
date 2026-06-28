@@ -13,16 +13,17 @@
 # / AVX2 `vpshufb` sliding-window permute over a drift-free integer DDA — or, once the
 # baked table is heavily oversampled (so consecutive samples repeat a chip), a broadcast
 # run-fill that matches the original `gen_code!`'s store-bound speed instead of paying a
-# permute per window. It is Int8/±1 only (no CBOC / cosine-BOC) and requires sub-chip
-# oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
+# permute per window. The baked table is Int8: ±1 for BPSK/BOC/TMBOC, or a multi-level
+# integer approximation of the sqrt-power amplitudes for CBOC (Galileo E1B); cosine-BOC is
+# unsupported. Requires sub-chip oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
 # resampler. Not exported and not part of the public GNSSSignals API; use `CodeReplicaLUT`
 # with `gen_code!` / `gen_code` instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
-# `ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`, `AVX2`,
+# `CBOC`, `ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`, `AVX2`,
 # `Portable`, `default_backend`, …) live inside this submodule so they do not clash with
-# GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `Modulation`. (Plain comment, not a docstring,
+# GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `CBOC` / `Modulation`. (Plain comment, not a docstring,
 # so Documenter's checkdocs doesn't require this internal module in the manual.)
 module CodeLUT
 
@@ -116,8 +117,11 @@ const _GEN_CODE_LUT_SCRATCH = Dict{Int,Vector{Int8}}()
 @inline _to_hz(x::Frequency) = Float64(ustrip(u"Hz", x))
 @inline _to_hz(x) = Float64(x)
 
-# Map a GNSSSignals modulation to a CodeLUT modulation (Int8/±1 only). Errors on
-# unsupported modulations (CBOC, cosine BOC, code-factor n ≠ 1).
+# Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOC/TMBOC; CBOC bakes a
+# multi-level Int8 integer approximation of its sqrt-power amplitudes (`cboc_amplitudes`).
+# Errors on cosine BOC and code-factor n ≠ 1. The `cboc_amplitudes` argument is ignored by
+# every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
+_codelut_modulation(m, ::Tuple{Integer,Integer}) = _codelut_modulation(m)
 function _codelut_modulation(m::LOC)
     CodeLUT.LOC()
 end
@@ -130,18 +134,25 @@ function _codelut_modulation(m::TMBOC)
         error("CodeReplicaLUT supports only TMBOC with BOC(1,1) base and code-factor n==1; use gen_code!")
     CodeLUT.TMBOC(Int(m.boc2.m), collect(Bool, m.pattern))
 end
-function _codelut_modulation(m::CBOC)
-    error("CodeReplicaLUT does not support CBOC (Int8/±1 only); use gen_code!")
+function _codelut_modulation(m::CBOC, cboc_amplitudes::Tuple{Integer,Integer})
+    (m.boc1.n == 1 && m.boc2.n == 1) ||
+        error("CodeReplicaLUT supports only code-factor n==1 CBOC; use gen_code!")
+    a1, a2 = cboc_amplitudes
+    (a1 > 0 && a2 > 0) ||
+        error("CodeReplicaLUT cboc_amplitudes must be positive integers; got $cboc_amplitudes")
+    Int(a1) + Int(a2) <= typemax(Int8) ||
+        error("CodeReplicaLUT cboc_amplitudes must satisfy a1 + a2 ≤ $(typemax(Int8)) (Int8 table); got $cboc_amplitudes")
+    CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), Int8(a2))
 end
 function _codelut_modulation(m::BOCcos)
     error("CodeReplicaLUT does not support cosine-phased BOC (Int8/±1 only); use gen_code!")
 end
 
 """
-    CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer)
+    CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer; cboc_amplitudes = (19, 6))
 
 A reusable, rate-independent plan for fast LUT-based code generation of
-`signal`/`prn`. Building it bakes the fully-modulated ±1 replica (primary ×
+`signal`/`prn`. Building it bakes the fully-modulated replica (primary ×
 subcarrier × short secondary) into an expanded `Int8` `CodeTable` once — this is
 the expensive step. The resulting plan is **immutable and read-only**, so it can
 be shared across threads (build once per `(signal, prn)`, reuse it for every
@@ -151,9 +162,25 @@ Pass the plan to [`gen_code!`](@ref) or [`CodeGeneratorLUT`](@ref) with a sampli
 frequency to resample it. The baked table is independent of the sampling and code
 frequency, so a single plan serves any rate.
 
+# CBOC (Galileo E1B)
+CBOC signals are supported via an **Int8 integer approximation** of the two
+sqrt-power subcarrier amplitudes. `cboc_amplitudes = (a1, a2)` sets the integer
+amplitudes of the `BOC(1,1)` and `BOC(6,1)` components respectively; the baked
+sub-chip values are the composite `±(a1 ± a2)`. For a correlation replica only the
+*ratio* `a1/a2` matters (overall scale is irrelevant): the subcarrier correlation
+is exactly the dot product of the amplitude vectors, so the match to the float
+spec is the cosine between `(a1, a2)` and the true `(sqrt(10/11), sqrt(1/11)) ∝
+(sqrt(10), 1) = (3.162, 1)`. The default `(19, 6)` (ratio `3.167`, baked values
+`±25, ±13`) reproduces the float subcarrier to ~0 dB correlation loss; coarser
+choices trade accuracy for smaller magnitudes (`(3, 1)` → −0.001 dB; `(2, 1)` →
+−0.108 dB). Any `a1, a2 > 0` with `a1 + a2 ≤ 127` is accepted. Because the
+amplitudes only scale the replica, the **sign pattern is identical to the float
+`gen_code!`** for any `a1 > a2 > 0`. The argument is ignored for non-CBOC signals.
+
 # Limitations (vs the plain-`signal` `gen_code!`)
-- **Int8 / ±1 only.** CBOC and cosine-phased BOC raise an error at construction
-  (use `gen_code!` with the signal directly).
+- **Int8 output.** Non-CBOC signals are ±1; CBOC is the multi-level integer
+  approximation above. Cosine-phased BOC raises an error at construction (use
+  `gen_code!` with the signal directly).
 - **Sub-chip oversampling required:** `sampling_frequency ≥
   code_frequency · subchip_factor` (else `gen_code!` raises an error).
 - **Integer-chip phase only:** `start_phase` + the `start_index_shift`
@@ -174,8 +201,9 @@ struct CodeReplicaLUT{S<:AbstractGNSSSignal}
     mc::CodeLUT.ModulatedCode   # rate-INDEPENDENT expanded ±1 table, built once
 end
 
-function CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer)
-    modulation = _codelut_modulation(get_modulation(signal))
+function CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer;
+                       cboc_amplitudes::Tuple{Integer,Integer} = (19, 6))
+    modulation = _codelut_modulation(get_modulation(signal), cboc_amplitudes)
     Lp = get_code_length(signal)
     primary = Int8[get_code_at_index(signal, i, prn) for i in 0:Lp-1]
     sec = get_secondary_code(signal)
