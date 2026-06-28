@@ -237,7 +237,8 @@ const _BACKENDS = (CL.Portable(),
         end
         rng = MersenneTwister(2)
         Lp = 31
-        mods = [CL.LOC(), CL.BOC(1), CL.BOC(2), CL.TMBOC(3, [k in (0, 4, 6) for k in 0:10])]
+        mods = [CL.LOC(), CL.BOC(1), CL.BOC(2), CL.TMBOC(3, [k in (0, 4, 6) for k in 0:10]),
+                CL.CBOC(1, 6, Int8(19), Int8(6))]   # multi-level table (values ±25, ±13)
         for modulation in mods, Ls in (1, 4), (a, b) in ((1, 1), (3, 5), (7, 9))
             P = CL.subchip_factor(modulation)
             primary = rand(rng, Int8[-1, 1], Lp)
@@ -316,7 +317,7 @@ end
     # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P
     # (its 1800-chip overlay is too long to bake) — both yield a residual secondary
     # and are covered by the error testset below.
-    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11(), GalileoE1B()]   # E1B: CBOC, multi-level long table
     for signal in sigs
         plan = CodeReplicaLUT(signal, 1)
         P = plan.mc.subchip_factor
@@ -432,5 +433,97 @@ end
             end
             @test got == oneshot
         end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Galileo E1B CBOC support in the LUT path. The subcarrier's two sqrt-power amplitudes are
+# baked as an Int8 *integer approximation* (default (19,6) ≈ (√(10/11), √(1/11)), ratio √10);
+# the permute/run-fill backends carry the resulting multi-level Int8 values verbatim, so the
+# resampled replica reproduces the float `gen_code!` (identical signs; correlation set by the
+# amplitude ratio). `cboc_amplitudes` lets the caller trade accuracy for smaller magnitudes.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "Galileo E1B CBOC (LUT integer approximation)" begin
+    signal = GalileoE1B(); prn = 1
+    fc = get_code_frequency(signal)
+    P = 12                                            # 2·lcm(1,6)
+
+    @testset "plan construction + baked composite values" begin
+        plan = CodeReplicaLUT(signal, prn)           # default (19,6)
+        @test plan.mc.subchip_factor == P
+        @test length(plan.mc.table) == get_code_length(signal) * P
+        @test sort(unique(plan.mc.table.chips)) == Int8[-25, -13, 13, 25]   # ±(19±6)
+        # the documented default really is (19,6)
+        explicit = CodeReplicaLUT(signal, prn; cboc_amplitudes = (19, 6))
+        @test plan.mc.table.chips == explicit.mc.table.chips
+    end
+
+    @testset "custom amplitudes scale the table; sign pattern is amplitude-independent" begin
+        base = CodeReplicaLUT(signal, prn)
+        for (amps, vals) in (((2, 1), Int8[-3, -1, 1, 3]), ((3, 1), Int8[-4, -2, 2, 4]))
+            plan = CodeReplicaLUT(signal, prn; cboc_amplitudes = amps)
+            @test sort(unique(plan.mc.table.chips)) == vals
+            @test sign.(plan.mc.table.chips) == sign.(base.mc.table.chips)
+        end
+    end
+
+    @testset "amplitude validation" begin
+        for bad in ((0, 1), (1, 0), (-1, 1), (1, -2), (100, 100))   # non-positive or a1+a2 > 127
+            @test_throws ErrorException CodeReplicaLUT(signal, prn; cboc_amplitudes = bad)
+        end
+    end
+
+    @testset "matches float gen_code! (signs exact; correlation tracks the amplitude ratio)" begin
+        # At fs = fc·P (integer ratio P) every sample is exactly one sub-chip, so the LUT and
+        # the float path align sub-chip-for-sub-chip: the sign pattern is identical for ALL
+        # amplitudes, and the normalized correlation equals the cosine between (a1,a2) and the
+        # float (√10, 1) — ~1 for (19,6), degrading gracefully for coarser ratios.
+        fs = fc * P
+        N = get_code_length(signal) * P              # one full code period
+        flt = Vector{Float32}(undef, N); gen_code!(flt, signal, prn, fs, fc)
+        for (amps, mincorr) in (((19, 6), 0.9999), ((3, 1), 0.9998), ((2, 1), 0.987))
+            plan = CodeReplicaLUT(signal, prn; cboc_amplitudes = amps)
+            lut = Vector{Int8}(undef, N); gen_code!(lut, plan, fs, fc)
+            @test sign.(lut) == Int8.(sign.(flt))    # signs identical to the spec
+            rho = sum(Float64.(lut) .* flt) /
+                  (sqrt(sum(abs2, Float64.(lut))) * sqrt(sum(abs2, flt)))
+            @test rho >= mincorr
+        end
+    end
+
+    @testset "resampling all backends == fixed-point reference (multi-level table)" begin
+        plan = CodeReplicaLUT(signal, prn)           # default (19,6) → ±25, ±13
+        full = plan.mc.table.chips; Lf = length(full)
+        for (a, b) in ((1, 1), (3, 5), (7, 9)), phase in (0, 7)
+            sn = _step_num(a / b); psub = phase * P; n = 4 * 64 * 8
+            ref = [full[mod(div(sn * (i - 1), _SD) + psub, Lf) + 1] for i in 1:n]
+            for be in _BACKENDS                       # E1B table > typemax(Int16): AVX2/NEON use Int32 phase
+                out = Vector{Int8}(undef, n)
+                CL.generate_code!(out, plan.mc; code_frequency = a, sampling_frequency = b * P,
+                                  phase = phase, backend = be)
+                @test out == ref
+            end
+        end
+    end
+
+    @testset "high-oversampling run-fill: one-shot == warm == chunked (multi-level)" begin
+        plan = CodeReplicaLUT(signal, prn)
+        fs = fc * P * 10                              # broadcast run-fill regime
+        N = 9000
+        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, plan, fs, fc)
+        gen = CodeGeneratorLUT(plan, fs, fc)
+        warm = Vector{Int8}(undef, N); gen_code!(warm, gen)
+        @test warm == oneshot
+        gen2 = CodeGeneratorLUT(plan, fs, fc); got = Int8[]
+        for chunk in (1, 999, 64, 4096, N - 1 - 999 - 64 - 4096)
+            buf = Vector{Int8}(undef, chunk); gen_code!(buf, gen2); append!(got, buf)
+        end
+        @test got == oneshot
+        @test all(in((-25, -13, 13, 25)), oneshot)   # run-fill preserves the multi-level values
+    end
+
+    @testset "fs < fc·subchip_factor errors" begin
+        plan = CodeReplicaLUT(signal, prn)
+        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), plan, fc * (P - 1), fc)
     end
 end

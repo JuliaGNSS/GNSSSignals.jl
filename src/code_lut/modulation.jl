@@ -11,6 +11,13 @@
 #   BOC(m,1) sin: P = 2m, sub-chip k sign = iseven(k) ? +1 : -1
 #   TMBOC(m2):    P = 2·m2, BOC(1,1) at most chip positions, BOC(m2,1) at `pattern`
 #                 positions (the high-rate component sets the resolution)
+#   CBOC(m1,m2):  P = 2·lcm(m1,m2), sub-chip value = a1·BOC(m1,1) ± a2·BOC(m2,1) — a multi-
+#                 level *integer approximation* (e.g. ±(a1±a2)) of the irrational
+#                 sqrt-power CBOC amplitudes. The expanded table holds those Int8 values
+#                 verbatim; the permute/run-fill backends are value-agnostic (they gather
+#                 chips by position, not by value), so the ±1 machinery resamples them
+#                 unchanged. Galileo E1B is CBOC(1,6); the default (a1,a2)=(19,6) ≈
+#                 (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10) and the caller may pick another.
 #
 # Resample at `chip_frequency · P` (the sub-chip rate); this needs `fs ≥ chip_frequency·P`
 # (sub-chip oversampling ≥ 1), the same window-span condition as the plain code.
@@ -30,12 +37,23 @@ struct TMBOC <: Modulation                      # BOC(1,1) + BOC(m2,1) at `patte
     m2::Int
     pattern::Vector{Bool}                       # pattern[(pos mod end)+1] == true → use BOC(m2,1)
 end
+# Composite BOC: a1·BOC(m1,1) + a2·BOC(m2,1) with *integer* amplitudes (an Int8 approximation
+# of the irrational sqrt-power CBOC amplitudes). Galileo E1B is CBOC(m1=1, m2=6); the default
+# (a1,a2)=(19,6) approximates (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10).
+struct CBOC <: Modulation
+    m1::Int
+    m2::Int
+    a1::Int8                                    # amplitude of the BOC(m1,1) component
+    a2::Int8                                    # amplitude of the BOC(m2,1) component
+end
 
 subchip_factor(::LOC)   = 1
 subchip_factor(b::BOC)  = 2 * b.m
 subchip_factor(t::TMBOC) = 2 * t.m2
+subchip_factor(c::CBOC) = 2 * lcm(c.m1, c.m2)
 
-# Sub-carrier sign for sub-chip `k` (0-based) of a chip at primary position `pos`, given P.
+# Sub-carrier value for sub-chip `k` (0-based) of a chip at primary position `pos`, given P.
+# ±1 for BPSK/BOC/TMBOC; a multi-level integer for CBOC (see below).
 @inline _sc_sign(::LOC, k, pos, P)  = Int8(1)
 @inline _sc_sign(b::BOC, k, pos, P) = iseven(k) ? Int8(1) : Int8(-1)
 @inline function _sc_sign(t::TMBOC, k, pos, P)
@@ -44,6 +62,15 @@ subchip_factor(t::TMBOC) = 2 * t.m2
     else                                                       # BOC(1,1): +1 first half, -1 second
         k < P ÷ 2 ? Int8(1) : Int8(-1)
     end
+end
+# CBOC returns the composite *value* a1·b1 + a2·b2 (e.g. ±(a1±a2)), not a bare sign — the Int8
+# table carries it verbatim. `div(k·2m, P)` is the BOC(m,1) sub-carrier half-period index at the
+# composite resolution P, mirroring the float `get_subcarrier_code`'s `floor(phase·2m)` so the
+# sign at every sub-chip matches the spec (`a1 > a2 > 0` ⇒ same sign as the sqrt-power version).
+@inline function _sc_sign(c::CBOC, k, pos, P)
+    b1 = iseven(div(k * 2 * c.m1, P)) ? Int8(1) : Int8(-1)
+    b2 = iseven(div(k * 2 * c.m2, P)) ? Int8(1) : Int8(-1)
+    c.a1 * b1 + c.a2 * b2
 end
 
 """
@@ -68,7 +95,10 @@ Base.length(mc::ModulatedCode) = length(mc.table)
     code_replica(primary_chips, modulation; secondary=Int8[1], max_bake=typemax(Int16))
 
 Build a [`ModulatedCode`](@ref) from a primary ±1 `primary_chips` vector and a
-`modulation` (`LOC()`, `BOC(m)`, or `TMBOC(m2, pattern)`). `secondary` is a ±1 overlay
+`modulation` (`LOC()`, `BOC(m)`, `TMBOC(m2, pattern)`, or `CBOC(m1, m2, a1, a2)`). The
+table is ±1 for the first three; for `CBOC` it holds the multi-level integer composite
+`a1·BOC(m1,1) ± a2·BOC(m2,1)` (still Int8, so all backends resample it unchanged).
+`secondary` is a ±1 overlay
 that multiplies whole primary periods; it is baked into the table when
 `length(secondary)·length(primary)·subchip_factor ≤ max_bake`, otherwise applied per
 period (a cheap range-negate) at generation time.
