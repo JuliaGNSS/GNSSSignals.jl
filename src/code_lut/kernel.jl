@@ -541,25 +541,33 @@ function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int,
     _runfill_seg_dispatch!(out, table.chips, table.length, ff, ni, c, _RUNFILL_MASK, 0)
 end
 
-# Pick the run-fill path when there are at least `_runfill_min_m(backend, N)` samples per
-# chip (N = fill length). The threshold is the per-chip count where broadcast-fill overtakes
-# the windowed permute; two effects set it, both measured on Zen 5:
-#   • Steady state (long fills): permute is ~36 ps/sample, flat in oversampling; run-fill is
-#     ~216/m ps/sample (fewer chip-boundary recomputes as runs lengthen), so it overtakes at
-#     m ≈ 6–7 on AVX-512 (7 = smallest m where it wins at every length). The other backends'
+# Pick the run-fill path when there are at least `_runfill_min_m` samples per chip. The
+# threshold is the per-chip count where broadcast-fill overtakes the windowed permute, set
+# by two effects, both measured on Zen 5:
+#   • Steady state (long fills): permute is ~36 ps/sample on AVX-512, flat in oversampling;
+#     run-fill is ~216/m ps/sample (fewer chip-boundary recomputes as runs lengthen), so it
+#     overtakes at m ≈ 6–7 (7 = smallest m where it wins at every length). The other backends'
 #     slower permute crosses earlier: AVX2 `vpshufb` (~85 ps) ≈ 3 (run-fill's 216/3 ≈ 72 ps
-#     beats it; measured N-independent, as ~85 ps sits between 216/3 and 216/2 ≈ 108), NEON
-#     `tbl1` ≈ 3, Portable (per-sample scalar lookup) ≈ 2.
+#     beats it; N-independent, as ~85 ps sits between 216/3 and 216/2 ≈ 108), NEON `tbl1` ≈ 3,
+#     Portable (per-sample scalar lookup) ≈ 2. This is the `_runfill_min_m(backend)` below.
 #   • Short fills: permute pays a fixed ~37 ns init (4× `_init_rel`, a 64-lane `vpmullq`
 #     running-product setup per stream) vs run-fill's ~15 ns (one Int128 freqfix divide), a
-#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. This only matters when permute is
+#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. Only matters where permute is
 #     fast: on AVX-512 the sweep puts it at m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to
-#     7 once the init amortises — so the AVX-512 threshold is lowered for short fills. AVX2 is
-#     slow enough that its crossover stays at 3 for all N (no small-N adjustment needed); NEON/
-#     Portable have no small-N sweep yet, so they stay flat too.
-@inline _runfill_min_m(::AVX512, N::Int) = N < 1024 ? 4 : N < 4096 ? 5 : 7
-@inline _runfill_min_m(::AVX2, ::Int)     = 3
-@inline _runfill_min_m(::Neon, ::Int)     = 3
-@inline _runfill_min_m(::Portable, ::Int) = 2
-@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend, N::Int) =
+#     the steady 7 once the init amortises. This is the `_runfill_min_m(backend, N)` overload.
+# Only the one-shot `generate_code!` knows the fill length, so only it can use the N-aware
+# overload; the continuing generator (`make_generator`) fixes its kernel at construction
+# before any N is known, so it uses the steady-state threshold — correct for its typical
+# large-epoch fills.
+@inline _runfill_min_m(::AVX512)   = 7
+@inline _runfill_min_m(::AVX2)     = 3
+@inline _runfill_min_m(::Neon)     = 3
+@inline _runfill_min_m(::Portable) = 2
+# N-aware overload (one-shot fills): lower the threshold for short fills. Only AVX-512's
+# permute is fast enough for this to matter; the others fall back to their steady threshold.
+@inline _runfill_min_m(be::AVX512, N::Int) = N < 1024 ? 4 : N < 4096 ? 5 : _runfill_min_m(be)
+@inline _runfill_min_m(be::Backend, ::Int) = _runfill_min_m(be)
+@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend) =          # continuing
+    step_den ÷ step_num >= _runfill_min_m(backend)
+@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend, N::Int) =  # one-shot (N-aware)
     step_den ÷ step_num >= _runfill_min_m(backend, N)

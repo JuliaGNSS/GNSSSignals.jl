@@ -240,12 +240,18 @@ end
 # m = oversampling exactly. LUT only — the threshold is internal to the LUT path.
 if isdefined(GNSSSignals, :CodeGeneratorLUT)
     let fc = 1023e3Hz, signal = _GPSL1(), prn = 1
+        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
         for m in (3, 5, 6, 7), (slabel, n) in (("512", 512), ("2k", 2048), ("64k", 65536))
             fs = m * fc
-            gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
             o8 = zeros(Int8, n)
-            SUITE["code"]["runfill crossover"]["$(lpad(m, 2, '0'))x"][slabel] =
-                @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 500
+            grp = SUITE["code"]["runfill crossover"]["$(lpad(m, 2, '0'))x"][slabel]
+            # One-shot fill: N-aware threshold (it knows length(out)). Shows the AVX-512 N-aware
+            # win at m=5,6 short N, the steady 8→7 at m=7, and AVX2 at m=3.
+            grp["one-shot"] = @benchmarkable gen_code!($o8, $plan, $fs, $fc) evals = 1 samples = 500
+            # Continuing generator: steady-state threshold (kernel fixed at construction, no per-
+            # fill N). Shows the steady 8→7 at m=7; correctly *unchanged* at m=5,6 short N.
+            gen = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)
+            grp["generator"] = @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 500
         end
     end
 end
