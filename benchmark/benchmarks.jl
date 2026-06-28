@@ -179,7 +179,7 @@ end
 # adjacent. Same N + fs/fc for both, and the LUT side uses the warm generator (0-alloc),
 # matching the original's 0-alloc fill. The LUT uses the windowed permute (flat in the
 # oversampling ratio) at low oversampling and switches to a broadcast run-fill once the
-# baked table is oversampled ≳8× (AVX-512) / ≳4× (AVX2), so it tracks the original's
+# baked table is oversampled ≳7× (AVX-512) / ≳4× (AVX2), so it tracks the original's
 # run-fill speed-up at high oversampling instead of staying flat. It still wins outright at
 # low oversampling and for modulated signals (baked subcarrier).
 # Two representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
