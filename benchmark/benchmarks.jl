@@ -1,6 +1,6 @@
 using BenchmarkTools
 using GNSSSignals
-using SIMD: Vec, vload, shufflevector
+using SIMD: Vec, vload, vstore, shufflevector
 import SinCosLUT
 using SinCosLUT: SinCosTable, generate_carrier!, cycles_per_sample,
                  carrier_engine, carrier_state, carrier_lookup, carrier_advance, carrier_width
@@ -189,16 +189,18 @@ end
 # SHARED CARRIER WIPE-OFF. The carrier is identical for all three correlators, so the
 # per-sample wipe DI = mᵣ·cos + mᵢ·sin, DQ = mᵢ·cos − mᵣ·sin is computed ONCE and each
 # correlator reduces to a cheap Σ codeₓ·DI / Σ codeₓ·DQ — ~1.8× faster than three
-# independent correlations. The wipe is a per-sample complex multiply: deinterleave mᵣ/mᵢ,
-# widen everything to Int32 and multiply (per-sample products reach 2048·8·2 = 32768 > Int16,
-# so DI/DQ are Int32). The code step is then an Int32 multiply (code ±1, CBOC/BOC ±2) into the
-# accumulators. NOTE: `vpmaddwd` is deliberately NOT used here. It packs an Int16×Int16→Int32
-# *pairwise sum*, which only pays off when the output is a reduced sum; the wipe output is
-# per-sample, so the interleave + shuffles `vpmaddwd` needs are pure overhead — the straight
-# deinterleave-and-multiply is ~17–25 % faster (measured on AVX-512) and identical on NEON,
-# which has no `vpmaddwd` anyway. (Keeping DI/DQ in Int16 to re-enable `vpmaddwd` for the code
-# step was tried and is a wash: the kernel is bound by the lookup/shuffle work, not the
-# multiply width.)
+# independent correlations. The wipe is a per-sample complex multiply: deinterleave mᵣ/mᵢ and
+# multiply by the carrier. The arithmetic width is chosen at compile time (see `choose_carrier`):
+#   • Int16 fast path — when 2·max|meas|·amplitude ≤ typemax(Int16) (true for the 12-bit ADC at the
+#     auto-chosen amplitude), DI/DQ stay Int16 (`vpmullw`, half the AVX register width). The code
+#     step Σ codeₓ·DI is then a `vpmaddwd` (Int16×Int16→Int32 pairwise-add) — a dot-product reduction
+#     into half-width accumulators. NOTE: `vpmaddwd` pays off for the *reduced-sum* code step, but
+#     NOT for the per-sample wipe (its tiling shuffles + 4× carrier bandwidth lose there — measured);
+#     so the wipe stays a straight deinterleave-multiply. Net ~2× on AVX-512, ~1.2× on AVX2.
+#   • Int32 fallback — exact for any amplitude (per-sample products can reach 2048·127·2 > Int16), and
+#     the only path on NEON/portable (no `vpmaddwd`). Deinterleave, widen to Int32, `vpmulld`.
+# Both paths are bit-identical (the Int16 path provably cannot overflow when selected). The
+# amplitude is auto-maximised within the Int16-safe bound, so a coarser ADC keeps a finer carrier.
 #
 # EARLY/LATE = PROMPT SHIFTED BY D SAMPLES. One Prompt code stream is built; Early/Late index
 # it ∓D samples away. This generates the code ONCE (N+2D samples) instead of three times and
@@ -234,30 +236,118 @@ const _CORR_W = let be = SinCosLUT.default_backend(Int8, 64)
     be isa SinCosLUT.AVX2 ? 32 :
     be isa SinCosLUT.Neon ? 16 : 1
 end
+# Strip-mining block length (samples) for the "hybrid-blocked" kernel below. A multiple of every
+# backend `W`; sized so its three L1-resident scratch buffers (≈ 3·_CORR_BLK bytes per channel)
+# stay in L1 and are reused across blocks rather than spilling to the LLC.
+const _CORR_BLK = 8192
+
+# ── Int16 carrier-wipe fast path ────────────────────────────────────────────
+# The shared wipe DI = mᵣ·cos + mᵢ·sin / DQ = mᵢ·cos − mᵣ·sin is the dominant per-sample cost.
+# It can run entirely in Int16 (half the AVX register width of the Int32 form — and feeding a
+# `vpmaddwd` code accumulate) *iff* it cannot overflow: |DI| ≤ 2·max|meas|·amplitude ≤ typemax(Int16).
+# `vpmaddwd` exists on AVX2/AVX-512 only, so the fast path is gated on the backend too.
+const _HAS_MADDWD = _CORR_W in (32, 64)        # AVX2 (W=32) / AVX-512 (W=64)
+
+# Pick (carrier amplitude, wipe intermediate type) for a declared maximum |measurement component|.
+# REQUIRED input, NO default: under-declaring `max_meas` would silently overflow the Int16 wipe and
+# corrupt results, while over-declaring only forgoes the speedup. We take the LARGEST Int16-safe
+# amplitude (carrier rounding error is ±0.5 regardless of amplitude, so relative error ≈ 0.5/amp —
+# bigger amp = finer carrier), capped at the Int8 storage limit. If no amplitude ≥1 is safe (very
+# large `max_meas`) or the backend lacks `vpmaddwd`, fall back to the exact Int32 wipe at full Int8
+# amplitude (Int32 has the headroom, so best fidelity there).
+function choose_carrier(max_meas::Integer)
+    _HAS_MADDWD || return (Int(typemax(Int8)), Int32)
+    a = Int(typemax(Int16)) ÷ (2 * Int(max_meas))           # ⌊32767 / (2·max_meas)⌋, may be 0
+    a >= 1 ? (min(a, Int(typemax(Int8))), Int16) : (Int(typemax(Int8)), Int32)
+end
+
+# The benchmark measurement is a 12-bit ADC sample, so |meas| ≤ 2^11. One source of truth for the
+# carrier amplitude + wipe type, shared by every kernel so all four stay mutually bit-identical.
+const _ADC_BITS = 12
+const _MAX_MEAS = 1 << (_ADC_BITS - 1)                       # 2048
+const _CARRIER_AMP, _WIPE_TI = choose_carrier(_MAX_MEAS)     # (7, Int16) on AVX2/AVX-512
 
 @inline _wide32(v::Vec{W,Int8}) where {W} = convert(Vec{W,Int32}, v)
 @inline _wide32(v::Vec{W,Int16}) where {W} = convert(Vec{W,Int32}, v)
+@inline _wide16(v::Vec{W,Int8}) where {W} = convert(Vec{W,Int16}, v)
 
 # Deinterleave [re, im, …] → real (even lanes) / imag (odd lanes), Vec{2W,Int16} → Vec{W,Int16}.
 @inline _re(v::Vec{M,Int16}) where {M} = shufflevector(v, Val(ntuple(i -> 2 * (i - 1), Val(M ÷ 2))))
 @inline _im(v::Vec{M,Int16}) where {M} = shufflevector(v, Val(ntuple(i -> 2 * (i - 1) + 1, Val(M ÷ 2))))
 
-# Per-sample shared carrier wipe (interleaved meas + sin/cos Int8) → (DI, DQ)::Vec{W,Int32}:
-# deinterleave mᵣ/mᵢ, widen to Int32, multiply. Same expressions on every backend (no intrinsic).
-@inline function _wipe(v::Vec{M,Int16}, sinv, cosv) where {M}
+# ── vpmaddwd: Int16×Int16 → Int32 pairwise-add — the dot-product primitive for the code accumulate
+# Σ codeₓ·DI. Native 512-/256-bit intrinsics tiled to width W; x86-only (the Int16 path is gated on
+# `_HAS_MADDWD`, so these are never instantiated on other backends). Output is Vec{W÷2,Int32}
+# (adjacent samples pre-summed); the final `sum` over the accumulator is identical to a per-lane
+# Int32 reduction (integer addition is associative), so the result is bit-exact with the Int32 path.
+@static if Sys.ARCH in (:x86_64, :i686)
+    @inline _madd_tile(a::Vec{M,Int16}, ::Val{o}, ::Val{t}) where {M,o,t} =
+        shufflevector(a, Val(ntuple(i -> i - 1 + o, Val(t))))
+    @inline function _madd512(a::Vec{32,Int16}, b::Vec{32,Int16})
+        Vec(Base.llvmcall(("""
+            declare <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16>, <32 x i16>)
+            define <16 x i32> @entry(<32 x i16> %a, <32 x i16> %b) #0 {
+              %r = call <16 x i32> @llvm.x86.avx512.pmaddw.d.512(<32 x i16> %a, <32 x i16> %b)
+              ret <16 x i32> %r }
+            attributes #0 = { alwaysinline }""", "entry"), NTuple{16,Base.VecElement{Int32}},
+            Tuple{NTuple{32,Base.VecElement{Int16}}, NTuple{32,Base.VecElement{Int16}}}, a.data, b.data))
+    end
+    @inline function _madd256(a::Vec{16,Int16}, b::Vec{16,Int16})
+        Vec(Base.llvmcall(("""
+            declare <8 x i32> @llvm.x86.avx2.pmadd.wd(<16 x i16>, <16 x i16>)
+            define <8 x i32> @entry(<16 x i16> %a, <16 x i16> %b) #0 {
+              %r = call <8 x i32> @llvm.x86.avx2.pmadd.wd(<16 x i16> %a, <16 x i16> %b)
+              ret <8 x i32> %r }
+            attributes #0 = { alwaysinline }""", "entry"), NTuple{8,Base.VecElement{Int32}},
+            Tuple{NTuple{16,Base.VecElement{Int16}}, NTuple{16,Base.VecElement{Int16}}}, a.data, b.data))
+    end
+    @inline function _maddacc(a::Vec{64,Int16}, b::Vec{64,Int16})        # AVX-512: 2×512-bit tiles
+        lo = _madd512(_madd_tile(a, Val(0), Val(32)),  _madd_tile(b, Val(0), Val(32)))
+        hi = _madd512(_madd_tile(a, Val(32), Val(32)), _madd_tile(b, Val(32), Val(32)))
+        shufflevector(lo, hi, Val(ntuple(i -> i - 1, Val(32))))
+    end
+    @inline function _maddacc(a::Vec{32,Int16}, b::Vec{32,Int16})        # AVX2: 2×256-bit tiles
+        lo = _madd256(_madd_tile(a, Val(0), Val(16)),  _madd_tile(b, Val(0), Val(16)))
+        hi = _madd256(_madd_tile(a, Val(16), Val(16)), _madd_tile(b, Val(16), Val(16)))
+        shufflevector(lo, hi, Val(ntuple(i -> i - 1, Val(16))))
+    end
+end
+
+# Per-sample shared carrier wipe → (DI, DQ). Two paths, selected at compile time by the wipe type:
+#   Int32 — deinterleave mᵣ/mᵢ, widen to Int32, multiply. Exact for any amplitude; the fallback.
+#   Int16 — same but stays in Int16 (vpmullw), valid only when 2·max|meas|·amplitude ≤ typemax(Int16)
+#           (see `choose_carrier`). Half the register width on AVX, and feeds the vpmaddwd accumulate.
+@inline function _wipe(::Type{Int32}, v::Vec{M,Int16}, sinv::Vec{W,Int8}, cosv::Vec{W,Int8}) where {M,W}
     mr = _wide32(_re(v)); mi = _wide32(_im(v)); cs = _wide32(cosv); sn = _wide32(sinv)
     (mr * cs + mi * sn, mi * cs - mr * sn)
 end
+@inline function _wipe(::Type{Int16}, v::Vec{M,Int16}, sinv::Vec{W,Int8}, cosv::Vec{W,Int8}) where {M,W}
+    mr = _re(v); mi = _im(v); cs = _wide16(cosv); sn = _wide16(sinv)
+    (mr * cs + mi * sn, mi * cs - mr * sn)
+end
 
-# Accumulate one chunk into the six Int32 E/P/L accumulators (code ±1/±2 × Int32 DI/DQ).
-@inline _accum_epl(IE, QE, IP, QP, IL, QL, cE, cP, cL, DI, DQ) =
-    (IE + cE * DI, QE + cE * DQ, IP + cP * DI, QP + cP * DQ, IL + cL * DI, QL + cL * DQ)
+# Six E/P/L accumulators as a tuple (IE,QE,IP,QP,IL,QL); `_acc_zeros`/`_acc_sum` bracket the loop
+# and `_acc` folds one chunk. The accumulate dispatches on the DI/DQ element type the wipe produced:
+#   Int32 DI → widen code to Int32, vpmulld into full-width (Vec{W,Int32}) accumulators.
+#   Int16 DI → widen code to Int16, vpmaddwd into half-width (Vec{W÷2,Int32}) accumulators.
+@inline _acc_zeros(::Type{Int32}, ::Val{W}) where {W} = ntuple(_ -> zero(Vec{W,Int32}), Val(6))
+@inline _acc_zeros(::Type{Int16}, ::Val{W}) where {W} = ntuple(_ -> zero(Vec{W ÷ 2,Int32}), Val(6))
+@inline _acc_sum(a) = ((sum(a[1]), sum(a[2])), (sum(a[3]), sum(a[4])), (sum(a[5]), sum(a[6])))
+@inline function _acc(a, cE::Vec{W,Int8}, cP::Vec{W,Int8}, cL::Vec{W,Int8}, DI::Vec{W,Int32}, DQ::Vec{W,Int32}) where {W}
+    e = _wide32(cE); p = _wide32(cP); l = _wide32(cL)
+    (a[1] + e * DI, a[2] + e * DQ, a[3] + p * DI, a[4] + p * DQ, a[5] + l * DI, a[6] + l * DQ)
+end
+@inline function _acc(a, cE::Vec{W,Int8}, cP::Vec{W,Int8}, cL::Vec{W,Int8}, DI::Vec{W,Int16}, DQ::Vec{W,Int16}) where {W}
+    e = _wide16(cE); p = _wide16(cP); l = _wide16(cL)
+    (a[1] + _maddacc(e, DI), a[2] + _maddacc(e, DQ), a[3] + _maddacc(p, DI),
+     a[4] + _maddacc(p, DQ), a[5] + _maddacc(l, DI), a[6] + _maddacc(l, DQ))
+end
 
 # ── FUSED E/P/L: one Prompt code lookup per chunk; Early/Late are lane-shifts across a sliding
 # pipeline of P = ⌈D/W⌉+⌊D/W⌋+2 carried code chunks. `@generated` so the pipeline length, the
 # per-correlator chunk indices and the shuffle masks fold to literals (fully unrolled, 0-alloc)
 # for any (W, D). The Prompt code is a single value-based stream; nothing is materialised.
-@generated function correlate_epl_fused(meas::Vector{Int16}, ceng1, reng, ::Val{W}, ::Val{D}) where {W,D}
+@generated function correlate_epl_fused(meas::Vector{Int16}, ceng1, reng, ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
     g = cld(D, W); fl = fld(D, W); P = g + fl + 2
     re = g * W - D; rl = D - fl * W
     csym = Vector{Symbol}(undef, P); for i in 1:P; csym[i] = Symbol(:c_, i); end
@@ -272,22 +362,20 @@ end
     for i in 1:P-1; push!(shift, :($(csym[i]) = $(csym[i+1]))); end
     push!(shift, :($(csym[P]) = code_lookup(ceng1, cs))); push!(shift, :(cs = code_advance(ceng1, cs)))
     quote
-        IE = zero(Vec{$W,Int32}); QE = zero(Vec{$W,Int32}); IP = zero(Vec{$W,Int32})
-        QP = zero(Vec{$W,Int32}); IL = zero(Vec{$W,Int32}); QL = zero(Vec{$W,Int32})
+        acc = _acc_zeros($TI, Val($W))
         cs = code_state(ceng1, 0); rs = carrier_state(reng, 0); z = zero(Vec{$W,Int8})
         $(prime...)
         n = 0; lim = length(meas) ÷ 2
         @inbounds while n < lim
             sinv, cosv = carrier_lookup(reng, rs); rs = carrier_advance(reng, rs, 1)
-            DI, DQ = _wipe(vload(Vec{$(2W),Int16}, meas, 2n + 1), sinv, cosv)
+            DI, DQ = _wipe($TI, vload(Vec{$(2W),Int16}, meas, 2n + 1), sinv, cosv)
             early = shufflevector($(csym[1]), $(csym[2]), Val($emask))
             late = shufflevector($(csym[g+fl+1]), $(csym[g+fl+2]), Val($lmask))
-            cE = _wide32(early); cP = _wide32($(csym[g+1])); cL = _wide32(late)
-            IE, QE, IP, QP, IL, QL = _accum_epl(IE, QE, IP, QP, IL, QL, cE, cP, cL, DI, DQ)
+            acc = _acc(acc, early, $(csym[g+1]), late, DI, DQ)
             $(shift...)
             n += $W
         end
-        ((sum(IE), sum(QE)), (sum(IP), sum(QP)), (sum(IL), sum(QL)))
+        _acc_sum(acc)
     end
 end
 
@@ -297,22 +385,19 @@ end
 # ext[n+1] / ext[n+D+1] / ext[n+2D+1]. Generator is warm (continuing); timed region is 0-alloc.
 function correlate_epl_unfused!(ext::Vector{Int8}, csin::Vector{Int8}, ccos::Vector{Int8},
                                 meas::Vector{Int16}, code_gen, tbl, fs, freq, N::Int,
-                                ::Val{W}, ::Val{D}) where {W,D}
+                                ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
     gen_code!(view(ext, (D + 1):(D + N + D)), code_gen)     # samples 0 … N+D−1 (ext[1:D] stay 0)
     generate_carrier!(view(csin, 1:N), view(ccos, 1:N), tbl; frequency = freq, sampling_frequency = fs)
-    IE = zero(Vec{W,Int32}); QE = zero(Vec{W,Int32}); IP = zero(Vec{W,Int32})
-    QP = zero(Vec{W,Int32}); IL = zero(Vec{W,Int32}); QL = zero(Vec{W,Int32})
+    acc = _acc_zeros(TI, Val(W))
     n = 0
     @inbounds while n < length(csin)
-        DI, DQ = _wipe(vload(Vec{2W,Int16}, meas, 2n + 1),
+        DI, DQ = _wipe(TI, vload(Vec{2W,Int16}, meas, 2n + 1),
                        vload(Vec{W,Int8}, csin, n + 1), vload(Vec{W,Int8}, ccos, n + 1))
-        cE = _wide32(vload(Vec{W,Int8}, ext, n + 1))
-        cP = _wide32(vload(Vec{W,Int8}, ext, n + D + 1))
-        cL = _wide32(vload(Vec{W,Int8}, ext, n + 2D + 1))
-        IE, QE, IP, QP, IL, QL = _accum_epl(IE, QE, IP, QP, IL, QL, cE, cP, cL, DI, DQ)
+        acc = _acc(acc, vload(Vec{W,Int8}, ext, n + 1), vload(Vec{W,Int8}, ext, n + D + 1),
+                   vload(Vec{W,Int8}, ext, n + 2D + 1), DI, DQ)
         n += W
     end
-    ((sum(IE), sum(QE)), (sum(IP), sum(QP)), (sum(IL), sum(QL)))
+    _acc_sum(acc)
 end
 
 # ── HYBRID E/P/L: materialise ONLY the code (fast run-fill `gen_code!`, same `ext` layout as
@@ -322,22 +407,96 @@ end
 # instead of the unfused's three (code + sin + cos), while still getting run-fill's fast code
 # generation that the fully-fused path lacks. Arithmetic is bit-identical to both kernels.
 function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, code_gen, reng, N::Int,
-                               ::Val{W}, ::Val{D}) where {W,D}
+                               ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
     gen_code!(view(ext, (D + 1):(D + N + D)), code_gen)     # samples 0 … N+D−1 (ext[1:D] stay 0)
-    IE = zero(Vec{W,Int32}); QE = zero(Vec{W,Int32}); IP = zero(Vec{W,Int32})
-    QP = zero(Vec{W,Int32}); IL = zero(Vec{W,Int32}); QL = zero(Vec{W,Int32})
+    acc = _acc_zeros(TI, Val(W))
     rs = carrier_state(reng, 0)
     n = 0; lim = length(meas) ÷ 2
     @inbounds while n < lim
         sinv, cosv = carrier_lookup(reng, rs); rs = carrier_advance(reng, rs, 1)
-        DI, DQ = _wipe(vload(Vec{2W,Int16}, meas, 2n + 1), sinv, cosv)
-        cE = _wide32(vload(Vec{W,Int8}, ext, n + 1))
-        cP = _wide32(vload(Vec{W,Int8}, ext, n + D + 1))
-        cL = _wide32(vload(Vec{W,Int8}, ext, n + 2D + 1))
-        IE, QE, IP, QP, IL, QL = _accum_epl(IE, QE, IP, QP, IL, QL, cE, cP, cL, DI, DQ)
+        DI, DQ = _wipe(TI, vload(Vec{2W,Int16}, meas, 2n + 1), sinv, cosv)
+        acc = _acc(acc, vload(Vec{W,Int8}, ext, n + 1), vload(Vec{W,Int8}, ext, n + D + 1),
+                   vload(Vec{W,Int8}, ext, n + 2D + 1), DI, DQ)
         n += W
     end
-    ((sum(IE), sum(QE)), (sum(IP), sum(QP)), (sum(IL), sum(QL)))
+    _acc_sum(acc)
+end
+
+# ── HYBRID-BLOCKED E/P/L: the hybrid's strategy taken to its conclusion — strip-mine the whole
+# correlation into BLK-sample blocks and regenerate BOTH the code and the carrier into SMALL,
+# L1-resident scratch that is REUSED across blocks. So, unlike the plain hybrid (which keeps a
+# full ≈N-sample code buffer per channel), this materialises NOTHING of length N: its working set
+# is just `3·BLK` scratch bytes per channel (code block + sin + cos), independent of N.
+#
+# Per block it runs two tight loops — fill (code via run-fill `gen_code!`, carrier via the value
+# engine in a 4-way-unrolled fill, both shuffle-port bound) then correlate (cheap `ext`/carrier
+# loads + the multiply-port-bound wipe + E/P/L accumulate) — so each loop hits peak port
+# utilisation the way the unfused's two full-length passes do, but without ever touching the LLC.
+# That combination is the point: it is fused-class in LLC footprint (so it keeps scaling with
+# cores once the working set spills, where even the plain hybrid's code buffer eventually loses to
+# the fused's zero-buffer kernel) yet hybrid-class in per-sample cost (cheap loads, not per-chunk
+# value-engine permutes). Arithmetic is bit-identical to all three other kernels.
+#
+# `extb` holds samples (b−D) … (b+len−1+D) for the current block at absolute start `b` in entries
+# 1 … len+2D (Early/Prompt/Late at output n read entries n+1 / n+D+1 / n+2D+1, as in the unfused).
+# The leading D entries of block 0 are the sample-<0 zero edge; every later block carries the
+# 2D-sample overlap from the previous block's tail (the run-fill generator is continuing, so the
+# code stays exact across the block seam). `BLK` is a multiple of `W`, so every block length is too.
+
+# Fill `len` carrier samples starting at absolute sample `start` into csb/ccb, 4-way unrolled so
+# the permute lookups pipeline (the same scheme `generate_carrier!` uses internally, but driven by
+# the value engine at an exact absolute start, so it is bit-identical to the fused carrier).
+@inline function _epl_fill_carrier!(csb::Vector{Int8}, ccb::Vector{Int8}, reng,
+                                    start::Int, len::Int, ::Val{W}) where {W}
+    s0 = carrier_state(reng, start);      s1 = carrier_state(reng, start + W)
+    s2 = carrier_state(reng, start + 2W); s3 = carrier_state(reng, start + 3W)
+    n = 0
+    @inbounds while n + 4W <= len
+        a0, b0 = carrier_lookup(reng, s0); a1, b1 = carrier_lookup(reng, s1)
+        a2, b2 = carrier_lookup(reng, s2); a3, b3 = carrier_lookup(reng, s3)
+        vstore(a0, csb, n + 1);      vstore(b0, ccb, n + 1)
+        vstore(a1, csb, n + W + 1);  vstore(b1, ccb, n + W + 1)
+        vstore(a2, csb, n + 2W + 1); vstore(b2, ccb, n + 2W + 1)
+        vstore(a3, csb, n + 3W + 1); vstore(b3, ccb, n + 3W + 1)
+        s0 = carrier_advance(reng, s0, 4); s1 = carrier_advance(reng, s1, 4)
+        s2 = carrier_advance(reng, s2, 4); s3 = carrier_advance(reng, s3, 4)
+        n += 4W
+    end
+    @inbounds while n < len                                  # < 4W tail, one chunk at a time
+        a0, b0 = carrier_lookup(reng, s0); vstore(a0, csb, n + 1); vstore(b0, ccb, n + 1)
+        s0 = carrier_advance(reng, s0, 1)
+        n += W
+    end
+    nothing
+end
+
+function correlate_epl_hybrid_blocked!(extb::Vector{Int8}, csb::Vector{Int8}, ccb::Vector{Int8},
+                                       meas::Vector{Int16}, code_gen, reng,
+                                       ::Val{W}, ::Val{D}, ::Val{BLK}, ::Val{TI}) where {W,D,BLK,TI}
+    acc = _acc_zeros(TI, Val(W))
+    lim = length(meas) ÷ 2
+    b = 0; prevlen = 0
+    @inbounds while b < lim
+        len = min(BLK, lim - b)
+        if prevlen == 0                                      # block 0: leading D zeros, fill 0…len+D−1
+            for i in 1:D; extb[i] = Int8(0); end
+            gen_code!(view(extb, (D + 1):(D + len + D)), code_gen)
+        else                                                 # carry 2D overlap from the prev tail, fill len
+            for i in 1:2D; extb[i] = extb[prevlen + i]; end
+            gen_code!(view(extb, (2D + 1):(2D + len)), code_gen)
+        end
+        _epl_fill_carrier!(csb, ccb, reng, b, len, Val(W))
+        n = 0
+        @inbounds while n < len
+            DI, DQ = _wipe(TI, vload(Vec{2W,Int16}, meas, 2(b + n) + 1),
+                           vload(Vec{W,Int8}, csb, n + 1), vload(Vec{W,Int8}, ccb, n + 1))
+            acc = _acc(acc, vload(Vec{W,Int8}, extb, n + 1), vload(Vec{W,Int8}, extb, n + D + 1),
+                       vload(Vec{W,Int8}, extb, n + 2D + 1), DI, DQ)
+            n += W
+        end
+        b += len; prevlen = len
+    end
+    _acc_sum(acc)
 end
 
 # Prompt code engine (a single stream — Early/Late are derived by lane-shift) + carrier engine.
@@ -359,39 +518,44 @@ if isdefined(GNSSSignals, :code_engine)
             freq = 1234.0                              # residual carrier / Doppler to wipe off (Hz)
             N = round(Int, fs * 1e-3)                  # 1 ms
             D = round(Int, 0.5 * fs / fc)              # ½-chip Early/Late spacing, in samples
-            carrier_amplitude = 8                      # carrier ∈ ±amplitude (stored Int8)
-            adc_bits = 12                              # measurement is a 12-bit ADC sample (Int16)
+            # Carrier amplitude + wipe type auto-chosen from the 12-bit ADC range (Int16 fast path).
             plan = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1)
             code_gen = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)   # warm generator for the unfused fill
-            tbl = SinCosTable(Int8; steps = 64, amplitude = carrier_amplitude)
+            tbl = SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP)
             ceng1, reng = _epl_engines(plan, tbl, fs, fc, freq)
 
             # Zero-pad to a whole number of W-wide chunks (Npad samples). meas is complex with
             # re/im interleaved → 2·Npad Int16 words. ext spans samples −D … (Npad−1)+D.
             Npad = cld(N, _CORR_W) * _CORR_W
-            lim = Int16(1) << (adc_bits - 1)                       # 12-bit signed range ±2048
+            lim = Int16(_MAX_MEAS)                                  # 12-bit signed range ±2048
             meas = zeros(Int16, 2 * Npad)                          # [re₀, im₀, re₁, im₁, …]
             meas[1:2N] .= rand(-lim:(lim - Int16(1)), 2N)
             ext = zeros(Int8, Npad + 2D); csin = zeros(Int8, Npad); ccos = zeros(Int8, Npad)
+            # hybrid-blocked: small L1-resident scratch reused across blocks (size independent of N).
+            extb = zeros(Int8, _CORR_BLK + 2D); csb = zeros(Int8, _CORR_BLK); ccb = zeros(Int8, _CORR_BLK)
 
             g = SUITE["correlation"][label]
             g["fused"] = @benchmarkable correlate_epl_fused(
-                $meas, $ceng1, $reng, $(Val(_CORR_W)), $(Val(D)),
+                $meas, $ceng1, $reng, $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
             g["unfused"] = @benchmarkable correlate_epl_unfused!(
                 $ext, $csin, $ccos, $meas, $code_gen, $tbl, $fs, $freq, $N,
-                $(Val(_CORR_W)), $(Val(D)),
+                $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
             g["hybrid"] = @benchmarkable correlate_epl_hybrid!(
-                $ext, $meas, $code_gen, $reng, $N, $(Val(_CORR_W)), $(Val(D)),
+                $ext, $meas, $code_gen, $reng, $N, $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
+            ) evals = 1 samples = 1000
+            g["hybrid-blocked"] = @benchmarkable correlate_epl_hybrid_blocked!(
+                $extb, $csb, $ccb, $meas, $code_gen, $reng,
+                $(Val(_CORR_W)), $(Val(D)), $(Val(_CORR_BLK)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
         end
     end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PARALLEL multi-channel correlation — FUSED vs UNFUSED vs HYBRID across many satellites
-# (Polyester).
+# PARALLEL multi-channel correlation — FUSED vs UNFUSED vs HYBRID vs HYBRID-BLOCKED across many
+# satellites (Polyester).
 #
 # This is where the fused/unfused trade-off INVERTS. Per channel (single thread) the fused is
 # execution-port bound and ~10% slower than the unfused (see the single-channel rows above).
@@ -403,15 +567,24 @@ end
 # memory bandwidth: the unfused stops scaling with cores while the fused keeps scaling, because
 # it never touches the bus. So the fused WINS once the working set exceeds the LLC.
 #
-# The HYBRID is the best of both: it materialises only the CODE (the fast run-fill `gen_code!`
-# the fully-fused path can't use) and keeps the carrier in-register, so it touches ONE buffer
-# per channel (≈ N Int8) instead of three. It beats fused everywhere (cheap `ext` loads replace
-# the per-chunk value-engine permute + DDA) and, once the working set spills the LLC, also beats
-# unfused (a third of the bandwidth). Measured (40 MHz, 10 ch, 24 threads, 12-core / 24 MB-L3):
-# at 20 ms it is ~0.88× fused and ~0.67× unfused; at 30 ms ~0.94× fused and ~0.47× unfused —
-# the fastest of the three. At 5 ms (fits L3) the unfused still wins single-buffer-bandwidth and
-# the hybrid is second. So: unfused for cache-resident work, hybrid once it spills, fused only
-# when zero per-channel scratch is required.
+# The HYBRID is the best of those two: it materialises only the CODE (the fast run-fill
+# `gen_code!` the fully-fused path can't use) and keeps the carrier in-register, so it touches ONE
+# buffer per channel (≈ N Int8) instead of three. It beats fused at moderate channel counts (cheap
+# `ext` loads replace the per-chunk value-engine permute + DDA) and, once the working set spills
+# the LLC, also beats unfused (a third of the bandwidth). But its per-channel ≈ N code buffer is
+# still O(N): push to many channels / long integration (24 ch, 30 ms) and it too spills hard and
+# falls BEHIND the zero-buffer fused (measured ~1.25× fused there).
+#
+# The HYBRID-BLOCKED removes that last buffer: it strip-mines into BLK-sample blocks and
+# regenerates BOTH code and carrier into small L1-resident scratch reused across blocks, so its
+# working set is O(BLK), not O(N) — fused-class LLC footprint with hybrid-class per-sample cost
+# (see the kernel comment above). Measured (40 MHz, 24 threads, Zen5 / AVX-512), it is the fastest
+# kernel in every spilling regime: 10 ch 20 ms ~0.85× fused / ~0.69× unfused; 24 ch 20 ms ~0.83×
+# fused / ~0.81× hybrid; 24 ch 30 ms ~0.82× fused / ~0.65× hybrid. It also beats fused and hybrid
+# when cache-resident (10 ch 5 ms ~0.87× fused / ~0.97× hybrid); the ONLY regime it does not win
+# is pure cache-resident vs the unfused (~1.04×), where both do identical work and the unfused's
+# two full-length passes are the ceiling. So: hybrid-blocked is the all-round pick, with the
+# unfused still marginally ahead only when everything fits in cache.
 #
 # The crossover is governed by working-set vs LLC size, and the effect only appears with
 # `Threads.nthreads() > 1` (run julia with `-t auto` / `JULIA_NUM_THREADS`). Two representative
@@ -419,10 +592,11 @@ end
 # sample rates / fewer channels the working set is smaller, so the crossover moves to longer
 # integration.
 #
-# Each channel gets its own PRN, Doppler, code/carrier engines and (unfused/hybrid) scratch
-# buffers; the measurement is shared. State is bundled in `_EPLChannels` so Polyester sees only
-# a struct and the loop index — it does NOT rewrite the per-channel vectors into stride-arrays
-# (which would not match the kernels' `Vector` signatures). One channel per `@batch` task.
+# Each channel gets its own PRN, Doppler, code/carrier engines and (unfused / hybrid /
+# hybrid-blocked) scratch buffers; the measurement is shared. State is bundled in `_EPLChannels`
+# so Polyester sees only a struct and the loop index — it does NOT rewrite the per-channel
+# vectors into stride-arrays (which would not match the kernels' `Vector` signatures). One
+# channel per `@batch` task.
 # ─────────────────────────────────────────────────────────────────────────────
 # Defined unconditionally (a struct must be top level); the drivers/registration that use
 # Polyester's `@batch` are guarded below.
@@ -434,6 +608,10 @@ struct _EPLChannels{W,D,CE,RE,CG,TB}
     extsH::Vector{Vector{Int8}}   # hybrid's own code buffer (so it never aliases the unfused's)
     csins::Vector{Vector{Int8}}
     ccoss::Vector{Vector{Int8}}
+    # hybrid-blocked's per-channel L1 scratch (block code + sin + cos), size independent of N
+    extbs::Vector{Vector{Int8}}
+    csbs::Vector{Vector{Int8}}
+    ccbs::Vector{Vector{Int8}}
     code_gens::Vector{CG}
     tbls::Vector{TB}
     fs::Float64
@@ -449,12 +627,12 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         N = round(Int, fs * 1e-3 * ms)
         D = round(Int, 0.5 * fs / fc)
         Npad = cld(N, W) * W
-        lim = Int16(1) << 11                                   # 12-bit ADC
+        lim = Int16(_MAX_MEAS)                                 # 12-bit ADC ±2048
         meas = zeros(Int16, 2 * Npad)
         meas[1:2N] .= rand(-lim:(lim - Int16(1)), 2N)
         plans = [GNSSSignals.CodeReplicaLUT(_GPSL1(), prn) for prn in 1:nch]
         freqs = [1234.0 + 137.0 * (s - 1) for s in 1:nch]      # spread the residual Dopplers
-        tbls = [SinCosTable(Int8; steps = 64, amplitude = 8) for _ in 1:nch]
+        tbls = [SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP) for _ in 1:nch]
         engs = [_epl_engines(plans[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
         cengs = [e[1] for e in engs]
         rengs = [e[2] for e in engs]
@@ -463,28 +641,37 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         extsH = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         csins = [zeros(Int8, Npad) for _ in 1:nch]
         ccoss = [zeros(Int8, Npad) for _ in 1:nch]
+        extbs = [zeros(Int8, _CORR_BLK + 2D) for _ in 1:nch]
+        csbs = [zeros(Int8, _CORR_BLK) for _ in 1:nch]
+        ccbs = [zeros(Int8, _CORR_BLK) for _ in 1:nch]
         ch = _EPLChannels{W,D,eltype(cengs),eltype(rengs),eltype(code_gens),eltype(tbls)}(
-            meas, cengs, rengs, exts, extsH, csins, ccoss, code_gens, tbls, Float64(fs), freqs, N,
-            zeros(Int, nch))
+            meas, cengs, rengs, exts, extsH, csins, ccoss, extbs, csbs, ccbs,
+            code_gens, tbls, Float64(fs), freqs, N, zeros(Int, nch))
         ch
     end
 
     # One channel of work (indexing lives here, not in the `@batch` body, so Polyester leaves
     # the per-channel vectors as plain `Vector`s).
     @inline function _epl_one_fused!(ch::_EPLChannels{W,D}, s) where {W,D}
-        @inbounds r = correlate_epl_fused(ch.meas, ch.cengs[s], ch.rengs[s], Val(W), Val(D))
+        @inbounds r = correlate_epl_fused(ch.meas, ch.cengs[s], ch.rengs[s], Val(W), Val(D), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
     @inline function _epl_one_unfused!(ch::_EPLChannels{W,D}, s) where {W,D}
         @inbounds r = correlate_epl_unfused!(ch.exts[s], ch.csins[s], ch.ccoss[s], ch.meas,
-            ch.code_gens[s], ch.tbls[s], ch.fs, ch.freqs[s], ch.N, Val(W), Val(D))
+            ch.code_gens[s], ch.tbls[s], ch.fs, ch.freqs[s], ch.N, Val(W), Val(D), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
     @inline function _epl_one_hybrid!(ch::_EPLChannels{W,D}, s) where {W,D}
         @inbounds r = correlate_epl_hybrid!(ch.extsH[s], ch.meas, ch.code_gens[s], ch.rengs[s],
-            ch.N, Val(W), Val(D))
+            ch.N, Val(W), Val(D), Val(_WIPE_TI))
+        @inbounds ch.out[s] = r[2][1]
+        nothing
+    end
+    @inline function _epl_one_hybrid_blocked!(ch::_EPLChannels{W,D}, s) where {W,D}
+        @inbounds r = correlate_epl_hybrid_blocked!(ch.extbs[s], ch.csbs[s], ch.ccbs[s], ch.meas,
+            ch.code_gens[s], ch.rengs[s], Val(W), Val(D), Val(_CORR_BLK), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
@@ -494,6 +681,8 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_unfused!(ch, s); end; ch.out)
     _epl_hybrid_par!(ch::_EPLChannels) =
         (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_hybrid!(ch, s); end; ch.out)
+    _epl_hybrid_blocked_par!(ch::_EPLChannels) =
+        (Polyester.@batch for s in eachindex(ch.cengs); _epl_one_hybrid_blocked!(ch, s); end; ch.out)
 
     let nch = 10, fs = 40e6, fc = 1.023e6
         for ms in (5, 20)                              # 5 ms: fits L3; 20 ms: spills L3 (see note)
@@ -502,6 +691,7 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
             g["fused"]   = @benchmarkable _epl_fused_par!($ch) evals = 1 samples = 200
             g["unfused"] = @benchmarkable _epl_unfused_par!($ch) evals = 1 samples = 200
             g["hybrid"]  = @benchmarkable _epl_hybrid_par!($ch) evals = 1 samples = 200
+            g["hybrid-blocked"] = @benchmarkable _epl_hybrid_blocked_par!($ch) evals = 1 samples = 200
         end
     end
 end
