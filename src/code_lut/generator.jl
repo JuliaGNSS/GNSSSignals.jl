@@ -52,12 +52,13 @@ mutable struct CodeGenerator512
     rel4::Vec{64,Int8}; rem4::Vec{64,_RemT}; b4::Int
 end
 
-function CodeGenerator512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
+function CodeGenerator512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                          rem0::_RemT = _RemT(0))
     L = table.length; W = 64
-    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset)
-    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset)
-    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset)
-    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset)
+    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset, rem0)
+    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset, rem0)
+    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset, rem0)
+    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset, rem0)
     CodeGenerator512(table.padded, step_num, step_den, L,
         _RemT(mod(W * step_num, step_den)), div(W * step_num, step_den) % L,
         _RemT(mod(4W * step_num, step_den)), div(4W * step_num, step_den) % L, _RemT(step_den),
@@ -177,16 +178,16 @@ end
 # made `_init_state` a dynamic dispatch and boxed the whole construction (the one-shot /
 # threaded allocation hot spot). The two arms give inference a small 2-way Union instead.
 function CodeGeneratorPhase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                            backend::Backend, vw::Val{W}) where {W}
+                            backend::Backend, vw::Val{W}, rem0::_RemT = _RemT(0)) where {W}
     table.length <= typemax(Int16) ?
-        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int16) :
-        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int32)
+        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int16, rem0) :
+        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int32, rem0)
 end
 
 @inline function _build_phase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                              backend::Backend, ::Val{W}, ::Type{T}) where {W,T}
+                              backend::Backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
     L = table.length
-    phase, rem = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T)
+    phase, rem = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T, rem0)
     prepared = prepare_code(table; backend = backend)
     CodeGeneratorPhase{W,T,typeof(prepared)}(prepared, step_num, step_den,
         T(div(W * step_num, step_den) % L), _RemT(mod(W * step_num, step_den)),
@@ -263,11 +264,13 @@ mutable struct CodeGeneratorRunFill{NI}
     pos::Int                  # samples of the current chip already emitted
 end
 
-function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
+function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                             rem0::_RemT = _RemT(0))
     ni = _runfill_ni(step_num)
     NI = ni <= _RUNFILL_MAX_NI ? ni : 0      # 0 ⇒ generic kernel (runtime `ni`)
+    acc, pos = _runfill_seed(step_num, step_den, rem0)
     CodeGeneratorRunFill{NI}(table.chips, table.length, _runfill_freqfix(step_num),
-                            ni, mod(phase_offset, table.length), _RUNFILL_MASK, 0)
+                            ni, mod(phase_offset, table.length), acc, pos)
 end
 
 function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill{NI}) where {NI}
@@ -282,24 +285,27 @@ const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase,CodeGenerator
 
 # ---- factory: build the right backend generator from a step ratio + phase ----
 function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
-                        phase::Integer = 0, backend::Backend = default_backend(table))
+                        phase::Integer = 0, rem0::Integer = 0,
+                        backend::Backend = default_backend(table))
     (0 < step_den ≤ _STEP_DEN) ||
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_num ≤ step_den) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
-    sn = Int(step_num); sd = Int(step_den); ph = Int(phase)
+    (0 ≤ rem0 < step_den) ||
+        throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
+    sn = Int(step_num); sd = Int(step_den); ph = Int(phase); r0 = _RemT(rem0)
     if _use_runfill(sn, sd, backend)
         # High oversampling: broadcast-fill runs (see `_generate_runfill!`) instead of paying
         # a permute per window. Same windowed-length requirement as the AVX2/NEON permute.
         backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
-        CodeGeneratorRunFill(table, sn, sd, ph)
+        CodeGeneratorRunFill(table, sn, sd, ph, r0)
     elseif backend isa AVX512
-        CodeGenerator512(table, sn, sd, ph)
+        CodeGenerator512(table, sn, sd, ph, r0)
     elseif backend isa Union{AVX2,Neon}
         _check_windowed_length(table, backend)
-        CodeGeneratorPhase(table, sn, sd, ph, backend, _vwidth(backend))
+        CodeGeneratorPhase(table, sn, sd, ph, backend, _vwidth(backend), r0)
     else
-        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(1))
+        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(1), r0)
     end
 end
 function make_generator(table::CodeTable, cps::Real; kw...)
