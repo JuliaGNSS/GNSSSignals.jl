@@ -139,21 +139,27 @@ offset.
 """
 function generate_code!(out::AbstractVector{<:Integer}, mc::ModulatedCode;
                         code_frequency::Real, sampling_frequency::Real,
-                        phase::Integer = 0, backend::Backend = default_backend(mc.table))
+                        phase::Integer = 0, phase_sub::Integer = Int(phase) * mc.subchip_factor,
+                        rem0::Integer = 0, backend::Backend = default_backend(mc.table))
+    # `phase_sub` is the integer sub-chip start offset (θ_int); `rem0` the fixed-point
+    # fractional sub-chip residual. Default `phase_sub = phase·P, rem0 = 0` reproduces the
+    # original integer primary-chip phase. The secondary only needs the integer sub-chip
+    # offset (the fractional part never changes which primary period a sample belongs to).
     generate_code!(out, mc.table;
         code_frequency = code_frequency * mc.subchip_factor, sampling_frequency = sampling_frequency,
-        phase = phase * mc.subchip_factor, backend = backend)
-    any(!=(Int8(1)), mc.secondary) && _apply_secondary!(out, mc, code_frequency, sampling_frequency, phase)
+        phase = phase_sub, rem0 = rem0, backend = backend)
+    any(!=(Int8(1)), mc.secondary) && _apply_secondary!(out, mc, code_frequency, sampling_frequency, Int(phase_sub))
     out
 end
 
 # Multiply each whole primary period by its secondary chip. The secondary is constant over
 # a period (period_subchips sub-chips), so we negate contiguous sample ranges — a handful
-# of vectorisable negates, not a per-sample multiply.
-function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase)
+# of vectorisable negates, not a per-sample multiply. `phase_sub` is the integer sub-chip
+# start offset (θ_int).
+function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub)
     Ls = length(mc.secondary); per = mc.period_subchips
     sn, sd = _fixed_point_step(code_frequency * mc.subchip_factor / sampling_frequency)
-    phase_sub = Int(phase) * mc.subchip_factor
+    phase_sub = Int(phase_sub)
     N = length(out); p = 0
     # sample n maps to sub-chip floor(n·sn/sd) + phase_sub; period p spans sub-chips
     # [p·per, (p+1)·per). First sample of period p: smallest n with that sub-chip ≥ p·per.
