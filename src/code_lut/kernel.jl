@@ -547,16 +547,18 @@ end
 #   • Steady state (long fills): permute is ~36 ps/sample, flat in oversampling; run-fill is
 #     ~216/m ps/sample (fewer chip-boundary recomputes as runs lengthen), so it overtakes at
 #     m ≈ 6–7 on AVX-512 (7 = smallest m where it wins at every length). The other backends'
-#     slower permute crosses earlier: AVX2 `vpshufb` (~85 ps) ≈ 4, NEON `tbl1` ≈ 3, Portable
-#     (per-sample scalar lookup) ≈ 2.
+#     slower permute crosses earlier: AVX2 `vpshufb` (~85 ps) ≈ 3 (run-fill's 216/3 ≈ 72 ps
+#     beats it; measured N-independent, as ~85 ps sits between 216/3 and 216/2 ≈ 108), NEON
+#     `tbl1` ≈ 3, Portable (per-sample scalar lookup) ≈ 2.
 #   • Short fills: permute pays a fixed ~37 ns init (4× `_init_rel`, a 64-lane `vpmullq`
 #     running-product setup per stream) vs run-fill's ~15 ns (one Int128 freqfix divide), a
-#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. The AVX-512 sweep puts it at
-#     m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to 7 once the init amortises — so the
-#     threshold is lowered for short fills. AVX2/NEON/Portable have no small-N sweep yet, so
-#     they stay flat (a conservative over-estimate for short fills there).
+#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. This only matters when permute is
+#     fast: on AVX-512 the sweep puts it at m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to
+#     7 once the init amortises — so the AVX-512 threshold is lowered for short fills. AVX2 is
+#     slow enough that its crossover stays at 3 for all N (no small-N adjustment needed); NEON/
+#     Portable have no small-N sweep yet, so they stay flat too.
 @inline _runfill_min_m(::AVX512, N::Int) = N < 1024 ? 4 : N < 4096 ? 5 : 7
-@inline _runfill_min_m(::AVX2, ::Int)     = 4
+@inline _runfill_min_m(::AVX2, ::Int)     = 3
 @inline _runfill_min_m(::Neon, ::Int)     = 3
 @inline _runfill_min_m(::Portable, ::Int) = 2
 @inline _use_runfill(step_num::Int, step_den::Int, backend::Backend, N::Int) =
