@@ -87,7 +87,7 @@ function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_numerator ≤ step_denominator) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample, chips/sample ≤ 1)"))
-    if _use_runfill(Int(step_numerator), Int(step_denominator), backend)
+    if _use_runfill(Int(step_numerator), Int(step_denominator), backend, length(out))
         _generate_runfill!(out, table, Int(step_numerator), Int(step_denominator), Int(phase))
     else
         _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend)
@@ -541,22 +541,23 @@ function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int,
     _runfill_seg_dispatch!(out, table.chips, table.length, ff, ni, c, _RUNFILL_MASK, 0)
 end
 
-# Pick the run-fill path when there are at least `_runfill_min_m(backend)` samples per chip.
-# The threshold is the per-chip count where broadcast-fill overtakes the (flat-in-over-
-# sampling) windowed permute, so it depends on how fast that backend's permute is. Tuned from
-# a run-fill-vs-permute crossover sweep (AVX-512 measured locally; AVX2/NEON on the CI
-# benchmark runners, x86 Ubuntu + Apple-Silicon macOS):
-#   • AVX-512 `vpermb` is fast (~38 ps/sample steady-state on Zen 5); a permute-vs-run-fill
-#     sweep puts the crossover at m ≈ 6–7 (run-fill clearly wins from m = 7 at every fill
-#     length; m = 6 is a near-tie, and m = 5 only wins on short ~2k-sample fills where the
-#     permute init isn't yet amortised). Pick 7 — the smallest m where run-fill wins outright.
-#   • AVX2 `vpshufb` (~85 ps) crosses around m ≈ 4.
-#   • NEON `tbl1` is a 16-wide single-window lookup (slowest permute), so run-fill wins from
-#     m = 3 (m = 2 is a tie).
-#   • Portable's "permute" is a per-sample scalar lookup → run-fill wins as soon as runs exist.
-@inline _runfill_min_m(::AVX512)   = 7
-@inline _runfill_min_m(::AVX2)     = 4
-@inline _runfill_min_m(::Neon)     = 3
-@inline _runfill_min_m(::Portable) = 2
-@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend) =
-    step_den ÷ step_num >= _runfill_min_m(backend)
+# Pick the run-fill path when there are at least `_runfill_min_m(backend, N)` samples per
+# chip (N = fill length). The threshold is the per-chip count where broadcast-fill overtakes
+# the windowed permute; two effects set it, both measured on Zen 5:
+#   • Steady state (long fills): permute is ~36 ps/sample, flat in oversampling; run-fill is
+#     ~216/m ps/sample (fewer chip-boundary recomputes as runs lengthen), so it overtakes at
+#     m ≈ 6–7 on AVX-512 (7 = smallest m where it wins at every length). The other backends'
+#     slower permute crosses earlier: AVX2 `vpshufb` (~85 ps) ≈ 4, NEON `tbl1` ≈ 3, Portable
+#     (per-sample scalar lookup) ≈ 2.
+#   • Short fills: permute pays a fixed ~37 ns init (4× `_init_rel`, a 64-lane `vpmullq`
+#     running-product setup per stream) vs run-fill's ~15 ns (one Int128 freqfix divide), a
+#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. The AVX-512 sweep puts it at
+#     m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to 7 once the init amortises — so the
+#     threshold is lowered for short fills. AVX2/NEON/Portable have no small-N sweep yet, so
+#     they stay flat (a conservative over-estimate for short fills there).
+@inline _runfill_min_m(::AVX512, N::Int) = N < 1024 ? 4 : N < 4096 ? 5 : 7
+@inline _runfill_min_m(::AVX2, ::Int)     = 4
+@inline _runfill_min_m(::Neon, ::Int)     = 3
+@inline _runfill_min_m(::Portable, ::Int) = 2
+@inline _use_runfill(step_num::Int, step_den::Int, backend::Backend, N::Int) =
+    step_den ÷ step_num >= _runfill_min_m(backend, N)
