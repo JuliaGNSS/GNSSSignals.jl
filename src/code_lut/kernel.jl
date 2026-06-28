@@ -82,15 +82,18 @@ by an exact `step_numerator / step_denominator` chips per sample (drift-free int
 """
 function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
                         step_numerator::Integer, step_denominator::Integer;
-                        phase::Integer = 0, backend::Backend = default_backend(table))
+                        phase::Integer = 0, rem0::Integer = 0,
+                        backend::Backend = default_backend(table))
     (0 < step_denominator ≤ _STEP_DEN) ||
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_numerator ≤ step_denominator) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample, chips/sample ≤ 1)"))
+    (0 ≤ rem0 < step_denominator) ||
+        throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
     if _use_runfill(Int(step_numerator), Int(step_denominator), backend, length(out))
-        _generate_runfill!(out, table, Int(step_numerator), Int(step_denominator), Int(phase))
+        _generate_runfill!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), _RemT(rem0))
     else
-        _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend)
+        _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend, _RemT(rem0))
     end
     out
 end
@@ -117,7 +120,8 @@ end
 # and masks — no `Vec{W,UInt64}` (which has no AVX2 instruction and wrecked the hot loop's
 # register allocation). `@noinline`: runs ONCE per stream at setup, kept out of line so its
 # temporaries don't bloat the steady-state loops it feeds (`_generate_simd_windowed!`, iterators).
-@noinline function _init_state(::Val{W}, step_num, step_den, L, start_sample, phase_offset, ::Type{T}) where {W,T}
+@noinline function _init_state(::Val{W}, step_num, step_den, L, start_sample, phase_offset, ::Type{T},
+                               rem0::_RemT = _RemT(0)) where {W,T}
     H      = _B >> 1                                           # split point (15 for _B = 30)
     himask = Int32((1 << H) - 1)
     s      = _lanes_i32(Val(W)) + Int32(start_sample)          # per-lane sample
@@ -126,14 +130,36 @@ end
     lowB   = ((A & himask) << H) + Bv                          # low _B bits of p (+ 1 carry bit)
     remainder = convert(Vec{W,_RemT}, lowB & Int32(step_den - 1))
     chip   = (A >> H) + (lowB >> _B)                           # p >> _B  (chip index, ≤ 4W-1)
+    local phase::Vec{W,T}
     if L < 4W   # pathological short table (chip can exceed 2L): per-lane scalar mod
         phase = convert(Vec{W,T}, Vec{W,Int32}(ntuple(j -> Int32(mod(Int64(@inbounds chip[j]) + phase_offset, L)), Val(W))))
-        return (phase, remainder)
+    else
+        po  = Int32(mod(Int64(phase_offset), Int64(L)))
+        idx = chip + po                                            # < 2L
+        idx = vifelse(idx >= Int32(L), idx - Int32(L), idx)        # mod L (one conditional subtract)
+        phase = convert(Vec{W,T}, idx)
     end
-    po  = Int32(mod(Int64(phase_offset), Int64(L)))
-    idx = chip + po                                            # < 2L
-    idx = vifelse(idx >= Int32(L), idx - Int32(L), idx)        # mod L (one conditional subtract)
-    (convert(Vec{W,T}, idx), remainder)
+    # Seed the fractional sub-chip offset (one DDA micro-step, frac = rem0, whole = 0). Since
+    # rem0 < step_den and each lane's remainder < step_den, the sum < 2·step_den ⇒ carry ∈ {0,1}.
+    # Folding rem0 into the Int32 split-multiply above would overflow `lowB` (near the Int32
+    # edge), so we add it here instead — done once at setup, never in the hot loop.
+    if rem0 != _RemT(0)
+        phase, remainder = _seed_micro_phase(phase, remainder, rem0, _RemT(step_den), T(L))
+    end
+    (phase, remainder)
+end
+
+# One DDA micro-advance (frac = rem0, whole = 0) for the phase-form state. Adds the fractional
+# sub-chip start offset to every lane's running remainder, carrying ≤1 chip. Used to seed a
+# fractional start phase at setup; the steady-state advance is unchanged.
+@inline function _seed_micro_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, rem0::_RemT,
+                                   modulus::_RemT, Lc::T) where {W,T}
+    rem2 = rem + rem0
+    carry = rem2 >= modulus
+    rem3 = vifelse(carry, rem2 - modulus, rem2)
+    phase2 = vifelse(carry, phase + one(T), phase)
+    phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
+    (phase2, rem3)
 end
 
 # One windowed lookup: phase (chip indices mod L for W consecutive samples) -> W chips.
@@ -194,11 +220,13 @@ end
 # Int16→Int8 narrow and the lane-0 extract — ~1.8× on AVX-512.
 
 # AVX-512: one 64-chip window per stream → one scalar base.
-@inline function _init_rel(::Val{64}, step_num, step_den, L, start, phase_offset)
-    # Materialise `p = step_num·sample` for all 64 lanes at once (real SIMD multiply), then
-    # derive rel (relative chip index, Int8) and remainder from `p` with a vector shift + mask.
-    p = Vec{64,Int64}(Int64(step_num)) * (_LANES64 + Int64(start))
-    d0 = (Int64(step_num) * Int64(start)) >> _B
+@inline function _init_rel(::Val{64}, step_num, step_den, L, start, phase_offset, rem0::_RemT = _RemT(0))
+    # Materialise `p = step_num·sample + rem0` for all 64 lanes at once (real SIMD multiply),
+    # then derive rel (relative chip index, Int8) and remainder from `p` with a vector shift +
+    # mask. `rem0 ∈ [0, step_den)` is the fixed-point fractional sub-chip start offset, folded
+    # directly into the Int64 product (exact, overflow-safe). rem0 = 0 ⇒ original integer-phase.
+    p = Vec{64,Int64}(Int64(step_num)) * (_LANES64 + Int64(start)) + Int64(rem0)
+    d0 = (Int64(step_num) * Int64(start) + Int64(rem0)) >> _B
     rel = convert(Vec{64,Int8},  (p >> _B) - Int64(d0))
     rem = convert(Vec{64,_RemT},  p & Int64(step_den - 1))
     (rel, rem, Int(mod(d0 + phase_offset, L)))
@@ -208,19 +236,19 @@ end
 
 # AVX2: two independent 16-chip windows (low/high 128-bit lane) → two scalar bases. `rel`
 # is relative to lane 0 in the low half and lane 16 in the high half.
-function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX512)
-    _generate_simd_avx512!(out, table, step_num, step_den, phase_offset)
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX512, rem0::_RemT = _RemT(0))
+    _generate_simd_avx512!(out, table, step_num, step_den, phase_offset, rem0)
 end
-function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase_offset)
+function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase_offset, rem0::_RemT = _RemT(0))
     W = 64; stride = 4W
     L = table.length; padded = table.padded
     whole_step = div(stride * step_num, step_den) % L        # chips per stride, pre-reduced mod L
     frac_step  = _RemT(mod(stride * step_num, step_den)); modulus = _RemT(step_den)
     zero8 = zero(Vec{64,Int8}); one8 = one(Vec{64,Int8})
-    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset)
-    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset)
-    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset)
-    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset)
+    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset, rem0)
+    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset, rem0)
+    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset, rem0)
+    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset, rem0)
     num = length(out); chunk_start = 0
     @inbounds while chunk_start + stride <= num
         out[VecRange{W}(chunk_start + 1)]      = _rel_lookup(AVX512(), padded, rel1, b1)
@@ -249,7 +277,7 @@ function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase
             end
         end
     end
-    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1)
+    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1, rem0)
 end
 
 # AVX2 (W=32, two `vpshufb` 16-chip windows) and NEON (W=16, one `tbl1` window) share the
@@ -268,12 +296,12 @@ end
 # poisoning the loop's register allocation, not stream pressure; see `_init_state`.)
 # Byte-identical to the AVX-512 / Portable output. NEON is never selected/called on x86, so
 # its `tbl1` llvmcall is never compiled there.
-function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, be::Union{AVX2,Neon})
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, be::Union{AVX2,Neon}, rem0::_RemT = _RemT(0))
     _check_windowed_length(table, be)
     if table.length <= typemax(Int16)
-        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int16)
+        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int16, rem0)
     else
-        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int32)
+        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int32, rem0)
     end
 end
 @inline _check_windowed_length(table::CodeTable, be) =
@@ -281,17 +309,17 @@ end
         "$(backend_name(be)) backend supports code length ≤ $(Int(typemax(Int32))); table " *
         "length is $(table.length). Use backend=Portable() (or AVX512() on x86)."))
 function _generate_simd_windowed!(out, table::CodeTable, step_num, step_den, phase_offset,
-                                  backend, ::Val{W}, ::Type{T}) where {W,T}
+                                  backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
     stride = 4W
     L = table.length; padded = table.padded
     Lc = T(L)
     whole_step = T(div(stride * step_num, step_den) % L)   # integer chips per stride, mod L
     frac_step  = _RemT(mod(stride * step_num, step_den))
     modulus    = _RemT(step_den)
-    phase1, rem1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T)
-    phase2, rem2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T)
-    phase3, rem3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T)
-    phase4, rem4 = _init_state(Val(W), step_num, step_den, L, 3W, phase_offset, T)
+    phase1, rem1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T, rem0)
+    phase2, rem2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T, rem0)
+    phase3, rem3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T, rem0)
+    phase4, rem4 = _init_state(Val(W), step_num, step_den, L, 3W, phase_offset, T, rem0)
     num = length(out); chunk_start = 0
     @inbounds while chunk_start + stride <= num
         out[VecRange{W}(chunk_start + 1)]      = _window_lookup(backend, padded, phase1, L)
@@ -321,19 +349,22 @@ function _generate_simd_windowed!(out, table::CodeTable, step_num, step_den, pha
             end
         end
     end
-    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1)
+    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1, rem0)
 end
 
-function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Portable)
-    _generate_tail!(out, table, step_num, step_den, phase_offset, 1)
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Portable, rem0::_RemT = _RemT(0))
+    _generate_tail!(out, table, step_num, step_den, phase_offset, 1, rem0)
 end
 
-@inline function _generate_tail!(out, table::CodeTable, step_num, step_den, phase_offset, sample)
+@inline function _generate_tail!(out, table::CodeTable, step_num, step_den, phase_offset, sample,
+                                 rem0::_RemT = _RemT(0))
     L = table.length; chips = table.chips
     # Fixed-point: with step_den = 2^_B the per-sample index is a shift (no idiv); the
-    # step_den arg is unused but kept for the call-site signature.
+    # step_den arg is unused but kept for the call-site signature. `rem0` is the fractional
+    # sub-chip start offset added inside the floor (rem0 = 0 ⇒ original integer-phase tail).
+    r0 = Int64(rem0)
     @inbounds while sample <= length(out)
-        index = mod((step_num * Int64(sample - 1)) >> _B + phase_offset, L)
+        index = mod((step_num * Int64(sample - 1) + r0) >> _B + phase_offset, L)
         out[sample] = chips[index + 1]
         sample += 1
     end
@@ -535,10 +566,34 @@ end
 # that matches the permute path; pos = 0). Dispatches to the `Val{NI}`-specialised kernel
 # allocation-free; the *continuing* generator stays 0-alloc by carrying `NI` in its type
 # (see `CodeGeneratorRunFill`).
-function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int)
+function _generate_runfill!(out, table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                            rem0::_RemT = _RemT(0))
     ff = _runfill_freqfix(step_num); ni = _runfill_ni(step_num)
     c = mod(phase_offset, table.length)
-    _runfill_seg_dispatch!(out, table.chips, table.length, ff, ni, c, _RUNFILL_MASK, 0)
+    acc, pos = _runfill_seed(step_num, step_den, rem0)
+    _runfill_seg_dispatch!(out, table.chips, table.length, ff, ni, c, acc, pos)
+end
+
+# Seed the run-fill carried state `(acc, pos)` for a fractional sub-chip start offset `rem0`.
+#
+# Run-fill walks the chip boundaries with a `delta += ff` accumulator (`ff ≈ 2^_B·2^FP/step_num`
+# samples-per-chip in `_RUNFILL_FP` fixed point), so its chip-c boundary is `(delta_0 +
+# (c+1)·ff) >> FP`. With the integer-phase seed (`acc = mask, pos = 0`) that reproduces the
+# permute path's exact `ceil(c·2^_B / step_num)` boundaries. A fractional start offset shifts
+# every exact boundary EARLIER by `rem0 / step_num` samples (the boundary is
+# `ceil((c·2^_B − rem0)/step_num)`), so we bias the initial accumulator by the same amount in
+# sample-FP units: `delta_offset = round(rem0·ff / 2^_B) ≈ rem0·2^FP/step_num`. The biased
+# `seed = mask − delta_offset` is split into the in-FP fractional part `acc = seed mod 2^FP`
+# and the whole-sample carry `pos = −(seed − acc) >> FP` (samples of the first chip already
+# emitted). rem0 = 0 ⇒ `(mask, 0)`, byte-identical to the original.
+@inline function _runfill_seed(step_num::Int, step_den::Int, rem0::_RemT)
+    rem0 == _RemT(0) && return (_RUNFILL_MASK, 0)
+    ff = _runfill_freqfix(step_num)
+    delta_offset = Int((Int128(rem0) * ff) >> _B)       # rem0·ff/2^_B  (sample-FP units)
+    seed = _RUNFILL_MASK - delta_offset
+    acc  = mod(seed, Int(1) << _RUNFILL_FP)             # fractional part in [0, 2^FP)
+    pos  = -((seed - acc) >> _RUNFILL_FP)               # whole first-chip samples already emitted
+    (acc, pos)
 end
 
 # Pick the run-fill path when there are at least `_runfill_min_m` samples per chip. The

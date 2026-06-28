@@ -117,6 +117,29 @@ const _GEN_CODE_LUT_SCRATCH = Dict{Int,Vector{Int8}}()
 @inline _to_hz(x::Frequency) = Float64(ustrip(u"Hz", x))
 @inline _to_hz(x) = Float64(x)
 
+# Split a real primary-chip start phase into the sub-chip integer offset `θ_int` and the
+# fixed-point fractional sub-chip residual `rem0 ∈ [0, step_den)` the kernels consume.
+#
+#   eff_chips = start_phase + start_index_shift·fc/fs   (real primary chips)
+#   θ         = eff_chips · P                            (real sub-chips)
+#   θ_int     = floor(θ)                                 → kernel phase offset (does mod L)
+#   rem0      = round((θ − θ_int)·step_den)              ∈ [0, step_den)
+#
+# `floor` (not round) is correct for negative phases too (e.g. start_index_shift = -1); the
+# fractional part is always in [0,1). The rounding edge (rem0 == step_den) carries into θ_int.
+# This is the original `gen_code!`'s sub-sample phase at 2^-30-sub-chip precision (finer than
+# the original). rem0 = 0 ⇒ the previous integer-sub-chip behavior, byte-identical.
+@inline function _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, step_den::Int)
+    θ = (start_phase + start_index_shift * fc / fs) * P
+    θ_int = floor(Int, θ)
+    rem0 = round(Int, (θ - θ_int) * step_den)
+    if rem0 >= step_den
+        rem0 -= step_den
+        θ_int += 1
+    end
+    (θ_int, rem0)
+end
+
 # Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOC/TMBOC; CBOC bakes a
 # multi-level Int8 integer approximation of its sqrt-power amplitudes (`cboc_amplitudes`).
 # Errors on cosine BOC and code-factor n ≠ 1. The `cboc_amplitudes` argument is ignored by
@@ -183,17 +206,22 @@ amplitudes only scale the replica, the **sign pattern is identical to the float
   `gen_code!` with the signal directly).
 - **Sub-chip oversampling required:** `sampling_frequency ≥
   code_frequency · subchip_factor` (else `gen_code!` raises an error).
-- **Integer-chip phase only:** `start_phase` + the `start_index_shift`
-  contribution are rounded to the nearest *primary* chip; the fractional
-  sub-chip residual is dropped (up to ~1 sub-chip vs the plain `gen_code!`).
-  `start_phase = 0.0, start_index_shift = 0` gives `phase = 0` exactly.
+- **Fractional sub-chip phase supported.** `start_phase` + the
+  `start_index_shift` contribution are honored at full sub-sample resolution:
+  the phase is split into an integer sub-chip offset plus a `2^-30`-sub-chip
+  fixed-point fractional residual seeded into the DDA, matching the plain
+  `gen_code!`'s sub-sample phase to within a handful of samples at chip
+  boundaries (differing only by fixed-point rounding). `start_phase = 0.0,
+  start_index_shift = 0` gives phase `0` exactly. Negative `start_index_shift`
+  is handled correctly (the integer offset floors, the fraction stays in
+  `[0, 1)`).
 - **High-oversampling run-fill is approximate to ≤ a couple of samples.** Above
   ~7× sub-chip oversampling for long fills (AVX-512; lower for short fills and ~4× on AVX2) the resampler broadcast-fills runs of identical chips
   (matching the original `gen_code!`'s speed there) using a fixed-point samples-
   per-chip DDA. Its chip boundaries are exact for any single fill and drift at
   most a couple of samples only over a *very* long continued stream (~10⁶ chips) —
-  the same order as the permute path's own rate-quantisation drift, and well
-  inside the integer-chip-phase rounding above.
+  the same order as the permute path's own rate-quantisation drift, and on the
+  order of the fixed-point sub-chip phase rounding above.
 """
 struct CodeReplicaLUT{S<:AbstractGNSSSignal}
     signal::S
@@ -267,7 +295,7 @@ successive chunks with no per-call setup, and `for v in gen` yields `Vec{W,Int8}
 register-fused iteration; for a one-shot fill, the [`gen_code!`](@ref)`(out, plan, …)`
 method is simpler.
 
-Same oversampling requirement and integer-chip phase limitation as the plan
+Same oversampling requirement and fractional sub-chip phase support as the plan
 [`gen_code!`](@ref) method.
 """
 function CodeGeneratorLUT(
@@ -284,20 +312,18 @@ function CodeGeneratorLUT(
     fs < fc * P && error(
         "CodeGeneratorLUT needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
     )
-    # Integer primary-chip phase (matches gen_code!'s start_phase_including_shift; the
-    # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
-    eff_chips = start_phase + start_index_shift * fc / fs
-    phase = round(Int, eff_chips)
     # Parameterless default_backend() const-folds to the host's concrete backend; the
     # table-aware overload's length guard (fall back to Portable for tables larger than
     # typemax(Int32)) is dead code for GNSS codes and would erase that inference, boxing
     # the runtime-typed engine on every construction.
     backend = CodeLUT.default_backend()
-    # Resample the baked sub-chip table at fc·P; phase is scaled to sub-chips.
+    # Resample the baked sub-chip table at fc·P. Split the real primary-chip start phase into
+    # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`, so the
+    # DDA reproduces the original gen_code!'s sub-sample phase (see `_subchip_phase_split`).
     cps = (fc * P) / fs
     sn, sd = CodeLUT._fixed_point_step(cps)   # ← fixed-point step (one multiply + round)
-    phase_sub = phase * P
-    engine = CodeLUT.make_generator(mc.table, sn, sd; phase = phase_sub, backend = backend)
+    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
+    engine = CodeLUT.make_generator(mc.table, sn, sd; phase = phase_sub, rem0 = rem0, backend = backend)
     return _wrap_code_generator_lut(plan, engine, mc.secondary, mc.period_subchips, P, sn, sd, phase_sub)
 end
 
@@ -380,8 +406,8 @@ end
               code_frequency = get_code_frequency(plan.signal),
               start_phase = 0.0, start_index_shift = 0, PHASET = Int32)
 
-Convenience one-shot: fills `sampled_code` once from the requested integer-chip phase of the
-given rate, paying a fresh DDA setup each call. Fine for one-off use; for repeated
+Convenience one-shot: fills `sampled_code` once from the requested (fractional sub-chip)
+phase of the given rate, paying a fresh DDA setup each call. Fine for one-off use; for repeated
 integrations build `gen = CodeGeneratorLUT(plan, fs, fc)` once and call `gen_code!(out, gen)`
 per integration to amortise the init.
 
@@ -409,20 +435,22 @@ function gen_code!(
     fs < fc * P && error(
         "CodeReplicaLUT gen_code! needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
     )
-    # Integer primary-chip phase (matches CodeGeneratorLUT; the fractional sub-chip residual
-    # is dropped — see the CodeReplicaLUT docstring).
-    phase = round(Int, start_phase + start_index_shift * fc / fs)
+    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
+    # fractional residual `rem0` so the DDA reproduces the original gen_code!'s sub-sample
+    # phase at 2^-30-sub-chip precision (see `_subchip_phase_split`).
+    sd = CodeLUT._STEP_DEN
+    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
     # Parameterless default_backend() const-folds to a concrete backend, keeping
     # generate_code! type-stable (the table-aware overload would erase that inference).
     backend = CodeLUT.default_backend()
     if eltype(sampled_code) == Int8
         CodeLUT.generate_code!(sampled_code, mc;
-            code_frequency = fc, sampling_frequency = fs, phase = phase, backend = backend)
+            code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
     else
         N = length(sampled_code)
         scratch = get!(() -> Vector{Int8}(undef, N), _GEN_CODE_LUT_SCRATCH, N)
         CodeLUT.generate_code!(scratch, mc;
-            code_frequency = fc, sampling_frequency = fs, phase = phase, backend = backend)
+            code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
         sampled_code .= scratch
     end
     return sampled_code
@@ -448,7 +476,7 @@ Build a loop-invariant, value-based code engine over `plan` for a `K`-way interl
 fused loop. Pair with `K` states `code_state(eng, k)` (`k = 0..K-1`, `W` samples apart) and
 drive each with [`code_lookup`](@ref) / [`code_advance`](@ref); nothing is materialised or
 heap-allocated. The code-side counterpart to SinCosLUT's `carrier_engine`. Same oversampling
-requirement and integer-chip phase limitation as the plan [`gen_code!`](@ref) method; a
+requirement and fractional sub-chip phase support as the plan [`gen_code!`](@ref) method; a
 non-baked secondary (e.g. GPS L5I's NH10) or `sampling_frequency < code_frequency·subchip_factor`
 raises an error (use [`gen_code!`](@ref) / [`CodeGeneratorLUT`](@ref) instead).
 """
@@ -464,15 +492,16 @@ function code_engine(plan::CodeReplicaLUT, sampling_frequency, code_frequency, :
     length(mc.secondary) > 1 && error(
         "code_engine does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / CodeGeneratorLUT.",
     )
-    # Integer primary-chip phase (matches gen_code!'s start_phase_including_shift; the
-    # fractional sub-chip residual is dropped — see the CodeReplicaLUT docstring).
-    eff_chips = start_phase + start_index_shift * fc / fs
-    phase = round(Int, eff_chips)
-    # Resample the baked sub-chip table at fc·P, phase scaled to sub-chips. Parameterless
-    # default_backend() const-folds to the host's concrete backend (keeps the engine type
-    # inferable; the table-aware overload would box it).
+    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
+    # fractional residual `rem0` so the DDA reproduces the original gen_code!'s sub-sample
+    # phase (see `_subchip_phase_split`).
+    sd = CodeLUT._STEP_DEN
+    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
+    # Resample the baked sub-chip table at fc·P. Parameterless default_backend() const-folds
+    # to the host's concrete backend (keeps the engine type inferable; the table-aware
+    # overload would box it).
     CodeLUT.code_engine(mc.table, (fc * P) / fs, Val(K);
-                        phase = phase * P, backend = CodeLUT.default_backend())
+                        phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
 
 code_engine(plan::CodeReplicaLUT, sampling_frequency, vk::Val; kwargs...) =

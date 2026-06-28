@@ -61,6 +61,7 @@ struct CodeEngine512
     step_num::Int
     step_den::Int
     phase_offset::Int
+    rem0::_RemT            # fractional sub-chip start offset (0 ⇒ integer phase)
     modulus::_RemT
     frac_stride::_RemT     # remainder advance over the baked K·W stride
     whole_stride::Int      # whole chips advanced over the stride (base does mod L)
@@ -78,6 +79,7 @@ struct CodeEnginePhase{W,T,Prep}
     step_num::Int
     step_den::Int
     phase_offset::Int
+    rem0::_RemT            # fractional sub-chip start offset (0 ⇒ integer phase)
     modulus::_RemT
     frac_stride::_RemT
     whole_stride::T        # whole chips per stride, already reduced mod L (< L)
@@ -100,12 +102,15 @@ deltas for a `K`-way interleaved loop (stride `K·W`, `W` = backend SIMD width).
 Same oversampling / denominator requirements as `generate_code!`.
 """
 function code_engine(table::CodeTable, step_num::Integer, step_den::Integer, ::Val{K};
-                     phase::Integer = 0, backend::Backend = default_backend(table)) where {K}
+                     phase::Integer = 0, rem0::Integer = 0,
+                     backend::Backend = default_backend(table)) where {K}
     (0 < step_den ≤ _STEP_DEN) ||
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_num ≤ step_den) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
-    _make_engine(table, Int(step_num), Int(step_den), Int(phase), Val(K), backend, _vwidth(backend))
+    (0 ≤ rem0 < step_den) ||
+        throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
+    _make_engine(table, Int(step_num), Int(step_den), Int(phase), _RemT(rem0), Val(K), backend, _vwidth(backend))
 end
 function code_engine(table::CodeTable, cps::Real, vk::Val; kw...)
     sn, sd = _fixed_point_step(cps)
@@ -115,16 +120,16 @@ function code_engine(table::CodeTable, vk::Val; code_frequency::Real, sampling_f
     code_engine(table, chips_per_sample(code_frequency, sampling_frequency), vk; kw...)
 end
 
-function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, ::AVX512, ::Val{64}) where {K}
+function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, ::AVX512, ::Val{64}) where {K}
     W = 64; stride = K * W
-    CodeEngine512(table.padded, sn, sd, ph, _RemT(sd),
+    CodeEngine512(table.padded, sn, sd, ph, rem0, _RemT(sd),
         _RemT(mod(stride * sn, sd)), div(stride * sn, sd) % table.length, table.length)
 end
-function _make_engine(table::CodeTable, sn, sd, ph, ::Val{K}, backend, ::Val{W}) where {K,W}
+function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, backend, ::Val{W}) where {K,W}
     backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
     stride = K * W; L = table.length; T = _phase_type(L)
     prepared = prepare_code(table; backend = backend)
-    CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, _RemT(sd),
+    CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, rem0, _RemT(sd),
         _RemT(mod(stride * sn, sd)), T(div(stride * sn, sd) % L), L)
 end
 
@@ -134,11 +139,11 @@ end
 Initial DDA state for the `stream`-th interleaved lane (first sample at `stream·W`).
 """
 @inline function code_state(eng::CodeEngine512, stream::Integer = 0)
-    rel, rem, base = _init_rel(Val(64), eng.step_num, eng.step_den, eng.L, stream * 64, eng.phase_offset)
+    rel, rem, base = _init_rel(Val(64), eng.step_num, eng.step_den, eng.L, stream * 64, eng.phase_offset, eng.rem0)
     CodeState512(rel, rem, base)
 end
 @inline function code_state(eng::CodeEnginePhase{W,T}, stream::Integer = 0) where {W,T}
-    p, r = _init_state(Val(W), eng.step_num, eng.step_den, eng.L, stream * W, eng.phase_offset, T)
+    p, r = _init_state(Val(W), eng.step_num, eng.step_den, eng.L, stream * W, eng.phase_offset, T, eng.rem0)
     CodeStatePhase{W,T}(p, r)
 end
 

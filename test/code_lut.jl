@@ -16,6 +16,13 @@ function _ref(chips, step_num, phase, n)
     L = length(chips)
     [chips[mod(div(step_num * (i - 1), _SD) + phase, L) + 1] for i in 1:n]
 end
+# Fractional-phase scalar reference: the DDA computes the SHIFTED stream
+#   index(n) = mod(((step_num·(n-1) + rem0) >> _B) + phase, L)   (n = 1-based; rem0 ∈ [0, 2^_B))
+# i.e. _ref with a fixed-point fractional sub-chip residual `rem0` seeded into the remainder.
+function _ref_rem0(chips, step_num, rem0, phase, n)
+    L = length(chips)
+    [chips[mod(((step_num * Int64(i - 1) + Int64(rem0)) >> CL._B) + phase, L) + 1] for i in 1:n]
+end
 # step_num that the public `cps::Real` API derives for a given rate.
 _step_num(cps) = round(Int, cps * _SD)
 
@@ -196,6 +203,79 @@ const _BACKENDS = (CL.Portable(),
                             append!(got, buf)
                         end
                         @test got == ref
+                    end
+                end
+            end
+        end
+    end
+
+    @testset "fractional sub-chip start phase (rem0) — all backends == shifted reference" begin
+        # A fixed-point fractional sub-chip offset `rem0 ∈ [0, 2^_B)` seeds the DDA's running
+        # remainder so it tracks the SHIFTED stream `((step_num·n + rem0) >> _B + phase)`. Every
+        # PERMUTE backend must match the shifted reference byte-exactly; the high-oversampling
+        # broadcast RUN-FILL gets its documented ≤2-sample boundary tolerance. rem0 = 0 ⇒ the
+        # original integer-phase output.
+        rng = MersenneTwister(123)
+        for L in (1023, 257, 64)
+            chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
+            for cps in (0.2046, 0.5, 0.999, 1 / 3, 0.07, 1 / 8, 1 / 16, 1 / 32, 0.004)
+                sn = _step_num(cps)
+                for phase in (0, 3, L - 1)
+                    for rem0 in (0, 1, sn ÷ 2, sn - 1, _SD ÷ 4, _SD ÷ 2, _SD - 1)
+                        rem0 >= _SD && continue
+                        n = 4096
+                        ref = _ref_rem0(chips, sn, rem0, phase, n)
+                        for be in _BACKENDS
+                            out = Vector{Int8}(undef, n)
+                            CL.generate_code!(out, ct, sn, _SD; phase = phase, rem0 = rem0, backend = be)
+                            if CL._use_runfill(sn, _SD, be, n)
+                                @test count(!=(0), out .- ref) <= 2   # run-fill boundary tolerance
+                            else
+                                @test out == ref                      # permute: byte-exact
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        # rem0 must satisfy 0 ≤ rem0 < step_denominator.
+        cterr = CL.CodeTable(rand(rng, Int8[-1, 1], 1023)); out = Vector{Int8}(undef, 64)
+        @test_throws ArgumentError CL.generate_code!(out, cterr, _step_num(0.5), _SD; rem0 = _SD)
+        @test_throws ArgumentError CL.generate_code!(out, cterr, _step_num(0.5), _SD; rem0 = -1)
+    end
+
+    @testset "fractional phase — continuing generator + value engine" begin
+        rng = MersenneTwister(321)
+        for L in (1023, 257)
+            chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
+            for cps in (0.2046, 1 / 3, 0.999, 1 / 16)
+                sn = _step_num(cps)
+                for phase in (0, 5), rem0 in (0, sn ÷ 2, _SD ÷ 4, _SD - 1)
+                    n = 5000
+                    ref = _ref_rem0(chips, sn, rem0, phase, n)
+                    for be in _BACKENDS
+                        # continuing generator across uneven chunks
+                        gen = CL.make_generator(ct, sn, _SD; phase = phase, rem0 = rem0, backend = be)
+                        got = Int8[]
+                        for m in (777, 1, 1024, 64, n - 777 - 1 - 1024 - 64)
+                            buf = Vector{Int8}(undef, m); CL.fill_continue!(buf, gen); append!(got, buf)
+                        end
+                        if CL._use_runfill(sn, _SD, be)
+                            @test count(!=(0), got .- ref) <= 4   # accumulated run-fill drift
+                        else
+                            @test got == ref
+                        end
+                        # value-based engine (permute backends only — run-fill has no engine)
+                        if !CL._use_runfill(sn, _SD, be)
+                            eng = CL.code_engine(ct, sn, _SD, Val(1); phase = phase, rem0 = rem0, backend = be)
+                            W = CL.code_width(eng); col = Int8[]; st = CL.code_state(eng)
+                            for _ in 1:(n ÷ W)
+                                v = CL.code_lookup(eng, st)
+                                for j in 1:W; push!(col, v[j]); end
+                                st = CL.code_advance(eng, st)
+                            end
+                            @test col == ref[1:length(col)]
+                        end
                     end
                 end
             end
@@ -525,5 +605,34 @@ end
     @testset "fs < fc·subchip_factor errors" begin
         plan = CodeReplicaLUT(signal, prn)
         @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), plan, fc * (P - 1), fc)
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# End-to-end fractional-phase parity against the ORIGINAL float `gen_code!`. With true
+# sub-chip phase support the LUT plan reproduces the original's sub-sample phase exactly: at
+# fractional `start_phase` / `start_index_shift` (incl. a negative shift) the resampled sign
+# pattern is identical to `gen_code!(out, signal, prn, fs, fc, start_phase, start_index_shift)`,
+# to within a handful of samples at chip transitions (differing fixed-point rounding only).
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "fractional start-phase parity vs original gen_code!" begin
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1)
+    for signal in sigs
+        prn = 1
+        fc = get_code_frequency(signal)
+        plan = CodeReplicaLUT(signal, prn)
+        P = plan.mc.subchip_factor
+        fs = fc * P * 2.5                         # permute regime (sub-chip oversampled), Unitful Hz
+        N = 20000
+        for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
+            orig = Vector{Int8}(undef, N)
+            gen_code!(orig, signal, prn, fs, fc, sp, sis)
+            lut = Vector{Int8}(undef, N)
+            gen_code!(lut, plan, fs, fc, sp, sis)
+            # Signs must match (the LUT is ±1; the original may be wider). Allow a handful of
+            # chip-boundary samples to differ from fixed-point rounding, as the integer-phase
+            # parity comparisons do.
+            @test count(sign.(orig) .!= sign.(lut)) <= 8
+        end
     end
 end
