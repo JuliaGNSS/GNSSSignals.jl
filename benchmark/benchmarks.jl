@@ -231,6 +231,25 @@ let fc = 1023e3Hz
     end
 end
 
+# ── Run-fill threshold crossover sweep (validates the permute↔run-fill selection) ──────
+# The coarse sweep above (2/8/32×) straddles but never lands in the crossover region, so a
+# threshold retune produces no visible diff there. This dense sweep hits the exact (m, N)
+# cells where the per-backend run-fill threshold flips which kernel runs — m around the
+# measured crossovers (3 for AVX2/NEON, 5–7 for AVX-512) at short and long fills (the
+# short ones exercise the AVX-512 N-aware step). GPS L1 C/A has subchip_factor P = 1, so
+# m = oversampling exactly. LUT only — the threshold is internal to the LUT path.
+if isdefined(GNSSSignals, :CodeGeneratorLUT)
+    let fc = 1023e3Hz, signal = _GPSL1(), prn = 1
+        for m in (3, 5, 6, 7), (slabel, n) in (("512", 512), ("2k", 2048), ("64k", 65536))
+            fs = m * fc
+            gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+            o8 = zeros(Int8, n)
+            SUITE["code"]["runfill crossover"]["$(lpad(m, 2, '0'))x"][slabel] =
+                @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 500
+        end
+    end
+end
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation signal path — FUSED vs UNFUSED, full Early / Prompt / Late (E/P/L).
 #
