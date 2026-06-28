@@ -226,6 +226,29 @@ if isdefined(GNSSSignals, :CodeGeneratorLUT)
     end
 end
 
+# ── NEON run-fill crossover probe (Apple Silicon only) ────────────────────────────────
+# The NEON crossover can't be measured on the x86 CI box (x86 can't emit NEON), so probe the
+# two kernels directly on the macos-14 runner: time the windowed permute vs the broadcast
+# run-fill at several m, so the NEON crossover can be read off the table and the threshold
+# (currently 3) confirmed/retuned. Gated to NEON hosts — forcing the Neon kernel on x86 would
+# fail to compile — so these keys appear only in the Apple-Silicon results. Base and head call
+# identical kernels here, so both columns report the same NEON times (we want the absolutes).
+if isdefined(GNSSSignals, :CodeGeneratorLUT) &&
+   GNSSSignals.CodeLUT.default_backend() isa GNSSSignals.CodeLUT.Neon
+    let SD = GNSSSignals.CodeLUT._STEP_DEN, be = GNSSSignals.CodeLUT.Neon()
+        tbl = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1).mc.table
+        for m in (2, 3, 4, 5), (slabel, n) in (("512", 512), ("8k", 8192))
+            sn = SD ÷ m
+            o = zeros(Int8, n)
+            grp = SUITE["code"]["neon crossover probe"]["$(lpad(m, 2, '0'))x"][slabel]
+            grp["permute"] =
+                @benchmarkable GNSSSignals.CodeLUT._generate!($o, $tbl, $sn, $SD, 0, $be) evals = 1 samples = 500
+            grp["runfill"] =
+                @benchmarkable GNSSSignals.CodeLUT._generate_runfill!($o, $tbl, $sn, $SD, 0) evals = 1 samples = 500
+        end
+    end
+end
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation signal path — FUSED vs UNFUSED, full Early / Prompt / Late (E/P/L).
 #
