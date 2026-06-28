@@ -231,54 +231,6 @@ let fc = 1023e3Hz
     end
 end
 
-# ── Run-fill threshold crossover sweep (validates the permute↔run-fill selection) ──────
-# The coarse sweep above (2/8/32×) straddles but never lands in the crossover region, so a
-# threshold retune produces no visible diff there. This dense sweep hits the exact (m, N)
-# cells where the per-backend run-fill threshold flips which kernel runs — m around the
-# measured crossovers (3 for AVX2/NEON, 5–7 for AVX-512) at short and long fills (the
-# short ones exercise the AVX-512 N-aware step). GPS L1 C/A has subchip_factor P = 1, so
-# m = oversampling exactly. LUT only — the threshold is internal to the LUT path.
-if isdefined(GNSSSignals, :CodeGeneratorLUT)
-    let fc = 1023e3Hz, signal = _GPSL1(), prn = 1
-        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
-        for m in (3, 5, 6, 7), (slabel, n) in (("512", 512), ("2k", 2048), ("64k", 65536))
-            fs = m * fc
-            o8 = zeros(Int8, n)
-            grp = SUITE["code"]["runfill crossover"]["$(lpad(m, 2, '0'))x"][slabel]
-            # One-shot fill: N-aware threshold (it knows length(out)). Shows the AVX-512 N-aware
-            # win at m=5,6 short N, the steady 8→7 at m=7, and AVX2 at m=3.
-            grp["one-shot"] = @benchmarkable gen_code!($o8, $plan, $fs, $fc) evals = 1 samples = 500
-            # Continuing generator: steady-state threshold (kernel fixed at construction, no per-
-            # fill N). Shows the steady 8→7 at m=7; correctly *unchanged* at m=5,6 short N.
-            gen = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)
-            grp["generator"] = @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 500
-        end
-    end
-end
-
-# ── NEON run-fill crossover probe (Apple Silicon only) ────────────────────────────────
-# The NEON crossover can't be measured on the x86 CI box (x86 can't emit NEON), so probe the
-# two kernels directly on the macos-14 runner: time the windowed permute vs the broadcast
-# run-fill at several m, so the NEON crossover can be read off the table and the threshold
-# (currently 3) confirmed/retuned. Gated to NEON hosts — forcing the Neon kernel on x86 would
-# fail to compile — so these keys appear only in the Apple-Silicon results. Base and head call
-# identical kernels here, so both columns report the same NEON times (we want the absolutes).
-if isdefined(GNSSSignals, :CodeGeneratorLUT) &&
-   GNSSSignals.CodeLUT.default_backend() isa GNSSSignals.CodeLUT.Neon
-    let SD = GNSSSignals.CodeLUT._STEP_DEN, be = GNSSSignals.CodeLUT.Neon()
-        tbl = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1).mc.table
-        for m in (2, 3, 4, 5), (slabel, n) in (("512", 512), ("8k", 8192))
-            sn = SD ÷ m
-            o = zeros(Int8, n)
-            grp = SUITE["code"]["neon crossover probe"]["$(lpad(m, 2, '0'))x"][slabel]
-            grp["permute"] =
-                @benchmarkable GNSSSignals.CodeLUT._generate!($o, $tbl, $sn, $SD, 0, $be) evals = 1 samples = 500
-            grp["runfill"] =
-                @benchmarkable GNSSSignals.CodeLUT._generate_runfill!($o, $tbl, $sn, $SD, 0) evals = 1 samples = 500
-        end
-    end
-end
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Correlation signal path — FUSED vs UNFUSED, full Early / Prompt / Late (E/P/L).
 #
