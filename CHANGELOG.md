@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.3.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.2...v2.3.0) (2026-06-29)
+
+
+### Features
+
+* add Galileo E5a signals (E5a-I and E5a-Q) ([23e22a6](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/23e22a60346b05696ad98d2c4fafd1c60fcaff5a))
+
 ## [2.2.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.1...v2.2.2) (2026-06-08)
 
 
