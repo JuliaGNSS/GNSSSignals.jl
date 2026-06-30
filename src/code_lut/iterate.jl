@@ -12,8 +12,13 @@
 #     end
 
 # ---- stateless primitive: hold the padded code + backend, map a phase Vec -> code Vec ----
-struct PreparedCode{Backend}
-    padded::Vector{Int8}
+# `V` is parametric so a zero-copy column view of a `SignalLUT` matrix (a unit-stride
+# `SubArray{Int8}`) can be the padded table, not just an owning `Vector{Int8}` — the
+# parametric-inference constructor would otherwise reject the SubArray (unlike a
+# non-parametric struct field, which silently `convert`s/copies it). Backend stays the FIRST
+# parameter so the `(p::PreparedCode{AVX512})(…)` call-method dispatch below is unchanged.
+struct PreparedCode{Backend, V<:AbstractVector{Int8}}
+    padded::V
     backend::Backend
     length::Int
 end
