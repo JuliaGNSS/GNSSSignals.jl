@@ -16,6 +16,7 @@ get_band(gpsl1ca)          # L1()
 """
 struct GPSL1CA{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GPSL1CA}) = LOC()
@@ -57,7 +58,9 @@ function read_gpsl1ca_codes()
 end
 
 function GPSL1CA()
-    GPSL1CA(widen_codes_to_storage(read_gpsl1ca_codes()))
+    codes = widen_codes_to_storage(read_gpsl1ca_codes())
+    lut = build_signal_lut(get_modulation(GPSL1CA), codes, NoSecondaryCode())
+    GPSL1CA(codes, lut)
 end
 
 """

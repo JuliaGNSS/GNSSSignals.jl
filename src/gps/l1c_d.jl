@@ -24,6 +24,7 @@ implemented in this package.
 """
 struct GPSL1C_D{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GPSL1C_D}) = BOCsin(1, 1)
@@ -48,7 +49,9 @@ function read_gpsl1c_d_codes()
 end
 
 function GPSL1C_D()
-    GPSL1C_D(widen_codes_to_storage(read_gpsl1c_d_codes()))
+    codes = widen_codes_to_storage(read_gpsl1c_d_codes())
+    lut = build_signal_lut(get_modulation(GPSL1C_D), codes, NoSecondaryCode())
+    GPSL1C_D(codes, lut)
 end
 
 """
