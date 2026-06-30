@@ -23,6 +23,14 @@ Galileo E1 (B and C), BeiDou B1C, QZSS L1C, and others.
 struct L1 <: Band end
 
 """
+    L2 <: Band
+
+The 1227.6 MHz GNSS band. Carries the GPS L2 civil signals (L2C: the L2 CM
+and L2 CL codes) and the legacy L2 P(Y) signal.
+"""
+struct L2 <: Band end
+
+"""
     L5 <: Band
 
 The 1176.45 MHz GNSS band. Shared by GPS L5 (I and Q), Galileo E5a, and
@@ -41,6 +49,8 @@ julia> get_center_frequency(L1())
 ```
 """
 @inline get_center_frequency(::L1) = 1_575_420_000Hz
+
+@inline get_center_frequency(::L2) = 1_227_600_000Hz
 
 @inline get_center_frequency(::L5) = 1_176_450_000Hz
 

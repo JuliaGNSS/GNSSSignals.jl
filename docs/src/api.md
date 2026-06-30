@@ -7,6 +7,8 @@ GNSSSignals.AbstractGNSSSignal
 GNSSSignals.GPSL1CA
 GNSSSignals.GPSL1C_D
 GNSSSignals.GPSL1C_P
+GNSSSignals.GPSL2CM
+GNSSSignals.GPSL2CL
 GNSSSignals.GPSL5I
 GNSSSignals.GPSL5Q
 GNSSSignals.GalileoE1B
@@ -22,6 +24,7 @@ GNSSSignals.GalileoE5aQ
 ```@docs
 GNSSSignals.Band
 GNSSSignals.L1
+GNSSSignals.L2
 GNSSSignals.L5
 GNSSSignals.get_band
 ```

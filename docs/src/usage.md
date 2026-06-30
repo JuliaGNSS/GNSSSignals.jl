@@ -118,6 +118,38 @@ get_modulation(gpsl1c_p)            # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
 
 The overlay code is per-PRN, so [`get_secondary_code`](@ref) returns a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode) wrapping the 1800 × 63 overlay matrix rather than a plain tuple.
 
+### GPS L2 CM
+
+GPS L2 CM is the moderate-length, data-carrying component of the GPS L2 civil signal (L2C), on the L2 band (1227.6 MHz). It is a BPSK 10230-chip code at 511.5 kcps (a 20 ms period) carrying the CNAV message at 50 sps, with no secondary code (IS-GPS-200N §3.2.1.4). In the broadcast signal it is time-multiplexed chip-by-chip with the [`GPSL2CL`](@ref GNSSSignals.GPSL2CL) pilot; like GNSS-SDR and PocketSDR this implementation models the CM component on its own at its native chip rate. PRNs 1-63 are supported:
+
+```julia
+gpsl2cm = GPSL2CM()
+get_code_length(gpsl2cm)            # 10230
+get_band(gpsl2cm)                   # L2()
+get_center_frequency(gpsl2cm)       # 1227600000 Hz
+get_code_frequency(gpsl2cm)         # 511500 Hz
+get_data_frequency(gpsl2cm)         # 50 Hz (CNAV symbol rate)
+get_secondary_code_length(gpsl2cm)  # 1 (no secondary code)
+get_modulation(gpsl2cm)             # LOC()
+```
+
+### GPS L2 CL
+
+GPS L2 CL is the long, dataless pilot component of the GPS L2 civil signal. It shares the L2 CM code generator (different per-PRN initial state) but is short-cycled at a much longer 767250-chip period — a 1.5 s code at 511.5 kcps — and carries no data (IS-GPS-200N §3.2.1.5):
+
+```julia
+gpsl2cl = GPSL2CL()
+get_code_length(gpsl2cl)            # 767250
+get_band(gpsl2cl)                   # L2()
+get_center_frequency(gpsl2cl)       # 1227600000 Hz
+get_code_frequency(gpsl2cl)         # 511500 Hz
+get_data_frequency(gpsl2cl)         # 0 Hz (dataless)
+get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
+get_modulation(gpsl2cl)             # LOC()
+```
+
+The full L2 CL code matrix is 767250 × 63; stored as `Int16` it occupies ~97 MB, so build `GPSL2CL()` once and reuse the instance.
+
 ### Galileo E1B
 
 Galileo E1B (the data-carrying component of Galileo E1 OS) uses CBOC(6,1,1/11) modulation. It is transmitted on the same RF carrier as GPS L1 C/A — [`get_band`](@ref) returns [`L1`](@ref GNSSSignals.L1) for both:
@@ -207,9 +239,11 @@ A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two 
 get_band(GPSL1CA())            # L1()
 get_band(GalileoE1B())         # L1()
 get_band(GalileoE1C())         # L1()
+get_band(GPSL2CM())            # L2()
 get_band(GPSL5I())             # L5()
 
 get_center_frequency(L1())     # 1575420000 Hz
+get_center_frequency(L2())     # 1227600000 Hz
 get_center_frequency(L5())     # 1176450000 Hz
 ```
 
