@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.6.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.5.0...v2.6.0) (2026-06-30)
+
+
+### Features
+
+* add GPS L2C civil signals (L2 CM and L2 CL) ([9cd0e2a](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/9cd0e2a96af28e688a25ee3a6f29a29d52dbb758))
+
 # [2.5.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.4.0...v2.5.0) (2026-06-30)
 
 
