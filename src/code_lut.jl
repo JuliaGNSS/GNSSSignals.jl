@@ -1,12 +1,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Fast LUT-based code generation (`CodeReplicaLUT` plan + `gen_code!` method).
+# Fast LUT-based code generation (THE `gen_code!` generator + continuing fill + value engine).
 #
 # This file vendors the GNSSSignalsLUT.jl machinery as an internal submodule
 # `CodeLUT` (a verbatim copy of its permute / kernel / iterate / modulation
 # sources plus its backend-selection + `CodeTable` definition) and adds a thin
-# adapter at GNSSSignals top level: a `CodeReplicaLUT` plan (built once per
-# signal/PRN) plus `gen_code!` / `gen_code` methods dispatching on it, matching
-# the `gen_code!` signature.
+# adapter at GNSSSignals top level: the `gen_code!(out::Vector{Int8}, signal, prn, …)`
+# generator (resampling PRN `prn`'s baked column of the signal's embedded `SignalLUT`),
+# plus the continuing immutable [`code_engine`](@ref)`(signal, prn, fs, fc)` →
+# [`CodeFillEngine`](@ref) / [`code_state`](@ref) / value-threaded `gen_code!(out, eng, st)`,
+# and the fused value-based [`code_engine`](@ref)`(signal, prn, fs, fc, Val(K))`. All read
+# `signal.lut`; there is no rate-independent plan object — the baked table lives in the signal.
 #
 # The LUT resampler bakes the BOC/TMBOC subcarrier (and short secondary codes)
 # into an expanded ±1 Int8 table and resamples it with a single AVX-512 `vpermb`
@@ -19,8 +22,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
-# resampler. Not exported and not part of the public GNSSSignals API; use `CodeReplicaLUT`
-# with `gen_code!` / `gen_code` instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
+# resampler. Not exported and not part of the public GNSSSignals API; use the public
+# `gen_code!` / `gen_code` / `code_engine` instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
 # `CBOC`, `ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`, `AVX2`,
 # `Portable`, `default_backend`, …) live inside this submodule so they do not clash with
 # GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `CBOC` / `Modulation`. (Plain comment, not a docstring,
@@ -113,12 +116,10 @@ end
 end # module CodeLUT
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Adapter: `CodeReplicaLUT` plan + `gen_code!` / `gen_code` methods at top level.
+# Adapter: the public `gen_code!` / `gen_code` generators, the continuing immutable
+# `CodeFillEngine` (value-threaded `CodeFillState`), and the value-based `code_engine` —
+# all reading the signal's embedded `SignalLUT`. Int8-only output, no scratch Dict, no plan.
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Per-length Int8 scratch buffers for non-Int8 output (e.g. Int16), keyed by
-# length, to avoid a per-call allocation.
-const _GEN_CODE_LUT_SCRATCH = Dict{Int,Vector{Int8}}()
 
 # Strip Unitful to a plain Float64 Hz value; pass plain numbers through.
 @inline _to_hz(x::Frequency) = Float64(ustrip(u"Hz", x))
@@ -134,8 +135,7 @@ const _GEN_CODE_LUT_SCRATCH = Dict{Int,Vector{Int8}}()
 #
 # `floor` (not round) is correct for negative phases too (e.g. start_index_shift = -1); the
 # fractional part is always in [0,1). The rounding edge (rem0 == step_den) carries into θ_int.
-# This is the original `gen_code!`'s sub-sample phase at 2^-30-sub-chip precision (finer than
-# the original). rem0 = 0 ⇒ the previous integer-sub-chip behavior, byte-identical.
+# The sub-sample phase is tracked at 2^-30-sub-chip precision. rem0 = 0 ⇒ integer-sub-chip phase.
 @inline function _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, step_den::Int)
     θ = (start_phase + start_index_shift * fc / fs) * P
     θ_int = floor(Int, θ)
@@ -151,126 +151,212 @@ end
 # multi-level Int8 integer approximation of its sqrt-power amplitudes (`cboc_amplitudes`).
 # Errors on cosine BOC and code-factor n ≠ 1. The `cboc_amplitudes` argument is ignored by
 # every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
+# Used by `build_signal_lut` (eager bake at signal construction).
 _codelut_modulation(m, ::Tuple{Integer,Integer}) = _codelut_modulation(m)
 function _codelut_modulation(m::LOC)
     CodeLUT.LOC()
 end
 function _codelut_modulation(m::BOCsin)
-    m.n == 1 || error("CodeReplicaLUT supports only code-factor n==1 BOC; use gen_code!")
+    m.n == 1 || error("the embedded LUT supports only code-factor n==1 BOC")
     CodeLUT.BOC(Int(m.m))
 end
 function _codelut_modulation(m::TMBOC)
     (m.boc1.n == 1 && m.boc2.n == 1 && m.boc1.m == 1) ||
-        error("CodeReplicaLUT supports only TMBOC with BOC(1,1) base and code-factor n==1; use gen_code!")
+        error("the embedded LUT supports only TMBOC with BOC(1,1) base and code-factor n==1")
     CodeLUT.TMBOC(Int(m.boc2.m), collect(Bool, m.pattern))
 end
 function _codelut_modulation(m::CBOC, cboc_amplitudes::Tuple{Integer,Integer})
     (m.boc1.n == 1 && m.boc2.n == 1) ||
-        error("CodeReplicaLUT supports only code-factor n==1 CBOC; use gen_code!")
+        error("the embedded LUT supports only code-factor n==1 CBOC")
     a1, a2 = cboc_amplitudes
     (a1 > 0 && a2 > 0) ||
-        error("CodeReplicaLUT cboc_amplitudes must be positive integers; got $cboc_amplitudes")
+        error("cboc_amplitudes must be positive integers; got $cboc_amplitudes")
     Int(a1) + Int(a2) <= typemax(Int8) ||
-        error("CodeReplicaLUT cboc_amplitudes must satisfy a1 + a2 ≤ $(typemax(Int8)) (Int8 table); got $cboc_amplitudes")
+        error("cboc_amplitudes must satisfy a1 + a2 ≤ $(typemax(Int8)) (Int8 table); got $cboc_amplitudes")
     CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), Int8(a2))
 end
 function _codelut_modulation(m::BOCcos)
-    error("CodeReplicaLUT does not support cosine-phased BOC (Int8/±1 only); use gen_code!")
+    error("the embedded LUT does not support cosine-phased BOC (Int8/±1 only)")
 end
 
 """
-    CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer; cboc_amplitudes = (19, 6))
+    build_signal_lut(modulation, codes, sec::SecondaryCode; cboc_amplitudes = (19, 6))
+        -> SignalLUT
 
-A reusable, rate-independent plan for fast LUT-based code generation of
-`signal`/`prn`. Building it bakes the fully-modulated replica (primary ×
-subcarrier × short secondary) into an expanded `Int8` `CodeTable` once — this is
-the expensive step. The resulting plan is **immutable and read-only**, so it can
-be shared across threads (build once per `(signal, prn)`, reuse it for every
-integration; a receiver holds one plan per tracked channel).
+Bake every PRN's fully-modulated replica into one `SignalLUT` matrix, eagerly at signal
+construction. For each PRN it bakes the padded table via
+`CodeLUT.code_replica(primary, mod; secondary, max_bake = typemax(Int16))` and stacks the
+per-PRN `mc.table.padded` as column `prn`. The shared metadata (P, table_length,
+period_subchips) is read from the first PRN's `mc`.
 
-Pass the plan to [`gen_code!`](@ref) or the continuing [`code_engine`](@ref) with a sampling
-frequency to resample it. The baked table is independent of the sampling and code
-frequency, so a single plan serves any rate.
+`codes` is the signal's primary code matrix (`Int16`, ±1 per chip, unpadded); the primary
+±1 for PRN `prn` is `sign(codes[:, prn])`. `sec` is the signal's [`SecondaryCode`](@ref):
+short secondaries are BAKED into each column, a long overlay (GPS L1C-P, 1800 chips) is kept
+RESIDUAL and stored in `SignalLUT.secondary` (per-PRN for a `PerPRNSecondaryCode`, one shared
+column otherwise) for runtime application.
 
-# CBOC (Galileo E1B)
-CBOC signals are supported via an **Int8 integer approximation** of the two
-sqrt-power subcarrier amplitudes. `cboc_amplitudes = (a1, a2)` sets the integer
-amplitudes of the `BOC(1,1)` and `BOC(6,1)` components respectively; the baked
-sub-chip values are the composite `±(a1 ± a2)`. For a correlation replica only the
-*ratio* `a1/a2` matters (overall scale is irrelevant): the subcarrier correlation
-is exactly the dot product of the amplitude vectors, so the match to the float
-spec is the cosine between `(a1, a2)` and the true `(sqrt(10/11), sqrt(1/11)) ∝
-(sqrt(10), 1) = (3.162, 1)`. The default `(19, 6)` (ratio `3.167`, baked values
-`±25, ±13`) reproduces the float subcarrier to ~0 dB correlation loss; coarser
-choices trade accuracy for smaller magnitudes (`(3, 1)` → −0.001 dB; `(2, 1)` →
-−0.108 dB). Any `a1, a2 > 0` with `a1 + a2 ≤ 127` is accepted. Because the
-amplitudes only scale the replica, the **sign pattern is identical to the float
-`gen_code!`** for any `a1 > a2 > 0`. The argument is ignored for non-CBOC signals.
-
-# Limitations (vs the plain-`signal` `gen_code!`)
-- **Int8 output.** Non-CBOC signals are ±1; CBOC is the multi-level integer
-  approximation above. Cosine-phased BOC raises an error at construction (use
-  `gen_code!` with the signal directly).
-- **Sub-chip oversampling required:** `sampling_frequency ≥
-  code_frequency · subchip_factor` (else `gen_code!` raises an error).
-- **Fractional sub-chip phase supported.** `start_phase` + the
-  `start_index_shift` contribution are honored at full sub-sample resolution:
-  the phase is split into an integer sub-chip offset plus a `2^-30`-sub-chip
-  fixed-point fractional residual seeded into the DDA, matching the plain
-  `gen_code!`'s sub-sample phase to within a handful of samples at chip
-  boundaries (differing only by fixed-point rounding). `start_phase = 0.0,
-  start_index_shift = 0` gives phase `0` exactly. Negative `start_index_shift`
-  is handled correctly (the integer offset floors, the fraction stays in
-  `[0, 1)`).
-- **High-oversampling run-fill is approximate to ≤ a couple of samples.** Above
-  ~7× sub-chip oversampling for long fills (AVX-512; lower for short fills and ~4× on AVX2) the resampler broadcast-fills runs of identical chips
-  (matching the original `gen_code!`'s speed there) using a fixed-point samples-
-  per-chip DDA. Its chip boundaries are exact for any single fill and drift at
-  most a couple of samples only over a *very* long continued stream (~10⁶ chips) —
-  the same order as the permute path's own rate-quantisation drift, and on the
-  order of the fixed-point sub-chip phase rounding above.
+**Errors** for modulations the LUT can't bake (cosine BOC, code-factor n ≠ 1, …) — these are
+unimplemented for the embedded LUT, so the signal fails to construct rather than silently
+omitting its LUT. `_codelut_modulation` raises the specific error.
 """
-struct CodeReplicaLUT{S<:AbstractGNSSSignal}
-    signal::S
-    prn::Int
-    mc::CodeLUT.ModulatedCode   # rate-INDEPENDENT expanded ±1 table, built once
+function build_signal_lut(modulation, codes::AbstractMatrix, sec::SecondaryCode;
+                          cboc_amplitudes::Tuple{Integer,Integer} = (19, 6))
+    clmod = _codelut_modulation(modulation, cboc_amplitudes)   # throws on unimplemented modulation
+    num_prns = size(codes, 2)
+    num_prns >= 1 ||
+        throw(ArgumentError("build_signal_lut: code matrix has no PRNs (got $(size(codes)))"))
+    Lp = size(codes, 1)
+    # First PRN: build the reference `mc`, size the padded matrix, read the shared metadata.
+    sec1 = _residual_secondary_for_prn(sec, 1)
+    mc1 = CodeLUT.code_replica(_primary_col(codes, 1), clmod; secondary = sec1, max_bake = typemax(Int16))
+    coltot = length(mc1.table.padded)        # table_length + WINDOW_PAD
+    padded = Matrix{Int8}(undef, coltot, num_prns)
+    @inbounds padded[:, 1] .= mc1.table.padded
+    # Residual secondary store: `mc1.secondary` is `Int8[1]` when baked/none. When residual and
+    # PER-PRN (L1C-P), keep one column per PRN; otherwise one shared column reused for all PRNs.
+    Lsr = length(mc1.secondary)
+    residual_perprn = Lsr > 1 && sec isa PerPRNSecondaryCode
+    secmat = Matrix{Int8}(undef, Lsr, residual_perprn ? num_prns : 1)
+    @inbounds secmat[:, 1] .= mc1.secondary
+    for prn in 2:num_prns
+        secp = _residual_secondary_for_prn(sec, prn)
+        mc = CodeLUT.code_replica(_primary_col(codes, prn), clmod; secondary = secp, max_bake = typemax(Int16))
+        # All PRNs of one signal share P / table length, so the columns match.
+        length(mc.table.padded) == coltot ||
+            error("build_signal_lut: PRN $prn baked table length $(length(mc.table.padded)) ≠ $coltot")
+        @inbounds padded[:, prn] .= mc.table.padded
+        residual_perprn && (@inbounds secmat[:, prn] .= mc.secondary)
+    end
+    SignalLUT(padded, mc1.subchip_factor, secmat, mc1.table.length, mc1.period_subchips)
 end
 
-function CodeReplicaLUT(signal::AbstractGNSSSignal, prn::Integer;
-                       cboc_amplitudes::Tuple{Integer,Integer} = (19, 6))
-    modulation = _codelut_modulation(get_modulation(signal), cboc_amplitudes)
-    Lp = get_code_length(signal)
-    primary = Int8[get_code_at_index(signal, i, prn) for i in 0:Lp-1]
-    sec = get_secondary_code(signal)
+# Primary ±1 column for PRN `prn` from the (Int16) code matrix — sign of each stored chip.
+@inline _primary_col(codes::AbstractMatrix, prn::Integer) =
+    Int8[Int8(sign(codes[i, prn])) for i in 1:size(codes, 1)]
+
+# Residual ±1 secondary vector for PRN `prn`: `Int8[1]` when there is no secondary, else the
+# per-PRN/-shared ±1 chips.
+function _residual_secondary_for_prn(sec::SecondaryCode, prn::Integer)
     Ls = secondary_code_length(sec)
-    # secondary_value returns `true` for NoSecondaryCode (→ +1) and the stored
-    # ±1 chip otherwise; Int8(true) == 1, so this maps both conventions to ±1.
-    secondary = Ls == 1 ? Int8[1] : Int8[Int8(secondary_value(sec, prn, s)) for s in 0:Ls-1]
-    # max_bake = typemax(Int16) keeps baked tables AVX2-addressable; longer
-    # secondaries (e.g. L1C-P's 1800-chip overlay) stay unbaked.
-    mc = CodeLUT.code_replica(primary, modulation; secondary = secondary, max_bake = typemax(Int16))
-    CodeReplicaLUT{typeof(signal)}(signal, Int(prn), mc)
+    Ls == 1 ? Int8[1] : Int8[Int8(secondary_value(sec, prn, s)) for s in 0:Ls-1]
+end
+
+# Build a transient, view-backed `CodeLUT.ModulatedCode` over PRN `prn`'s column of `lut.padded`
+# (ZERO-COPY: `chips`/`padded` are unit-stride `SubArray{Int8}` views into the matrix — the SIMD
+# `VecRange{W}` loads read them directly). Reuses the shared metadata + the per-PRN residual
+# secondary view. Fed to the shared resample core / continuing fill engine / value engine.
+@inline function _modulated_code_view(lut::SignalLUT, prn::Int)
+    coltot = size(lut.padded, 1)
+    # Use matching `UnitRange` row slices so both views share the same `SubArray` type `V`
+    # (the struct's single backing-vector type parameter); the auto outer constructor requires
+    # identical `V` for `chips` and `padded`.
+    padded_col = @view lut.padded[1:coltot, prn]
+    chips_col = @view lut.padded[1:lut.table_length, prn]
+    table = CodeLUT.CodeTable(chips_col, padded_col, lut.table_length)
+    CodeLUT.ModulatedCode(table, lut.subchip_factor, _signal_lut_secondary(lut, prn), lut.period_subchips)
+end
+
+"""
+    gen_code!(sampled_code::AbstractVector{Int8}, signal, prn, sampling_frequency,
+              code_frequency = get_code_frequency(signal),
+              start_phase = 0.0, start_index_shift = 0) -> sampled_code
+
+Generate the sampled spreading code for PRN `prn` of `signal` in-place, by resampling PRN
+`prn`'s fully-modulated baked replica from the signal's embedded `SignalLUT`. This is THE code
+generator: it wraps PRN `prn`'s baked column in a zero-copy view-backed table and drives the
+SIMD windowed-permute / run-fill resampler.
+
+# Output
+`sampled_code` must be `Vector{Int8}` (or any `AbstractVector{Int8}`). Non-CBOC signals are
+±1; CBOC (Galileo E1B) is the multi-level Int8 *integer approximation* of its sqrt-power
+subcarrier amplitudes (sign pattern matches the float spec). There is no scratch buffer and
+the read-only `signal.lut` is shared, so this is thread-safe (write your own Int8 buffer).
+
+# Phase
+`start_phase` (primary chips) and the `start_index_shift` contribution are honored at full
+sub-sample resolution: the phase is split into an integer sub-chip offset plus a
+`2^-30`-sub-chip fixed-point fractional residual seeded into the DDA. `start_phase = 0.0,
+start_index_shift = 0` gives phase `0` exactly; negative `start_index_shift` is handled
+correctly. Any non-baked secondary (e.g. GPS L5I's NH10) is applied per primary period.
+
+# Requirements
+`sampling_frequency ≥ code_frequency · subchip_factor` (else an error is raised). The embedded
+`SignalLUT` is always present (signals whose modulation the LUT can't bake fail to construct),
+so there is no missing-LUT case.
+
+# Examples
+```julia-repl
+julia> using Unitful: MHz
+julia> buffer = zeros(Int8, 4000)
+julia> gen_code!(buffer, GPSL1CA(), 1, 4MHz)
+```
+"""
+function gen_code!(
+    sampled_code::AbstractVector{Int8},
+    signal::AbstractGNSSSignal,
+    prn::Integer,
+    sampling_frequency,
+    code_frequency = get_code_frequency(signal),
+    start_phase = 0.0,
+    start_index_shift::Integer = 0,
+)
+    mc = _modulated_code_view(signal.lut, Int(prn))
+    _gen_code_lut_core!(
+        sampled_code, mc, _to_hz(sampling_frequency), _to_hz(code_frequency),
+        start_phase, start_index_shift,
+    )
+end
+
+# Shared one-shot resample core, driven from a rate-independent `CodeLUT.ModulatedCode`
+# (baked table + metadata: subchip_factor P, residual secondary, period_subchips), whose
+# table VIEWS into PRN `prn`'s column of the signal's embedded `SignalLUT.padded` matrix
+# (zero-copy). Honors the `fs ≥ fc·P` oversampling check, fractional sub-chip `start_phase` /
+# `start_index_shift` via `_subchip_phase_split`, host backend selection, and the non-baked
+# secondary application (carried inside `CodeLUT.generate_code!(out, mc; …)`). Int8 only.
+@inline function _gen_code_lut_core!(
+    sampled_code::AbstractVector{Int8},
+    mc::CodeLUT.ModulatedCode,
+    fs::Float64,
+    fc::Float64,
+    start_phase,
+    start_index_shift::Integer,
+)
+    P = mc.subchip_factor
+    fs < fc * P && error(
+        "gen_code! needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz).",
+    )
+    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
+    # fractional residual `rem0` at 2^-30-sub-chip precision (see `_subchip_phase_split`).
+    sd = CodeLUT._STEP_DEN
+    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
+    # Parameterless default_backend() const-folds to a concrete backend, keeping
+    # generate_code! type-stable (the table-aware overload would erase that inference).
+    backend = CodeLUT.default_backend()
+    CodeLUT.generate_code!(sampled_code, mc;
+        code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
+    return sampled_code
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Value-based continuing fill: an immutable `CodeFillEngine` built once per (plan, rate) plus
-# an isbits `CodeFillState` threaded by the caller. The DDA setup (fixed-point step + stream
-# init, ~40 ns) runs ONCE in `code_engine`; each `gen_code!(out, eng, st)` then fills the NEXT
-# `length(out)` samples from `st` and *returns* the state advanced by exactly `length(out)`, so
-# concatenating consecutive fills equals one big generation. No hidden/mutable state — the
-# caller threads `st` — and the isbits state keeps the steady-state fill allocation-free. This
-# amortises the init across every 1 ms integration (the per-sample loop already beats the
-# original `gen_code!`); for fused, register-resident correlation use the value-based
-# [`code_engine`](@ref)`(plan, fs, fc, Val(K))` / [`code_lookup`](@ref) API instead.
+# Value-based continuing fill: an immutable `CodeFillEngine` built once per (signal, prn, rate)
+# plus an isbits `CodeFillState` threaded by the caller. The DDA setup (fixed-point step +
+# stream init, ~40 ns) runs ONCE in `code_engine`; each `gen_code!(out, eng, st)` then fills
+# the NEXT `length(out)` samples from `st` and *returns* the state advanced by exactly
+# `length(out)`, so concatenating consecutive fills equals one big generation. No hidden /
+# mutable state — the caller threads `st` — and the isbits state keeps the steady-state fill
+# allocation-free. This amortises the init across every 1 ms integration; for fused,
+# register-resident correlation use the value-based [`code_engine`](@ref)`(signal, prn, fs, fc,
+# Val(K))` / [`code_lookup`](@ref) API instead.
 # ─────────────────────────────────────────────────────────────────────────────
 
 """
     CodeFillEngine
 
-Immutable, loop-invariant LUT code-fill engine built from a [`CodeReplicaLUT`](@ref) plan and
-a sampling/code rate via [`code_engine`](@ref)`(plan, fs, fc)`. It holds the chosen backend's
-resampler config (precomputed step ratio + DDA deltas), the residual (non-baked) secondary
-(e.g. GPS L5I's NH10), and the initial phase used to seed [`code_state`](@ref).
+Immutable, loop-invariant LUT code-fill engine built from a `(signal, prn)` (reading
+`signal.lut`) and a sampling/code rate via [`code_engine`](@ref)`(signal, prn, fs, fc)`. It
+holds the chosen backend's resampler config (precomputed step ratio + DDA deltas), the
+residual (non-baked) secondary (e.g. GPS L5I's NH10), and the initial phase used to seed
+[`code_state`](@ref).
 
 Build it once (the DDA setup runs here), pair it with a [`code_state`](@ref) seed, then call
 [`gen_code!`](@ref)`(out, eng, st)` per integration — that hot path does no rate setup and no
@@ -278,8 +364,7 @@ DDA re-init, just the windowed permute loop with a single-stream + scalar tail, 
 the advanced state. The engine is read-only and shareable; per-stream/channel position lives
 entirely in the threaded state, so one engine can drive many independent streams.
 """
-struct CodeFillEngine{S<:AbstractGNSSSignal,E<:CodeLUT.FillEngineAny}
-    plan::CodeReplicaLUT{S}
+struct CodeFillEngine{E<:CodeLUT.FillEngineAny}
     engine::E                 # backend-specific value-based fill engine
     secondary::Vector{Int8}   # residual (non-baked) secondary; [1] if none
     period_subchips::Int      # sub-chips per primary period
@@ -303,33 +388,34 @@ struct CodeFillState{St}
 end
 
 """
-    code_engine(plan::CodeReplicaLUT, sampling_frequency,
-                code_frequency = get_code_frequency(plan.signal);
+    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
+                code_frequency = get_code_frequency(signal);
                 start_phase = 0.0, start_index_shift = 0,
                 backend = default_backend()) -> CodeFillEngine
 
-Build an immutable, continuing code-fill engine over `plan` at the given rate (no `Val(K)` —
-that overload builds the fused register-resident engine instead). The one-time DDA setup
-(fixed-point step + stream init) runs here; afterwards seed a [`code_state`](@ref)`(eng)` and
-call [`gen_code!`](@ref)`(out, eng, st) -> st` to fill successive chunks with no per-call
-setup, threading the returned state for seamless block-to-block continuation (tracking).
-Non-baked secondaries (e.g. GPS L5I's NH10) are supported. For a one-shot fill the
-[`gen_code!`](@ref)`(out, plan, …)` method is simpler.
+Build an immutable, continuing code-fill engine over PRN `prn` of `signal` at the given rate
+(reading `signal.lut`; no `Val(K)` — that overload builds the fused register-resident engine
+instead). The one-time DDA setup (fixed-point step + stream init) runs here; afterwards seed a
+[`code_state`](@ref)`(eng)` and call [`gen_code!`](@ref)`(out, eng, st) -> st` to fill
+successive chunks with no per-call setup, threading the returned state for seamless
+block-to-block continuation (tracking). Non-baked secondaries (e.g. GPS L5I's NH10) are
+supported. For a one-shot fill the [`gen_code!`](@ref)`(out, signal, prn, …)` method is simpler.
 
-Same oversampling requirement and fractional sub-chip phase support as the plan
-[`gen_code!`](@ref) method. `backend` defaults to the host's best SIMD backend; pass a
-weaker one (e.g. `CodeLUT.AVX2()`/`CodeLUT.Portable()`) to force it — handy for testing the
-non-default paths on a given CPU. Forcing a backend the CPU does not support is invalid.
+Same oversampling requirement and fractional sub-chip phase support as the one-shot
+[`gen_code!`](@ref). `backend` defaults to the host's best SIMD backend; pass a weaker one
+(e.g. `CodeLUT.AVX2()`/`CodeLUT.Portable()`) to force it — handy for testing the non-default
+paths on a given CPU. Forcing a backend the CPU does not support is invalid.
 """
 function code_engine(
-    plan::CodeReplicaLUT,
+    signal::AbstractGNSSSignal,
+    prn::Integer,
     sampling_frequency,
-    code_frequency = get_code_frequency(plan.signal);
+    code_frequency = get_code_frequency(signal);
     start_phase = 0.0,
     start_index_shift::Integer = 0,
     backend::CodeLUT.Backend = CodeLUT.default_backend(),
 )
-    mc = plan.mc
+    mc = _modulated_code_view(signal.lut, Int(prn))
     fc = _to_hz(code_frequency)
     fs = _to_hz(sampling_frequency)
     P = mc.subchip_factor
@@ -342,13 +428,14 @@ function code_engine(
     # construction). It is exposed so tests can force a *weaker* backend than the host (e.g.
     # AVX2/Portable on an AVX-512 runner) — forcing a backend the CPU lacks would SIGILL.
     # Resample the baked sub-chip table at fc·P. Split the real primary-chip start phase into
-    # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`, so the
-    # DDA reproduces the original gen_code!'s sub-sample phase (see `_subchip_phase_split`).
+    # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`.
     cps = (fc * P) / fs
     sn, sd = CodeLUT._fixed_point_step(cps)   # ← fixed-point step (one multiply + round)
     phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
     engine = CodeLUT.make_fill_engine(mc.table, sn, sd; phase = phase_sub, rem0 = rem0, backend = backend)
-    return _wrap_code_fill_engine(plan, engine, mc.secondary, mc.period_subchips, P, sn, sd, phase_sub)
+    # `mc.secondary` is a view into `signal.lut.secondary`; materialise it as an owning Vector
+    # so the engine does not alias the (otherwise read-only) embedded matrix.
+    return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, P, sn, sd, phase_sub)
 end
 
 # Function barrier. `make_fill_engine` returns a small Union over the phase type (Int16 vs
@@ -357,38 +444,29 @@ end
 # construction type-stable — without it the runtime-typed engine is boxed into the struct on
 # every construction (the one-shot/threaded allocation hot spot).
 function _wrap_code_fill_engine(
-    plan::CodeReplicaLUT{S}, engine::E, secondary, period_subchips,
+    engine::E, secondary, period_subchips,
     subchip_factor, step_num, step_den, phase_sub,
-) where {S,E<:CodeLUT.FillEngineAny}
-    CodeFillEngine{S,E}(
-        plan, engine, secondary, period_subchips, subchip_factor, step_num, step_den, phase_sub,
+) where {E<:CodeLUT.FillEngineAny}
+    CodeFillEngine{E}(
+        engine, secondary, period_subchips, subchip_factor, step_num, step_den, phase_sub,
     )
 end
 
 """
-    gen_code!(sampled_code, eng::CodeFillEngine, st::CodeFillState) -> CodeFillState
+    gen_code!(sampled_code::AbstractVector{Int8}, eng::CodeFillEngine, st::CodeFillState)
+        -> CodeFillState
 
 Fill `sampled_code` with the **next** `length(sampled_code)` samples of the resampled
-fully-modulated ±1 replica, continuing seamlessly from `st` (no `rationalize`, no DDA re-init
-— this is the hot path), and **return** the state advanced by exactly `length(sampled_code)`.
-Concatenating the outputs of consecutive calls — threading the returned state — equals one
-big generation. Any non-baked secondary (e.g. GPS L5I's NH10) is applied per primary period
-across call boundaries via the state's absolute sample offset.
-
-`sampled_code` is most naturally `Int8` (written directly); other integer element types go
-through a cached `Int8` scratch buffer + broadcast convert.
+fully-modulated replica, continuing seamlessly from `st` (no `rationalize`, no DDA re-init —
+this is the hot path), and **return** the state advanced by exactly `length(sampled_code)`.
+Concatenating the outputs of consecutive calls — threading the returned state — equals one big
+generation. Any non-baked secondary (e.g. GPS L5I's NH10) is applied per primary period across
+call boundaries via the state's absolute sample offset. Int8 output only.
 """
-function gen_code!(sampled_code::AbstractVector, eng::CodeFillEngine, st::CodeFillState)
+function gen_code!(sampled_code::AbstractVector{Int8}, eng::CodeFillEngine, st::CodeFillState)
     N = length(sampled_code)
-    if eltype(sampled_code) == Int8
-        dda = CodeLUT.fill_continue!(sampled_code, eng.engine, st.dda)
-        _apply_secondary_continue!(sampled_code, eng, st.n_abs)
-    else
-        scratch = get!(() -> Vector{Int8}(undef, N), _GEN_CODE_LUT_SCRATCH, N)
-        dda = CodeLUT.fill_continue!(scratch, eng.engine, st.dda)
-        _apply_secondary_continue!(scratch, eng, st.n_abs)
-        sampled_code .= scratch
-    end
+    dda = CodeLUT.fill_continue!(sampled_code, eng.engine, st.dda)
+    _apply_secondary_continue!(sampled_code, eng, st.n_abs)
     return CodeFillState(dda, st.n_abs + N)
 end
 
@@ -424,69 +502,12 @@ end
     out
 end
 
-"""
-    gen_code!(sampled_code, plan::CodeReplicaLUT, sampling_frequency,
-              code_frequency = get_code_frequency(plan.signal),
-              start_phase = 0.0, start_index_shift = 0, PHASET = Int32;
-              backend = default_backend())
-
-Convenience one-shot: fills `sampled_code` once from the requested (fractional sub-chip)
-phase of the given rate, paying a fresh DDA setup each call. Fine for one-off use; for repeated
-integrations build `eng = code_engine(plan, fs, fc)` and `st = code_state(eng)` once, then call
-`st = gen_code!(out, eng, st)` per integration to amortise the init.
-
-Unlike the continuing [`code_engine`](@ref), this drives the *immutable* one-shot
-windowed fill (`CodeLUT.generate_code!`) directly — no fill engine/state is threaded,
-so the fill is allocation-free (the continuing engine's carried DDA state is unnecessary
-when filling exactly once).
-
-`sampled_code` is most naturally `Int8` (written directly); other integer element types go
-through a cached `Int8` scratch buffer + broadcast convert. Returns `sampled_code`.
-"""
-function gen_code!(
-    sampled_code::AbstractVector,
-    plan::CodeReplicaLUT,
-    sampling_frequency,
-    code_frequency = get_code_frequency(plan.signal),
-    start_phase = 0.0,
-    start_index_shift::Integer = 0,
-    PHASET = Int32;
-    backend::CodeLUT.Backend = CodeLUT.default_backend(),
-)
-    mc = plan.mc
-    fc = _to_hz(code_frequency)
-    fs = _to_hz(sampling_frequency)
-    P = mc.subchip_factor
-    fs < fc * P && error(
-        "CodeReplicaLUT gen_code! needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
-    )
-    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
-    # fractional residual `rem0` so the DDA reproduces the original gen_code!'s sub-sample
-    # phase at 2^-30-sub-chip precision (see `_subchip_phase_split`).
-    sd = CodeLUT._STEP_DEN
-    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
-    # `backend` defaults to the parameterless `default_backend()` (const-folds to a concrete
-    # backend, keeping generate_code! type-stable); exposed so tests can force a weaker
-    # backend than the host (forcing one the CPU lacks would SIGILL — see code_engine).
-    if eltype(sampled_code) == Int8
-        CodeLUT.generate_code!(sampled_code, mc;
-            code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
-    else
-        N = length(sampled_code)
-        scratch = get!(() -> Vector{Int8}(undef, N), _GEN_CODE_LUT_SCRATCH, N)
-        CodeLUT.generate_code!(scratch, mc;
-            code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
-        sampled_code .= scratch
-    end
-    return sampled_code
-end
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Value-based code engine: top-level adapter over `CodeLUT.code_engine` for a
-# `CodeReplicaLUT` plan. Build one engine per interleave factor `K` (`Val(K)`), hold K
+# Value-based code engine: top-level adapter over `CodeLUT.code_engine` for PRN `prn` of a
+# signal (reading `signal.lut`). Build one engine per interleave factor `K` (`Val(K)`), hold K
 # isbits `code_state`s (W apart), and drive them with `code_lookup` / `code_advance` — the
-# allocation-free, register-resident counterpart to filling an array with `gen_code!`, and
-# the code-side partner for SinCosLUT's `carrier_engine`. (See CodeLUT's iterate.jl for the
+# allocation-free, register-resident counterpart to filling an array with `gen_code!`, and the
+# code-side partner for SinCosLUT's `carrier_engine`. (See CodeLUT's iterate.jl for the
 # per-backend note: AVX-512 ≈ 8× the AVX2/NEON rate, an ISA limit, not a tuning miss.)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -501,34 +522,33 @@ Initial isbits fill state for `eng` (DDA seeded at the engine's start phase, abs
 @inline CodeLUT.code_state(eng::CodeFillEngine) = CodeFillState(CodeLUT.fill_state(eng.engine), 0)
 
 """
-    code_engine(plan::CodeReplicaLUT, sampling_frequency,
-                code_frequency = get_code_frequency(plan.signal), Val(K);
+    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
+                code_frequency = get_code_frequency(signal), Val(K);
                 start_phase = 0.0, start_index_shift = 0) -> CodeLUT.CodeEngine
 
-Build a loop-invariant, value-based code engine over `plan` for a `K`-way interleaved
-fused loop. Pair with `K` states `code_state(eng, k)` (`k = 0..K-1`, `W` samples apart) and
-drive each with [`code_lookup`](@ref) / [`code_advance`](@ref); nothing is materialised or
-heap-allocated. The code-side counterpart to SinCosLUT's `carrier_engine`. Same oversampling
-requirement and fractional sub-chip phase support as the plan [`gen_code!`](@ref) method; a
-non-baked secondary (e.g. GPS L5I's NH10) or `sampling_frequency < code_frequency·subchip_factor`
-raises an error (use the array-filling [`gen_code!`](@ref) / continuing [`code_engine`](@ref)
-without `Val(K)` instead).
+Build a loop-invariant, value-based code engine over PRN `prn` of `signal` (reading
+`signal.lut`) for a `K`-way interleaved fused loop. Pair with `K` states `code_state(eng, k)`
+(`k = 0..K-1`, `W` samples apart) and drive each with [`code_lookup`](@ref) /
+[`code_advance`](@ref); nothing is materialised or heap-allocated. The code-side counterpart
+to SinCosLUT's `carrier_engine`. Same oversampling requirement and fractional sub-chip phase
+support as [`gen_code!`](@ref); a non-baked secondary (e.g. GPS L5I's NH10) or
+`sampling_frequency < code_frequency·subchip_factor` raises an error (use the array-filling
+[`gen_code!`](@ref) / continuing [`code_engine`](@ref) without `Val(K)` instead).
 """
-function code_engine(plan::CodeReplicaLUT, sampling_frequency, code_frequency, ::Val{K};
+function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency, code_frequency, ::Val{K};
                      start_phase = 0.0, start_index_shift::Integer = 0) where {K}
-    mc = plan.mc
+    mc = _modulated_code_view(signal.lut, Int(prn))
     fc = _to_hz(code_frequency)
     fs = _to_hz(sampling_frequency)
     P = mc.subchip_factor
     fs < fc * P && error(
         "code_engine(…, Val(K)) needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! / code_engine without Val(K).",
     )
-    length(mc.secondary) > 1 && error(
+    any(!=(Int8(1)), mc.secondary) && error(
         "code_engine(…, Val(K)) does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / code_engine without Val(K).",
     )
     # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
-    # fractional residual `rem0` so the DDA reproduces the original gen_code!'s sub-sample
-    # phase (see `_subchip_phase_split`).
+    # fractional residual `rem0` (see `_subchip_phase_split`).
     sd = CodeLUT._STEP_DEN
     phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
     # Resample the baked sub-chip table at fc·P. Parameterless default_backend() const-folds
@@ -538,5 +558,5 @@ function code_engine(plan::CodeReplicaLUT, sampling_frequency, code_frequency, :
                         phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
 
-code_engine(plan::CodeReplicaLUT, sampling_frequency, vk::Val; kwargs...) =
-    code_engine(plan, sampling_frequency, get_code_frequency(plan.signal), vk; kwargs...)
+code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency, vk::Val; kwargs...) =
+    code_engine(signal, prn, sampling_frequency, get_code_frequency(signal), vk; kwargs...)
