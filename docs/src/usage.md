@@ -2,9 +2,9 @@
 
 ## Generating Sampled Code Signals (Recommended)
 
-For most applications, use [`gen_code`](@ref) or [`gen_code!`](@ref) to generate sampled codes. These functions are highly optimized for real-time GNSS signal processing, using fixed-point arithmetic and minimizing memory access. They are significantly faster than calling [`get_code`](@ref) in a loop.
+For most applications, use [`gen_code`](@ref) or [`gen_code!`](@ref) to generate sampled codes. These functions are highly optimized for real-time GNSS signal processing and are significantly faster than calling [`get_code`](@ref) in a loop.
 
-These functions exploit the fact that consecutive samples often map to the same code chip, avoiding per-sample floating-point operations and modulo calculations.
+Each signal bakes its fully-modulated ±1 replica into an embedded `Int8` lookup table at construction; `gen_code!` resamples that table with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, with a scalar fallback). The output buffer is `Int8`, and the sampling frequency must satisfy `fs ≥ code_frequency · subchip_factor`.
 
 ```julia
 using GNSSSignals
@@ -18,8 +18,8 @@ num_samples = 4000  # 1 ms at 4 MHz
 # Allocating version
 sampled_code = gen_code(num_samples, gpsl1ca, prn, sampling_frequency)
 
-# In-place version (more efficient for repeated calls)
-buffer = zeros(Int16, num_samples)
+# In-place version (more efficient for repeated calls). The buffer is Int8.
+buffer = zeros(Int8, num_samples)
 gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
 ```
 
@@ -163,20 +163,20 @@ get_code_frequency(gal_e1b)      # 1023000 Hz
 get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 ```
 
-Note that due to CBOC modulation, Galileo E1B code values are floating-point rather than integer.
+Note that the single-chip accessor [`get_code`](@ref) returns floating-point values for Galileo E1B (the CBOC subcarrier amplitudes are irrational), and `get_code_type(GalileoE1B())` is `Float32`. [`gen_code!`](@ref), however, always outputs `Int8`: for CBOC it bakes an `Int8` integer approximation of the two sub-carrier amplitudes (default `(19, 6) → ±25, ±13`), which is sign-identical to the spec with ~0 dB correlation loss.
 
 ### Galileo E1B (BOC(1,1) approximation)
 
-Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, code rate, data rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation and integer (`Int16`) output:
+Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, code rate, data rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation:
 
 ```julia
 e1b = GalileoE1B_BOC11()
 get_code_length(e1b)         # 4092
 get_modulation(e1b)          # BOCsin(1, 1)
-get_code_type(e1b)           # Int16
+get_code_type(e1b)           # Int16  (the get_code accessor type; gen_code! is Int8)
 ```
 
-Use [`GalileoE1B`](@ref) for the full CBOC spec output (Float32); use [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) when the 0.45 dB loss is acceptable and Int16 / lower sampling rate is preferable.
+[`gen_code!`](@ref) outputs `Int8` for both variants. The reason to choose [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) over [`GalileoE1B`](@ref) is the **much lower minimum sampling rate** (`fs ≥ 2 · 1.023` MHz vs `12 · 1.023` MHz) when the ~0.45 dB loss is acceptable.
 
 ### Galileo E1C
 
@@ -316,9 +316,14 @@ psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
 2. **Pre-allocate buffers** for signal generation:
    ```julia
    num_iterations = 1000
-   buffer = zeros(Int16, num_samples)
+   buffer = zeros(Int8, num_samples)
    for i in 1:num_iterations
        gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
        # process buffer...
    end
    ```
+
+   For repeated integrations that continue seamlessly across blocks (tracking), build a
+   [`code_engine`](@ref)`(signal, prn, fs, fc)` once, seed `st = code_state(eng)`, and call
+   `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
+   is allocation-free, and threading the returned state continues the stream seamlessly.

@@ -58,8 +58,9 @@ prn = 1
 # Generate 1 ms of sampled code at 4 MHz (recommended approach)
 sampled_code = gen_code(4000, gpsl1ca, prn, 4MHz)
 
-# For repeated calls, use the in-place version with a pre-allocated buffer
-buffer = zeros(Int16, 4000)
+# For repeated calls, use the in-place version with a pre-allocated buffer.
+# Output is Int8 (±1 for BPSK/BOC, an integer approximation for CBOC).
+buffer = zeros(Int8, 4000)
 gen_code!(buffer, gpsl1ca, prn, 4MHz)
 ```
 
@@ -87,6 +88,6 @@ GNSSSignals.jl provides functionality to:
 - Group signals by RF band via [`get_band`](@ref)
 - Compute signal spectra for analysis
 
-The [`gen_code`](@ref) and [`gen_code!`](@ref) functions are highly optimized for real-time GNSS signal processing, using fixed-point arithmetic and minimizing memory access by exploiting the fact that consecutive samples often map to the same code chip.
+The [`gen_code`](@ref) and [`gen_code!`](@ref) functions are highly optimized for real-time GNSS signal processing: each signal bakes its fully-modulated ±1 replica into an embedded `Int8` lookup table once, then resamples it with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, scalar fallback). Output is `Int8`.
 
 The package is designed to be used as a building block for GNSS receiver implementations and signal processing research.
