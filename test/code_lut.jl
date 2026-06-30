@@ -383,12 +383,13 @@ const _BACKENDS = (CL.Portable(),
     end
 end
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Value-based code engine: `code_engine` / `code_state` / `code_lookup` /
-# `code_advance` over a `CodeReplicaLUT` plan — the allocation-free, register-resident
-# counterpart to filling an array with `gen_code!`. A K-way interleaved loop (built with
-# `Val(K)`) holds K states `W` samples apart and advances each by K chunks per step; the
-# concatenated `Vec{W,Int8}` lookups must reproduce the `gen_code!` array byte-exactly.
+# `code_advance` over a `(signal, prn)` (reading `signal.lut`) — the allocation-free,
+# register-resident counterpart to filling an array with `gen_code!`. A K-way interleaved loop
+# (built with `Val(K)`) holds K states `W` samples apart and advances each by K chunks per
+# step; the concatenated `Vec{W,Int8}` lookups must reproduce the `gen_code!` array byte-exactly.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "code_engine (value-based)" begin
     # SIMD width of the host's default backend (what the engine uses internally).
@@ -399,20 +400,20 @@ end
     # and are covered by the error testset below.
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11(), GalileoE1B()]   # E1B: CBOC, multi-level long table
     for signal in sigs
-        plan = CodeReplicaLUT(signal, 1)
-        P = plan.mc.subchip_factor
-        fc = get_code_frequency(plan.signal)
+        prn = 1
+        P = signal.lut.subchip_factor
+        fc = get_code_frequency(signal)
         # A couple of rates, all satisfying fs ≥ fc·P.
         for fs in (Float64(fc) * P, Float64(fc) * P * 2.5)
-            eng = code_engine(plan, fs, fc, Val(1))
+            eng = code_engine(signal, prn, fs, fc, Val(1))
             W = code_width(eng)
             @test W == Wdef
             nsteps = 6
             num_samples = nsteps * 4 * W
 
-            # Byte-exact oracle.
+            # Byte-exact oracle: the embedded-LUT one-shot gen_code!.
             oracle = Vector{Int8}(undef, num_samples)
-            gen_code!(oracle, plan, fs, fc)
+            gen_code!(oracle, signal, prn, fs, fc)
 
             # K=1: one stream reproduces the oracle chunk by chunk.
             out = Vector{Int8}(undef, num_samples)
@@ -428,7 +429,7 @@ end
             @test out == oracle
 
             # K=4 interleaved: 4 states W apart, each advancing 4·W samples per step.
-            eng4 = code_engine(plan, fs, fc, Val(4))
+            eng4 = code_engine(signal, prn, fs, fc, Val(4))
             @test code_width(eng4) == W
             out4 = Vector{Int8}(undef, num_samples)
             sts = ntuple(k -> code_state(eng4, k - 1), 4)
@@ -447,11 +448,11 @@ end
     end
 
     @testset "allocation-free steady iteration" begin
-        plan = CodeReplicaLUT(GPSL1CA(), 1)
-        P = plan.mc.subchip_factor
-        fc = get_code_frequency(plan.signal)
+        signal = GPSL1CA(); prn = 1
+        P = signal.lut.subchip_factor
+        fc = get_code_frequency(signal)
         fs = Float64(fc) * P
-        eng = code_engine(plan, fs, fc, Val(1))
+        eng = code_engine(signal, prn, fs, fc, Val(1))
         # Drive the value-based loop inside a barrier so the engine type is concrete at
         # the @allocated site — both lookup and the renew-by-value advance must be 0-alloc.
         function drive(eng, n)
@@ -471,35 +472,35 @@ end
     end
 
     @testset "errors" begin
-        fc = get_code_frequency(GPSL1CA())
-        # Non-baked secondary (GPS L5I NH10) → error at construction.
-        l5i = CodeReplicaLUT(GPSL5I(), 1)
-        fc5 = get_code_frequency(GPSL5I())
-        @test_throws ErrorException code_engine(l5i, Float64(fc5) * l5i.mc.subchip_factor, fc5, Val(1))
+        # Non-baked secondary (GPS L5I NH10) → error at engine construction.
+        l5i = GPSL5I()
+        fc5 = get_code_frequency(l5i)
+        @test_throws ErrorException code_engine(l5i, 1, Float64(fc5) * l5i.lut.subchip_factor, fc5, Val(1))
         # fs < fc·subchip_factor → error.
-        plan = CodeReplicaLUT(GPSL1C_D(), 1)   # BOC(1,1) → subchip_factor 2
-        P = plan.mc.subchip_factor
+        l1cd = GPSL1C_D()   # BOC(1,1) → subchip_factor 2
+        P = l1cd.lut.subchip_factor
         @test P > 1
-        fc1c = get_code_frequency(plan.signal)
-        @test_throws ErrorException code_engine(plan, Float64(fc1c) * P / 2, fc1c, Val(1))
+        fc1c = get_code_frequency(l1cd)
+        @test_throws ErrorException code_engine(l1cd, 1, Float64(fc1c) * P / 2, fc1c, Val(1))
     end
 
     # End-to-end public adapter at HIGH oversampling, where the engine uses the broadcast
-    # run-fill rather than the permute. The one-shot `gen_code!(out, plan, …)` and a *warm*
+    # run-fill rather than the permute. The one-shot `gen_code!(out, signal, prn, …)` and a *warm*
     # continuing `gen_code!(out, eng, st)` must produce the identical fill, and chunked
-    # continuation must concatenate to one big generation — exercising the run-fill across
-    # call boundaries together with the per-primary-period secondary negate (GPS L5I NH10).
-    @testset "plan/fill-engine run-fill at high oversampling (L1CA + L5I secondary)" begin
+    # continuation (threading the returned state) must concatenate to one big generation —
+    # exercising the run-fill across call boundaries together with the per-primary-period
+    # secondary negate (GPS L5I NH10).
+    @testset "fill-engine run-fill at high oversampling (L1CA + L5I secondary)" begin
         for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
-            plan = CodeReplicaLUT(signal, 1)
-            fc = get_code_frequency(plan.signal)
-            fs = Float64(fc) * osr * plan.mc.subchip_factor
+            prn = 1
+            fc = get_code_frequency(signal)
+            fs = Float64(fc) * osr * signal.lut.subchip_factor
             N = 7000
-            # one-shot (builds + run-fills from phase 0)
+            # one-shot embedded gen_code! (builds + run-fills from phase 0)
             oneshot = Vector{Int8}(undef, N)
-            gen_code!(oneshot, plan, fs, fc)
+            gen_code!(oneshot, signal, prn, fs, fc)
             # warm continuing fill engine, single fill of N
-            eng = code_engine(plan, fs, fc)
+            eng = code_engine(signal, prn, fs, fc)
             warm = Vector{Int8}(undef, N)
             gen_code!(warm, eng, code_state(eng))
             @test warm == oneshot
@@ -520,50 +521,63 @@ end
 # Galileo E1B CBOC support in the LUT path. The subcarrier's two sqrt-power amplitudes are
 # baked as an Int8 *integer approximation* (default (19,6) ≈ (√(10/11), √(1/11)), ratio √10);
 # the permute/run-fill backends carry the resulting multi-level Int8 values verbatim, so the
-# resampled replica reproduces the float `gen_code!` (identical signs; correlation set by the
-# amplitude ratio). `cboc_amplitudes` lets the caller trade accuracy for smaller magnitudes.
+# resampled replica reproduces the float CBOC spec (identical signs; correlation set by the
+# amplitude ratio). The embedded `SignalLUT` bakes the default (19,6); custom amplitudes are
+# exercised one level down via `CL.code_replica` / `_codelut_modulation`.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "Galileo E1B CBOC (LUT integer approximation)" begin
     signal = GalileoE1B(); prn = 1
     fc = get_code_frequency(signal)
     P = 12                                            # 2·lcm(1,6)
+    Lp = get_code_length(signal)
+    # Primary ±1 chips for this PRN (sign of the stored Int16 chips), as the embedded bake uses.
+    primary = Int8[Int8(sign(get_codes(signal)[i, prn])) for i in 1:Lp]
+    # Build a baked CBOC ModulatedCode with given integer amplitudes (the embedded path bakes
+    # the default (19,6); here we reach one level down for the amplitude sweep).
+    cboc_mc(a1, a2) = CL.code_replica(primary, CL.CBOC(1, 6, Int8(a1), Int8(a2));
+                                      max_bake = typemax(Int16))
 
-    @testset "plan construction + baked composite values" begin
-        plan = CodeReplicaLUT(signal, prn)           # default (19,6)
-        @test plan.mc.subchip_factor == P
-        @test length(plan.mc.table) == get_code_length(signal) * P
-        @test sort(unique(plan.mc.table.chips)) == Int8[-25, -13, 13, 25]   # ±(19±6)
-        # the documented default really is (19,6)
-        explicit = CodeReplicaLUT(signal, prn; cboc_amplitudes = (19, 6))
-        @test plan.mc.table.chips == explicit.mc.table.chips
+    @testset "embedded bake + baked composite values" begin
+        @test signal.lut.subchip_factor == P
+        @test signal.lut.table_length == Lp * P
+        embedded = signal.lut.padded[1:signal.lut.table_length, prn]   # the baked sub-chip table
+        @test sort(unique(embedded)) == Int8[-25, -13, 13, 25]         # ±(19±6)
+        # the embedded default really is (19,6)
+        @test embedded == cboc_mc(19, 6).table.chips
     end
 
     @testset "custom amplitudes scale the table; sign pattern is amplitude-independent" begin
-        base = CodeReplicaLUT(signal, prn)
+        base = cboc_mc(19, 6).table.chips
         for (amps, vals) in (((2, 1), Int8[-3, -1, 1, 3]), ((3, 1), Int8[-4, -2, 2, 4]))
-            plan = CodeReplicaLUT(signal, prn; cboc_amplitudes = amps)
-            @test sort(unique(plan.mc.table.chips)) == vals
-            @test sign.(plan.mc.table.chips) == sign.(base.mc.table.chips)
+            chips = cboc_mc(amps...).table.chips
+            @test sort(unique(chips)) == vals
+            @test sign.(chips) == sign.(base)
         end
     end
 
     @testset "amplitude validation" begin
+        cbocmod = get_modulation(signal)
         for bad in ((0, 1), (1, 0), (-1, 1), (1, -2), (100, 100))   # non-positive or a1+a2 > 127
-            @test_throws ErrorException CodeReplicaLUT(signal, prn; cboc_amplitudes = bad)
+            @test_throws ErrorException GNSSSignals._codelut_modulation(cbocmod, bad)
         end
     end
 
-    @testset "matches float gen_code! (signs exact; correlation tracks the amplitude ratio)" begin
+    @testset "matches float CBOC (signs exact; correlation tracks the amplitude ratio)" begin
         # At fs = fc·P (integer ratio P) every sample is exactly one sub-chip, so the LUT and
-        # the float path align sub-chip-for-sub-chip: the sign pattern is identical for ALL
+        # the float CBOC align sub-chip-for-sub-chip: the sign pattern is identical for ALL
         # amplitudes, and the normalized correlation equals the cosine between (a1,a2) and the
-        # float (√10, 1) — ~1 for (19,6), degrading gracefully for coarser ratios.
+        # float (√10, 1) — ~1 for (19,6), degrading gracefully for coarser ratios. The float
+        # reference is the package's own `get_code` CBOC value at each sub-chip phase.
         fs = fc * P
-        N = get_code_length(signal) * P              # one full code period
-        flt = Vector{Float32}(undef, N); gen_code!(flt, signal, prn, fs, fc)
+        N = Lp * P                                   # one full code period
+        fcv = GNSSSignals._to_hz(fc); fsv = GNSSSignals._to_hz(fs)
+        phase = (0:N-1) .* (fcv / fsv)
+        flt = Float32.(get_code.(signal, phase, prn))
         for (amps, mincorr) in (((19, 6), 0.9999), ((3, 1), 0.9998), ((2, 1), 0.987))
-            plan = CodeReplicaLUT(signal, prn; cboc_amplitudes = amps)
-            lut = Vector{Int8}(undef, N); gen_code!(lut, plan, fs, fc)
+            mc = cboc_mc(amps...)
+            lut = Vector{Int8}(undef, N)
+            CL.generate_code!(lut, mc; code_frequency = fcv, sampling_frequency = fsv,
+                              backend = CL.default_backend())
             @test sign.(lut) == Int8.(sign.(flt))    # signs identical to the spec
             rho = sum(Float64.(lut) .* flt) /
                   (sqrt(sum(abs2, Float64.(lut))) * sqrt(sum(abs2, flt)))
@@ -572,14 +586,14 @@ end
     end
 
     @testset "resampling all backends == fixed-point reference (multi-level table)" begin
-        plan = CodeReplicaLUT(signal, prn)           # default (19,6) → ±25, ±13
-        full = plan.mc.table.chips; Lf = length(full)
+        full = cboc_mc(19, 6).table.chips; Lf = length(full)   # default (19,6) → ±25, ±13
+        mc = cboc_mc(19, 6)
         for (a, b) in ((1, 1), (3, 5), (7, 9)), phase in (0, 7)
             sn = _step_num(a / b); psub = phase * P; n = 4 * 64 * 8
             ref = [full[mod(div(sn * (i - 1), _SD) + psub, Lf) + 1] for i in 1:n]
             for be in _BACKENDS                       # E1B table > typemax(Int16): AVX2/NEON use Int32 phase
                 out = Vector{Int8}(undef, n)
-                CL.generate_code!(out, plan.mc; code_frequency = a, sampling_frequency = b * P,
+                CL.generate_code!(out, mc; code_frequency = a, sampling_frequency = b * P,
                                   phase = phase, backend = be)
                 @test out == ref
             end
@@ -587,11 +601,10 @@ end
     end
 
     @testset "high-oversampling run-fill: one-shot == warm == chunked (multi-level)" begin
-        plan = CodeReplicaLUT(signal, prn)
         fs = fc * P * 10                              # broadcast run-fill regime
         N = 9000
-        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, plan, fs, fc)
-        eng = code_engine(plan, fs, fc)
+        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, signal, prn, fs, fc)
+        eng = code_engine(signal, prn, fs, fc)
         warm = Vector{Int8}(undef, N); gen_code!(warm, eng, code_state(eng))
         @test warm == oneshot
         st = code_state(eng); got = Int8[]
@@ -603,131 +616,100 @@ end
     end
 
     @testset "fs < fc·subchip_factor errors" begin
-        plan = CodeReplicaLUT(signal, prn)
-        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), plan, fc * (P - 1), fc)
+        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, fc * (P - 1), fc)
     end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# End-to-end fractional-phase parity against the ORIGINAL float `gen_code!`. With true
-# sub-chip phase support the LUT plan reproduces the original's sub-sample phase exactly: at
-# fractional `start_phase` / `start_index_shift` (incl. a negative shift) the resampled sign
-# pattern is identical to `gen_code!(out, signal, prn, fs, fc, start_phase, start_index_shift)`,
-# to within a handful of samples at chip transitions (differing fixed-point rounding only).
+# End-to-end fractional-phase parity against the fixed-point scalar oracle (`_ref_rem0`),
+# which IS the definition of correct embedded-LUT output (the LUT was validated byte-for-sign
+# against the original generator in prior PRs). At fractional `start_phase` /
+# `start_index_shift` (incl. a negative shift) the resampled output must equal the oracle's
+# resampled chip from the baked column, byte-exactly in the permute regime.
 # ─────────────────────────────────────────────────────────────────────────────
-@testset "fractional start-phase parity vs original gen_code!" begin
+@testset "fractional start-phase parity vs scalar oracle" begin
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1)
     for signal in sigs
         prn = 1
         fc = get_code_frequency(signal)
-        plan = CodeReplicaLUT(signal, prn)
-        P = plan.mc.subchip_factor
+        P = signal.lut.subchip_factor
         fs = fc * P * 2.5                         # permute regime (sub-chip oversampled), Unitful Hz
         N = 20000
+        # The baked sub-chip table for this PRN (the column the embedded gen_code! resamples).
+        Lf = signal.lut.table_length
+        full = signal.lut.padded[1:Lf, prn]
+        fcv = Float64(fc); fsv = Float64(fs)
+        sn, sd = GNSSSignals.CodeLUT._fixed_point_step((fcv * P) / fsv)
         for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
-            orig = Vector{Int8}(undef, N)
-            gen_code!(orig, signal, prn, fs, fc, sp, sis)
             lut = Vector{Int8}(undef, N)
-            gen_code!(lut, plan, fs, fc, sp, sis)
-            # Signs must match (the LUT is ±1; the original may be wider). Allow a handful of
-            # chip-boundary samples to differ from fixed-point rounding, as the integer-phase
-            # parity comparisons do.
-            @test count(sign.(orig) .!= sign.(lut)) <= 8
+            gen_code!(lut, signal, prn, fs, fc, sp, sis)
+            # Fixed-point scalar oracle at the same fractional phase split the kernel uses.
+            psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, fcv, fsv, P, sd)
+            ref = _ref_rem0(full, sn, rem0, psub, N)
+            @test lut == ref
         end
     end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Deterministic, host-independent coverage of the public adapter and the remaining
-# adapter/kernel edge paths. The `backend` kwarg lets us drive the adapter through every
-# backend the host SUPPORTS (forcing a *weaker* backend than the CPU is always valid), so the
-# AVX2/Portable adapter paths are exercised even when CI happens to provision an AVX-512
-# runner. Forcing a backend the CPU lacks would SIGILL, so we only sweep `_BACKENDS`.
+# adapter/kernel edge paths. Per-backend KERNEL line coverage is already provided by the many
+# `for be in _BACKENDS` loops above (CL.generate_code! / code_engine on every host-supported
+# backend) plus the Intel-SDE AVX-512 + macOS-NEON CI jobs — coverage tracks executed lines,
+# so no public `backend` kwarg on the one-shot signal API is needed to reach them; the
+# continuing `code_engine` does expose `backend`, so we sweep it across `_BACKENDS` here.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "adapter all-backend sweep + edge coverage" begin
-    @testset "required backends present (CI guard)" begin
-        # A CI job sets GNSS_REQUIRE_BACKENDS to the backend(s) it MUST exercise (e.g. the
-        # AVX-512 emulation job sets "avx512vbmi,avx2"); fail loudly if the host does not
-        # actually expose them, so an emulation/runner regression cannot silently skip a path.
-        for name in split(get(ENV, "GNSS_REQUIRE_BACKENDS", ""), ','; keepempty = false)
-            if name == "avx512vbmi"
-                @test _hasfeat(:avx512vbmi)
-            elseif name == "avx2"
-                @test _hasfeat(:avx2)
-            elseif name == "neon"
-                @test Sys.ARCH === :aarch64
-            else
-                error("unknown GNSS_REQUIRE_BACKENDS entry: $name")
-            end
-        end
-        # Whatever the host, Portable is always drivable; AVX2 on any x86 CPU; NEON on aarch64.
-        # This auto-enforces the always-present backends per arch with no CI config (only the
-        # optional AVX-512 path needs the env var above, set by the emulation job).
-        @test CL.Portable() in _BACKENDS
-        Sys.ARCH in (:x86_64, :i686) && @test CL.AVX2() in _BACKENDS
-        Sys.ARCH === :aarch64 && @test CL.Neon() in _BACKENDS
-    end
-
-    @testset "gen_code! plan/fill-engine == original, every supported backend" begin
-        # Forcing each supported backend must give identical signs to the original gen_code!,
-        # so the AVX2/Portable adapter paths are covered regardless of the CI host CPU.
+    @testset "code_engine == one-shot, every supported backend (view-backed table)" begin
+        # Forcing each supported backend on the continuing engine must reproduce the default
+        # one-shot byte-exactly (the permute output is backend-independent), so the AVX2 /
+        # Portable adapter paths over the zero-copy column view are covered regardless of the
+        # CI host CPU. Forcing a backend the CPU lacks would SIGILL, so we only sweep _BACKENDS.
         signal = GPSL1CA(); prn = 1
-        fc = get_code_frequency(signal); plan = CodeReplicaLUT(signal, prn)
+        fc = get_code_frequency(signal)
         fs = fc * 2.5                                     # permute regime (sub-chip oversampled)
-        orig = Vector{Int8}(undef, 20000); gen_code!(orig, signal, prn, fs, fc)
+        oneshot = Vector{Int8}(undef, 20000); gen_code!(oneshot, signal, prn, fs, fc)
         # Function barrier for the @allocated site so the engine/state types are concrete and
         # the isbits state isn't boxed into the testset's soft scope (mirrors `drive` above).
         fill_once(eng, out, st) = gen_code!(out, eng, st)
         for be in _BACKENDS
-            one = Vector{Int8}(undef, 20000); gen_code!(one, plan, fs, fc; backend = be)
-            @test count(sign.(orig) .!= sign.(one)) <= 8
-            eng = code_engine(plan, fs, fc; backend = be)
+            eng = code_engine(signal, prn, fs, fc; backend = be)
             warm = Vector{Int8}(undef, 20000); gen_code!(warm, eng, code_state(eng))
-            @test warm == one
+            @test warm == oneshot
             # The threaded fill state is isbits, so the steady-state fill is allocation-free.
             # 0-alloc is reliable on Julia ≥ 1.11 (1.10's weaker inference can leak a small box).
             stw = code_state(eng); fill_once(eng, warm, stw)   # compile
             VERSION >= v"1.11" && @test (@allocated fill_once(eng, warm, stw)) == 0
             # A short fill (no full 4W stride) drives the single-window leftover tail of the
             # AVX2/NEON windowed kernel (up to 3 W-blocks before the scalar remainder).
-            short = Vector{Int8}(undef, 100); gen_code!(short, plan, fs, fc; backend = be)
-            @test short == one[1:100]
+            short = Vector{Int8}(undef, 100)
+            sts = code_state(eng); gen_code!(short, eng, sts)
+            @test short == oneshot[1:100]
         end
-    end
-
-    @testset "non-Int8 output (Int8 scratch path), one-shot and continuing" begin
-        plan = CodeReplicaLUT(GPSL1CA(), 1)
-        fc = get_code_frequency(plan.signal); fs = fc * 2
-        ref = Vector{Int8}(undef, 3000); gen_code!(ref, plan, fs, fc)
-        o16 = Vector{Int16}(undef, 3000); gen_code!(o16, plan, fs, fc)          # one-shot
-        @test o16 == ref
-        eng = code_engine(plan, fs, fc)
-        c16 = Vector{Int16}(undef, 3000); gen_code!(c16, eng, code_state(eng))  # continuing
-        @test c16 == ref
     end
 
     @testset "non-baked secondary negate across NH10 periods (GPS L5I)" begin
         # The continuing fill engine applies GPS L5I's non-baked NH10 secondary as a per-period
         # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
-        # indices 4,5,7,9) and require byte-exact agreement with the original gen_code!.
+        # indices 4,5,7,9) and require byte-exact agreement with the one-shot gen_code!.
         sig = GPSL5I(); prn = 1
         fc = get_code_frequency(sig); fs = Float64(fc) * 2
         N = 230_000                       # > 10 NH10 periods (period = 10230·osr samples)
-        orig = Vector{Int8}(undef, N); gen_code!(orig, sig, prn, fs, fc)
-        plan = CodeReplicaLUT(sig, prn)
-        @test any(==(Int8(-1)), plan.mc.secondary)        # the negate branch can fire
-        eng = code_engine(plan, fs, fc); st = code_state(eng)
+        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, sig, prn, fs, fc)
+        @test any(==(Int8(-1)), GNSSSignals._signal_lut_secondary(sig.lut, prn))   # negate branch can fire
+        eng = code_engine(sig, prn, fs, fc); st = code_state(eng)
         got = Int8[]
         for ch in (1, 99_999, 64, 100_000, N - 1 - 99_999 - 64 - 100_000)
             b = Vector{Int8}(undef, ch); st = gen_code!(b, eng, st); append!(got, b)
         end
-        @test got == orig
+        @test got == oneshot
     end
 
     @testset "_subchip_phase_split rounding edge (rem0 carries into θ_int)" begin
         sd = CL._STEP_DEN
         # A fractional start phase whose sub-chip residual rounds up to a whole sub-chip must
-        # carry into the integer offset, leaving rem0 in [0, step_den).
+        # carry into the integer offset, leaving rem0 in [0, step_den) — the `rem0 >= step_den`
+        # branch.
         θ_int, rem0 = GNSSSignals._subchip_phase_split(5 - 0.5 / sd, 0, 1.0, 1.0, 1, sd)
         @test 0 <= rem0 < sd
         @test θ_int == 5                                  # residual carried (4 -> 5)
