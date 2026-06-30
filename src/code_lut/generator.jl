@@ -1,16 +1,22 @@
-# Stateful, *continuing* code generator (module-internal engine for CodeGeneratorLUT).
+# Value-based, *continuing* code generator (module-internal engine for the fill `gen_code!`).
 #
 # The one-shot `generate_code!` pays a full DDA setup (fixed-point step + four `_init_rel`
-# streams) on every call — overhead that dwarfs the ~120 ns generation at 1 ms sizes. This
-# engine pays that setup ONCE (at construction) and then *continues* from the carried DDA
-# state across arbitrarily-sized fills, so concatenating consecutive fills equals one big
-# generation. It also vectorises the non-stride-aligned tail (full 4-way strides → W-wide
+# streams) on every call — overhead that dwarfs the ~120 ns generation at 1 ms sizes. A
+# `FillEngine` pays that setup ONCE (at construction) and then *continues* from an explicit,
+# isbits state across arbitrarily-sized fills, so concatenating consecutive fills equals one
+# big generation. It also vectorises the non-stride-aligned tail (full 4-way strides → W-wide
 # single-window steps → only the final < W samples scalar).
 #
-# State is a single canonical "stream 0" `(rel, rem, base)` at the current absolute sample
-# offset (AVX-512 rel/scalar-base form), or the phase-based equivalent for AVX2/Portable.
-# The 4-way streams used for throughput are *spawned* from stream 0 by three cheap W-window
-# advances (≈20 ns, byte-identical to `_init_rel`) — not re-initialised.
+# State is explicit and immutable: a single canonical "stream 0" `(rel, rem, base)` at the
+# current absolute sample offset (AVX-512 rel/scalar-base form, reusing `CodeState512`), or
+# the phase-based equivalent (`CodeStatePhase`) for AVX2/Portable, or `(c, acc, pos)`
+# (`RunFillState`) for the high-oversampling run-fill path. `fill_continue!(out, eng, st)`
+# returns the state advanced by exactly `length(out)`, so the caller threads it — no mutation,
+# no hidden state, and an isbits state means the steady-state fill is allocation-free.
+#
+# The 4-way streams used for throughput (AVX-512) are *spawned* from the carried stream 0 by
+# three cheap W-window advances (≈20 ns, byte-identical to `_init_rel`) at the start of each
+# fill — not stored in the state.
 
 # ---- per-W single-stream advance (AVX-512 rel/scalar-base form) ----
 # Advance one W=64 stream by exactly W samples. Mirrors `CodeState512`'s state update
@@ -22,64 +28,64 @@
     rem2 = vifelse(carry, rem2 - modulus, rem2)
     h = Int(carry[1])
     rel2 = rel + vifelse(carry, one(Vec{64,Int8}), zero(Vec{64,Int8})) - Int8(h)
-    # `whole_W` is pre-reduced mod L by the caller (CodeGenerator512 / _make_engine), so
+    # `whole_W` is pre-reduced mod L by the caller (FillEngine512 / _make_engine), so
     # `base + whole_W + h ∈ [0, 2L-1]` and a single conditional subtract replaces the idiv.
     base2 = _wrapL(base + whole_W + h, L)
     (rel2, rem2, base2)
 end
 
-# ---- mutable, continuing generator over the AVX-512 rel/scalar-base DDA ----
-# Carries the canonical stream-0 state at the current absolute offset, plus per-W and
-# per-stride DDA deltas (computed once at construction; no rationalize, no idiv per fill).
-# Carries the FOUR interleaved streams (W apart) plus per-W / per-stride DDA deltas
-# (computed once at construction; no rationalize, no idiv per fill). The bulk loop advances
-# all four in lockstep by a full stride (the exact one-shot kernel loop). After a fill of M
-# samples the four streams are repositioned to absolute offsets M+{0,W,2W,3W} so the next
-# call resumes seamlessly.
-mutable struct CodeGenerator512
-    const padded::Vector{Int8}
-    const step_num::Int
-    const step_den::Int
-    const L::Int
-    const frac_W::_RemT        # remainder advance over W samples
-    const whole_W::Int         # whole chips advanced over W samples
-    const frac_stride::_RemT   # remainder advance over a 4W stride
-    const whole_stride::Int    # whole chips advanced over a 4W stride
-    const modulus::_RemT
-    rel1::Vec{64,Int8}; rem1::Vec{64,_RemT}; b1::Int
-    rel2::Vec{64,Int8}; rem2::Vec{64,_RemT}; b2::Int
-    rel3::Vec{64,Int8}; rem3::Vec{64,_RemT}; b3::Int
-    rel4::Vec{64,Int8}; rem4::Vec{64,_RemT}; b4::Int
+# ---- value-based, continuing fill engine over the AVX-512 rel/scalar-base DDA ----
+# Immutable loop-invariant config: the padded table, the fixed-point step, per-W and
+# per-stride DDA deltas (computed once at construction; no rationalize, no idiv per fill), and
+# the initial phase so `fill_state` can seed the canonical stream-0 state. The four
+# interleaved streams (W apart) used for throughput are spawned from the carried stream-0 at
+# the start of each fill. After a fill of M samples the returned state is stream-0 at absolute
+# offset M, so the next call resumes seamlessly.
+struct FillEngine512
+    padded::Vector{Int8}
+    step_num::Int
+    step_den::Int
+    L::Int
+    frac_W::_RemT          # remainder advance over W samples
+    whole_W::Int           # whole chips advanced over W samples
+    frac_stride::_RemT     # remainder advance over a 4W stride
+    whole_stride::Int      # whole chips advanced over a 4W stride
+    modulus::_RemT
+    phase_offset::Int      # initial integer chip phase (for fill_state)
+    rem0::_RemT            # initial fractional sub-chip offset (for fill_state)
 end
 
-function CodeGenerator512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                          rem0::_RemT = _RemT(0))
+function FillEngine512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                       rem0::_RemT = _RemT(0))
     L = table.length; W = 64
-    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset, rem0)
-    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset, rem0)
-    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset, rem0)
-    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset, rem0)
-    CodeGenerator512(table.padded, step_num, step_den, L,
+    FillEngine512(table.padded, step_num, step_den, L,
         _RemT(mod(W * step_num, step_den)), div(W * step_num, step_den) % L,
         _RemT(mod(4W * step_num, step_den)), div(4W * step_num, step_den) % L, _RemT(step_den),
-        rel1, rem1, b1, rel2, rem2, b2, rel3, rem3, b3, rel4, rem4, b4)
+        phase_offset, rem0)
+end
+
+# Initial canonical stream-0 state (reuses `CodeState512` from iterate.jl).
+@inline function fill_state(eng::FillEngine512)
+    rel, rem, base = _init_rel(Val(64), eng.step_num, eng.step_den, eng.L, 0, eng.phase_offset, eng.rem0)
+    CodeState512(rel, rem, base)
 end
 
 # Advance one stream by a full 4W stride (used for the lockstep bulk advance).
 @inline _advance_stride_512(rel, rem, base, fs::_RemT, ws::Int, modulus::_RemT, L::Int) =
     _advance_window_512(rel, rem, base, fs, ws, modulus, L)
 
-# Fill out[1:end] with the next length(out) samples, continuing from `g`'s state and saving
-# the state advanced by exactly length(out) back into `g`. `out` is Int8.
-function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGenerator512)
+# Fill out[1:end] with the next length(out) samples, continuing from `st` (canonical stream-0)
+# and returning the state advanced by exactly length(out). `out` is Int8.
+function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngine512, st::CodeState512)
     W = 64; stride = 4W
-    padded = g.padded; L = g.L
-    frac_W = g.frac_W; whole_W = g.whole_W; modulus = g.modulus
-    fstr = g.frac_stride; wstr = g.whole_stride
-    rel1 = g.rel1; rem1 = g.rem1; b1 = g.b1
-    rel2 = g.rel2; rem2 = g.rem2; b2 = g.b2
-    rel3 = g.rel3; rem3 = g.rem3; b3 = g.b3
-    rel4 = g.rel4; rem4 = g.rem4; b4 = g.b4
+    padded = eng.padded; L = eng.L
+    frac_W = eng.frac_W; whole_W = eng.whole_W; modulus = eng.modulus
+    fstr = eng.frac_stride; wstr = eng.whole_stride
+    # Spawn the four interleaved streams (W apart) from the carried stream-0.
+    rel1 = st.rel; rem1 = st.rem; b1 = st.base
+    rel2, rem2, b2 = _advance_window_512(rel1, rem1, b1, frac_W, whole_W, modulus, L)
+    rel3, rem3, b3 = _advance_window_512(rel2, rem2, b2, frac_W, whole_W, modulus, L)
+    rel4, rem4, b4 = _advance_window_512(rel3, rem3, b3, frac_W, whole_W, modulus, L)
     num = length(out)
     nfull = num ÷ stride                       # full 4-way strides
     rem_s = num - nfull * stride               # leftover samples (0..255)
@@ -99,7 +105,7 @@ function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGenerator512)
         pos += stride
     end
     # Leftover (< stride): emit from the streams in order (stream k covers samples [k·W,..));
-    # then reposition all four streams to absolute offsets +rem_s so the next call resumes.
+    # then advance stream-0 by rem_s so the returned state is stream-0 at absolute offset num.
     if rem_s > 0
         streams = ((rel1, b1), (rel2, b2), (rel3, b3), (rel4, b4))
         # full W-windows of the leftover
@@ -116,18 +122,11 @@ function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGenerator512)
             end
             pos += ntail
         end
-        # reposition: advance stream 1 by rem_s = nwin·W + ntail samples (the only scalar
-        # advance), then respawn streams 2..4 as stream 1 + W, 2W, 3W (cheap W-advances).
-        rel1, rem1, b1 = _advance_by_512(rel1, rem1, b1, nwin, ntail, frac_W, whole_W, g.step_num, g.step_den, modulus, L)
-        rel2, rem2, b2 = _advance_window_512(rel1, rem1, b1, frac_W, whole_W, modulus, L)
-        rel3, rem3, b3 = _advance_window_512(rel2, rem2, b2, frac_W, whole_W, modulus, L)
-        rel4, rem4, b4 = _advance_window_512(rel3, rem3, b3, frac_W, whole_W, modulus, L)
+        # advance stream-0 by rem_s = nwin·W + ntail samples (the only scalar advance).
+        rel1, rem1, b1 = _advance_by_512(rel1, rem1, b1, nwin, ntail, frac_W, whole_W, eng.step_num, eng.step_den, modulus, L)
     end
-    g.rel1 = rel1; g.rem1 = rem1; g.b1 = b1
-    g.rel2 = rel2; g.rem2 = rem2; g.b2 = b2
-    g.rel3 = rel3; g.rem3 = rem3; g.b3 = b3
-    g.rel4 = rel4; g.rem4 = rem4; g.b4 = b4
-    out
+    # stream-0 is now at absolute offset num (after both the bulk and leftover advances).
+    return CodeState512(rel1, rem1, b1)
 end
 
 # Advance one stream by nwin full W-windows + ntail (< W) scalar samples.
@@ -158,40 +157,45 @@ end
     (rl, r, b)
 end
 
-# ---- AVX2 / Portable continuing generator (phase-based, single stream, W at a time) ----
+# ---- AVX2 / Portable continuing fill engine (phase-based, single stream, W at a time) ----
 # Keeps the phase-based DDA (the rel/scalar-base trick regressed AVX2). Correct continuation
-# is the same scheme: carry one canonical phase stream, emit W-wide windows, scalar tail.
-mutable struct CodeGeneratorPhase{W,T,Prep}
-    const prepared::Prep
-    const step_num::Int
-    const step_den::Int
-    const whole_W::T
-    const frac_W::_RemT
-    const modulus::_RemT
-    const code_length::T
-    phase::Vec{W,T}
-    rem::Vec{W,_RemT}
+# is the same scheme: carry one canonical phase stream (`CodeStatePhase`), emit W-wide
+# windows, scalar tail. The engine holds the loop-invariant config + initial phase.
+struct FillEnginePhase{W,T,Prep}
+    prepared::Prep
+    step_num::Int
+    step_den::Int
+    whole_W::T
+    frac_W::_RemT
+    modulus::_RemT
+    code_length::T
+    phase_offset::Int      # initial integer chip phase (for fill_state)
+    rem0::_RemT            # initial fractional sub-chip offset (for fill_state)
 end
 
 # Branch on the table length so each arm passes a *literal* phase type (Int16/Int32) into the
-# `_build_phase` barrier. `_phase_type(L)` returns a runtime type *value*; using it directly
-# made `_init_state` a dynamic dispatch and boxed the whole construction (the one-shot /
+# `_build_phase_engine` barrier. `_phase_type(L)` returns a runtime type *value*; using it
+# directly made construction a dynamic dispatch and boxed the whole engine (the one-shot /
 # threaded allocation hot spot). The two arms give inference a small 2-way Union instead.
-function CodeGeneratorPhase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                            backend::Backend, vw::Val{W}, rem0::_RemT = _RemT(0)) where {W}
+function FillEnginePhase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                         backend::Backend, vw::Val{W}, rem0::_RemT = _RemT(0)) where {W}
     table.length <= typemax(Int16) ?
-        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int16, rem0) :
-        _build_phase(table, step_num, step_den, phase_offset, backend, vw, Int32, rem0)
+        _build_phase_engine(table, step_num, step_den, phase_offset, backend, vw, Int16, rem0) :
+        _build_phase_engine(table, step_num, step_den, phase_offset, backend, vw, Int32, rem0)
 end
 
-@inline function _build_phase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                              backend::Backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
+@inline function _build_phase_engine(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                                     backend::Backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
     L = table.length
-    phase, rem = _init_state(Val(W), step_num, step_den, L, 0, phase_offset, T, rem0)
     prepared = prepare_code(table; backend = backend)
-    CodeGeneratorPhase{W,T,typeof(prepared)}(prepared, step_num, step_den,
+    FillEnginePhase{W,T,typeof(prepared)}(prepared, step_num, step_den,
         T(div(W * step_num, step_den) % L), _RemT(mod(W * step_num, step_den)),
-        _RemT(step_den), T(L), phase, rem)
+        _RemT(step_den), T(L), phase_offset, rem0)
+end
+
+@inline function fill_state(eng::FillEnginePhase{W,T}) where {W,T}
+    phase, rem = _init_state(Val(W), eng.step_num, eng.step_den, Int(eng.code_length), 0, eng.phase_offset, T, eng.rem0)
+    CodeStatePhase{W,T}(phase, rem)
 end
 
 @inline function _advance_window_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, whole_W::T,
@@ -204,9 +208,9 @@ end
     (phase2, rem2)
 end
 
-function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorPhase{W,T}) where {W,T}
-    p = g.prepared; whole_W = g.whole_W; frac_W = g.frac_W; modulus = g.modulus; Lc = g.code_length
-    phase = g.phase; rem = g.rem
+function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
+    p = eng.prepared; whole_W = eng.whole_W; frac_W = eng.frac_W; modulus = eng.modulus; Lc = eng.code_length
+    phase = st.phase; rem = st.rem
     num = length(out)
     nwin = num ÷ W; ntail = num - nwin * W
     pos = 0
@@ -220,11 +224,10 @@ function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorPhase{W,
         @inbounds for j in 1:ntail
             out[pos + j] = win[j]
         end
-        phase, rem = _advance_scalar_phase(phase, rem, ntail, g.step_num, g.step_den, modulus, Lc)
+        phase, rem = _advance_scalar_phase(phase, rem, ntail, eng.step_num, eng.step_den, modulus, Lc)
         pos += ntail
     end
-    g.phase = phase; g.rem = rem
-    out
+    return CodeStatePhase{W,T}(phase, rem)
 end
 
 @inline function _advance_scalar_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, m::Int,
@@ -241,52 +244,61 @@ end
     (ph, r)
 end
 
-# ---- continuing run-fill generator (high-oversampling fast path) ----
+# ---- continuing run-fill engine (high-oversampling fast path) ----
 # The continuing counterpart of `_generate_runfill!`: at high oversampling broadcast-fills
 # runs of identical baked chips (store-bandwidth bound) instead of one permute per W samples.
 # Effectively byte-identical to the permute engines (the approximate samples-per-chip DDA in
 # `_runfill_core!` matches the exact `floor(step_num·n/2^_B)` boundaries for any single fill,
 # drifting ≤ a couple of samples only over ~10⁵ continued chips). State carried across fills
-# is `(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`, and `pos`
-# = samples of the current chip already emitted (so a fill may resume mid-run).
+# is `RunFillState(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`,
+# and `pos` = samples of the current chip already emitted (so a fill may resume mid-run).
 #
 # `NI` (the padded fixed inner-store count) is a *type* parameter so `fill_continue!` calls
 # the `Val{NI}`-specialised kernel statically — a runtime `Val(ni)` would box and allocate
 # every call, breaking the 0-alloc steady-state guarantee. `NI == 0` is the sentinel for the
 # generic (`ni > _RUNFILL_MAX_NI`) kernel, whose runtime count lives in the `ni` field.
-mutable struct CodeGeneratorRunFill{NI}
-    const chips::Vector{Int8}
-    const L::Int
-    const ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
-    const ni::Int             # padded inner count (used by the NI==0 generic path)
+struct RunFillState
     c::Int                    # current table chip index
     acc::Int                  # chip-start fractional phase (delta & mask)
     pos::Int                  # samples of the current chip already emitted
 end
 
-function CodeGeneratorRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                             rem0::_RemT = _RemT(0))
+struct FillEngineRunFill{NI}
+    chips::Vector{Int8}
+    L::Int
+    ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
+    ni::Int             # padded inner count (used by the NI==0 generic path)
+    c0::Int             # initial table chip index (for fill_state)
+    acc0::Int           # initial chip-start fractional phase (for fill_state)
+    pos0::Int           # initial in-chip sample offset (for fill_state)
+end
+
+function FillEngineRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                           rem0::_RemT = _RemT(0))
     ni = _runfill_ni(step_num)
     NI = ni <= _RUNFILL_MAX_NI ? ni : 0      # 0 ⇒ generic kernel (runtime `ni`)
     acc, pos = _runfill_seed(step_num, step_den, rem0)
-    CodeGeneratorRunFill{NI}(table.chips, table.length, _runfill_freqfix(step_num),
-                            ni, mod(phase_offset, table.length), acc, pos)
+    FillEngineRunFill{NI}(table.chips, table.length, _runfill_freqfix(step_num),
+                          ni, mod(phase_offset, table.length), acc, pos)
 end
 
-function fill_continue!(out::AbstractVector{<:Integer}, g::CodeGeneratorRunFill{NI}) where {NI}
-    g.c, g.acc, g.pos = NI == 0 ?
-        _runfill_seg_generic!(out, g.chips, g.L, g.ff, g.ni, g.c, g.acc, g.pos) :
-        _runfill_seg!(out, g.chips, g.L, g.ff, g.c, g.acc, g.pos, Val(NI))
-    out
+@inline fill_state(eng::FillEngineRunFill) = RunFillState(eng.c0, eng.acc0, eng.pos0)
+
+function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngineRunFill{NI}, st::RunFillState) where {NI}
+    c, acc, pos = NI == 0 ?
+        _runfill_seg_generic!(out, eng.chips, eng.L, eng.ff, eng.ni, st.c, st.acc, st.pos) :
+        _runfill_seg!(out, eng.chips, eng.L, eng.ff, st.c, st.acc, st.pos, Val(NI))
+    return RunFillState(c, acc, pos)
 end
 
-# Portable (W=1): degenerate phase generator. Window emit + advance are scalar but correct.
-const CodeGeneratorAny = Union{CodeGenerator512,CodeGeneratorPhase,CodeGeneratorRunFill}
+# Union over the backend fill engines (Portable is the W=1 degenerate phase engine: window
+# emit + advance are scalar but correct).
+const FillEngineAny = Union{FillEngine512,FillEnginePhase,FillEngineRunFill}
 
-# ---- factory: build the right backend generator from a step ratio + phase ----
-function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
-                        phase::Integer = 0, rem0::Integer = 0,
-                        backend::Backend = default_backend(table))
+# ---- factory: build the right backend fill engine from a step ratio + phase ----
+function make_fill_engine(table::CodeTable, step_num::Integer, step_den::Integer;
+                          phase::Integer = 0, rem0::Integer = 0,
+                          backend::Backend = default_backend(table))
     (0 < step_den ≤ _STEP_DEN) ||
         throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
     (0 < step_num ≤ step_den) ||
@@ -298,20 +310,20 @@ function make_generator(table::CodeTable, step_num::Integer, step_den::Integer;
         # High oversampling: broadcast-fill runs (see `_generate_runfill!`) instead of paying
         # a permute per window. Same windowed-length requirement as the AVX2/NEON permute.
         backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
-        CodeGeneratorRunFill(table, sn, sd, ph, r0)
+        FillEngineRunFill(table, sn, sd, ph, r0)
     elseif backend isa AVX512
-        CodeGenerator512(table, sn, sd, ph, r0)
+        FillEngine512(table, sn, sd, ph, r0)
     elseif backend isa Union{AVX2,Neon}
         _check_windowed_length(table, backend)
-        CodeGeneratorPhase(table, sn, sd, ph, backend, _vwidth(backend), r0)
+        FillEnginePhase(table, sn, sd, ph, backend, _vwidth(backend), r0)
     else
-        CodeGeneratorPhase(table, sn, sd, ph, backend, Val(1), r0)
+        FillEnginePhase(table, sn, sd, ph, backend, Val(1), r0)
     end
 end
-function make_generator(table::CodeTable, cps::Real; kw...)
+function make_fill_engine(table::CodeTable, cps::Real; kw...)
     sn, sd = _fixed_point_step(cps)
-    make_generator(table, sn, sd; kw...)
+    make_fill_engine(table, sn, sd; kw...)
 end
-function make_generator(table::CodeTable; code_frequency::Real, sampling_frequency::Real, kw...)
-    make_generator(table, chips_per_sample(code_frequency, sampling_frequency); kw...)
+function make_fill_engine(table::CodeTable; code_frequency::Real, sampling_frequency::Real, kw...)
+    make_fill_engine(table, chips_per_sample(code_frequency, sampling_frequency); kw...)
 end

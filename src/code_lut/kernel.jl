@@ -611,7 +611,7 @@ end
 #     fast: on AVX-512 the sweep puts it at m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to
 #     the steady 7 once the init amortises. This is the `_runfill_min_m(backend, N)` overload.
 # Only the one-shot `generate_code!` knows the fill length, so only it can use the N-aware
-# overload; the continuing generator (`make_generator`) fixes its kernel at construction
+# overload; the continuing fill engine (`make_fill_engine`) fixes its kernel at construction
 # before any N is known, so it uses the steady-state threshold — correct for its typical
 # large-epoch fills.
 @inline _runfill_min_m(::AVX512)   = 7
