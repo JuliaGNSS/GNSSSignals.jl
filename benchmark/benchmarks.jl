@@ -60,12 +60,6 @@ elseif isdefined(GNSSSignals, :code_engine)             # this branch: value-bas
     @inline _codefill!(out, vf::_ValFill) = (vf.st[] = gen_code!(out, vf.eng, vf.st[]); out)
 end
 const _HAS_CODEFILL = @isdefined(_mk_codefill)
-# One-shot LUT fill, era-aware: this branch uses the embedded `gen_code!(out, signal, prn, …)`;
-# the base resamples a plan via `gen_code!(out, plan, fs, fc, …)`. Returns `out`.
-@inline _lut_oneshot!(out, signal, prn, fs, fc) =
-    _EMBEDDED_LUT ? gen_code!(out, signal, prn, fs, fc, 0.0, 0) :
-                    gen_code!(out, GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc, 0.0, 0)
-
 const SUITE = BenchmarkGroup()
 
 # ── gen_code! rows (legacy fixed-size buffers, kept for continuity) ──
@@ -131,92 +125,38 @@ const _LUT_CASES = let cases = Any[]
     cases
 end
 
-# Per signal, fill N = round(Int, fs·1e-3) samples (one 1 ms integration) at the SAME
-# fs/fc three ways, all under one parent `code/1 ms integration/<signal>/…` so the rows
-# sit adjacent in the sorted table:
-#   "original"      — classic gen_code!(out, signal, prn, fs, fc)              (Int16 out)
-#   "LUT generator" — warm code_engine reused per call (steady state)          (Int8 out, 0 alloc)
-#   "LUT one-shot"  — gen_code!(out, plan, fs, fc): rebuilds the DDA each call (Int8 out)
-# Plan/generator are built ONCE outside the timed region (a receiver reuses them). Output
-# eltype differs by design: Int16 is the original's correlator type, Int8 the LUT's native ±1.
+# Per signal, one 1 ms integration (N = round(Int, fs·1e-3) samples) via a single one-shot
+# `gen_code!(out, signal, prn, fs, fc)` row under `code/1 ms integration/<signal>`. Same SUITE
+# key in every era, so benchpkg diffs the old generator (Int16 buffer on the base) against the
+# new embedded-LUT generator (Int8 here) head-to-head. Buffer eltype is era-aware (the embedded
+# `gen_code!` is Int8-only; the base's Int16 buffer would MethodError here).
 for (name, signal, prn, fs, fc) in _LUT_CASES
     N = round(Int, ustrip_hz(fs) * 1e-3)
-    g = SUITE["code"]["1 ms integration"][name]
-    # "original" is the drop-in one-shot gen_code!(out, signal, prn, …): Int16 on the base, Int8
-    # on this branch (the embedded LUT is Int8-only). Same SUITE key so benchpkg diffs them.
-    out16 = zeros(_EMBEDDED_LUT ? Int8 : Int16, N)
-    g["original"] = @benchmarkable gen_code!(
-        $out16, $signal, $prn, $fs, $fc, $0.0, $0,
+    out = zeros(_EMBEDDED_LUT ? Int8 : Int16, N)
+    SUITE["code"]["1 ms integration"][name] = @benchmarkable gen_code!(
+        $out, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
-
-    # Warm continuing fill: DDA init paid once when the carrier is built (outside the timed
-    # region); _codefill! continues the state with no re-init — the fast repeat path. The
-    # value-based carrier's state is isbits, so the steady-state fill allocates nothing.
-    if _HAS_CODEFILL
-        cf = _mk_codefill(signal, prn, fs, fc)
-        out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
-    end
-
-    # One-shot: builds/inits the DDA on every call (the drop-in gen_code! form). On this branch
-    # `gen_code!(out, signal, prn, …)` resamples the embedded LUT; on the base it resamples a
-    # freshly built plan. `_lut_oneshot!` hides the era difference.
-    if _HAS_CODEFILL
-        out8 = zeros(Int8, N)
-        g["LUT one-shot"] = @benchmarkable _lut_oneshot!(
-            $out8, $signal, $prn, $fs, $fc,
-        ) evals = 10 samples = 1000
-    end
 end
 
-# ── Galileo E1B full CBOC, head to head — same `code/1 ms integration/GalileoE1B/…` group
-# as the rows above, but special-cased because CBOC differs from the ±1 cases:
-#   • the ORIGINAL `gen_code!` needs a Float32 buffer (the CBOC subcarrier amplitudes are
-#     irrational), whereas the LUT bakes an Int8 integer approximation (default (19,6));
-#   • the LUT only supports CBOC on this branch, so the LUT rows are probed and skipped on a
-#     baseline (the PR base #69) that errors on CBOC — the `original` row still compares.
-# fs ≥ fc·subchip_factor = 12·1.023 MHz; use 15 MHz (matches the legacy E1B row).
-const _LUT_CBOC_OK = _HAS_CODEFILL && try
-    # CBOC is bakeable on this branch (the embedded LUT is built at construction); on the base
-    # plan, build it; both error on a baseline that doesn't support CBOC.
-    _EMBEDDED_LUT ? GalileoE1B() : GNSSSignals.CodeReplicaLUT(GalileoE1B(), 1)
-    true
-catch
-    false
-end
+# ── Galileo E1B full CBOC — same `code/1 ms integration/GalileoE1B` group. CBOC needs a Float32
+# buffer on the base (the subcarrier amplitudes are irrational); on this branch the embedded LUT
+# bakes an Int8 integer approximation (default (19,6)). One one-shot gen_code! row, same SUITE
+# key for the cross-revision diff. fs ≥ fc·subchip_factor = 12·1.023 MHz; use 15 MHz.
 let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
     N = round(Int, ustrip_hz(fs) * 1e-3)
-    g = SUITE["code"]["1 ms integration"]["GalileoE1B"]
-    # CBOC: Float32 buffer on the base (irrational subcarrier amplitudes), Int8 on this branch
-    # (the embedded LUT bakes the (19,6) integer approximation). Same SUITE key for the diff.
-    out_f32 = zeros(_EMBEDDED_LUT ? Int8 : Float32, N)
-    g["original"] = @benchmarkable gen_code!(
-        $out_f32, $signal, $prn, $fs, $fc, $0.0, $0,
+    out = zeros(_EMBEDDED_LUT ? Int8 : Float32, N)
+    SUITE["code"]["1 ms integration"]["GalileoE1B"] = @benchmarkable gen_code!(
+        $out, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
-    if _LUT_CBOC_OK && _HAS_CODEFILL
-        cf = _mk_codefill(signal, prn, fs, fc)
-        out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
-
-        out8 = zeros(Int8, N)
-        g["LUT one-shot"] = @benchmarkable _lut_oneshot!(
-            $out8, $signal, $prn, $fs, $fc,
-        ) evals = 10 samples = 1000
-    end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Oversampling sweep — old gen_code! vs new LUT across oversampling ratios, at a small
-# and a steady-state buffer. "Oversampling ratio" = samples per code chip = fs / fc;
-# the level is labelled as a multiplier (2x = sample twice per chip). Grouped by signal /
-# oversampling / size under `code/oversampling sweep/…` so "original" and "LUT" sit
-# adjacent. Same N + fs/fc for both, and the LUT side uses the warm generator (0-alloc),
-# matching the original's 0-alloc fill. The LUT uses the windowed permute (flat in the
-# oversampling ratio) at low oversampling and switches to a broadcast run-fill once the
-# baked table is oversampled ≳7× (AVX-512) / ≳4× (AVX2), so it tracks the original's
-# run-fill speed-up at high oversampling instead of staying flat. It still wins outright at
-# low oversampling and for modulated signals (baked subcarrier).
-# Two representative signals (BPSK + BOC(1,1)); both at fc = 1.023 MHz.
+# Oversampling sweep — gen_code! across oversampling ratios, at a small and a steady-state
+# buffer. "Oversampling ratio" = samples per code chip = fs / fc (2x = sample twice per chip).
+# One one-shot gen_code! row per (signal, oversampling, size) under `code/oversampling sweep/…`,
+# same key in every era so benchpkg diffs old vs new. The LUT uses the windowed permute (flat in
+# the oversampling ratio) at low oversampling and switches to a broadcast run-fill once the baked
+# table is oversampled ≳7× (AVX-512) / ≳4× (AVX2). Two representative signals (BPSK + BOC(1,1)).
 const _SWEEP_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
     isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
         push!(s, ("GalileoE1B_BOC11", GNSSSignals.GalileoE1B_BOC11(), 1, 2))
@@ -227,16 +167,9 @@ let fc = 1023e3Hz
         for oversampling in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
             oversampling < P && continue             # LUT needs fs ≥ fc·P
             fs = oversampling * fc
-            g = SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel]
-            o16 = zeros(_EMBEDDED_LUT ? Int8 : Int16, n)   # Int8 embedded gen_code! on this branch
-            g["original"] =
-                @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
-            if _HAS_CODEFILL
-                cf = _mk_codefill(signal, prn, fs, fc)
-                o8 = zeros(Int8, n)
-                g["LUT"] =
-                    @benchmarkable _codefill!($o8, $cf) evals = 1 samples = 300
-            end
+            out = zeros(_EMBEDDED_LUT ? Int8 : Int16, n)   # Int8 embedded gen_code! on this branch
+            SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel] =
+                @benchmarkable gen_code!($out, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
         end
     end
 end
