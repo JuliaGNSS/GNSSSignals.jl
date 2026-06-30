@@ -17,12 +17,12 @@ A Julia package for generating GNSS spreading codes and signals.
 * GPS L5-I (BPSK(10) with 10-bit Neuman-Hofman NH10 secondary code)
 * GPS L5-Q (BPSK(10) pilot with 20-bit Neuman-Hofman NH20 secondary code)
 * Galileo E1B (CBOC modulation)
-* Galileo E1B BOC(1,1) approximation (lower sampling rate, Int16 output; common SDR substitute for full CBOC)
+* Galileo E1B BOC(1,1) approximation (lower minimum sampling rate; common SDR substitute for full CBOC)
 * Galileo E1C (CBOC(−) modulation, pilot component with 25-chip CS25 secondary code)
-* Galileo E1C BOC(1,1) approximation (lower sampling rate, Int16 output; common SDR substitute for full CBOC)
+* Galileo E1C BOC(1,1) approximation (lower minimum sampling rate; common SDR substitute for full CBOC)
 * Galileo E5a-I (BPSK(10) with 20-bit CS20 secondary code)
 * Galileo E5a-Q (BPSK(10) pilot with 100-bit per-SVID CS100 secondary code)
-* Highly optimized code generation using fixed-point arithmetic for real-time signal processing
+* Highly optimized code generation: each signal bakes its fully-modulated replica into an embedded `Int8` lookup table and resamples it with a drift-free fixed-point DDA + SIMD sliding-window permute (AVX-512 / AVX2 / NEON, scalar fallback)
 
 ## Installation
 
@@ -43,8 +43,8 @@ prn = 1
 # Generate 1 ms of sampled code at 4 MHz
 sampled_code = gen_code(4000, gpsl1ca, prn, 4MHz)
 
-# For repeated calls, use the in-place version
-buffer = zeros(Int16, 4000)
+# For repeated calls, use the in-place version (output is Int8)
+buffer = zeros(Int8, 4000)
 gen_code!(buffer, gpsl1ca, prn, 4MHz)
 ```
 
