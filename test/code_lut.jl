@@ -636,3 +636,113 @@ end
         end
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Deterministic, host-independent coverage of the public adapter and the remaining
+# adapter/kernel edge paths. The `backend` kwarg lets us drive the adapter through every
+# backend the host SUPPORTS (forcing a *weaker* backend than the CPU is always valid), so the
+# AVX2/Portable adapter paths are exercised even when CI happens to provision an AVX-512
+# runner. Forcing a backend the CPU lacks would SIGILL, so we only sweep `_BACKENDS`.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "adapter all-backend sweep + edge coverage" begin
+    @testset "required backends present (CI guard)" begin
+        # A CI job sets GNSS_REQUIRE_BACKENDS to the backend(s) it MUST exercise (e.g. the
+        # AVX-512 emulation job sets "avx512vbmi,avx2"); fail loudly if the host does not
+        # actually expose them, so an emulation/runner regression cannot silently skip a path.
+        for name in split(get(ENV, "GNSS_REQUIRE_BACKENDS", ""), ','; keepempty = false)
+            if name == "avx512vbmi"
+                @test _hasfeat(:avx512vbmi)
+            elseif name == "avx2"
+                @test _hasfeat(:avx2)
+            elseif name == "neon"
+                @test Sys.ARCH === :aarch64
+            else
+                error("unknown GNSS_REQUIRE_BACKENDS entry: $name")
+            end
+        end
+        # Whatever the host, Portable is always drivable; AVX2 on any x86 CPU; NEON on aarch64.
+        # This auto-enforces the always-present backends per arch with no CI config (only the
+        # optional AVX-512 path needs the env var above, set by the emulation job).
+        @test CL.Portable() in _BACKENDS
+        Sys.ARCH in (:x86_64, :i686) && @test CL.AVX2() in _BACKENDS
+        Sys.ARCH === :aarch64 && @test CL.Neon() in _BACKENDS
+    end
+
+    @testset "gen_code! plan/generator == original, every supported backend" begin
+        # Forcing each supported backend must give identical signs to the original gen_code!,
+        # so the AVX2/Portable adapter paths are covered regardless of the CI host CPU.
+        signal = GPSL1CA(); prn = 1
+        fc = get_code_frequency(signal); plan = CodeReplicaLUT(signal, prn)
+        fs = fc * 2.5                                     # permute regime (sub-chip oversampled)
+        orig = Vector{Int8}(undef, 20000); gen_code!(orig, signal, prn, fs, fc)
+        for be in _BACKENDS
+            one = Vector{Int8}(undef, 20000); gen_code!(one, plan, fs, fc; backend = be)
+            @test count(sign.(orig) .!= sign.(one)) <= 8
+            g = CodeGeneratorLUT(plan, fs, fc; backend = be)
+            warm = Vector{Int8}(undef, 20000); gen_code!(warm, g)
+            @test warm == one
+            # A short fill (no full 4W stride) drives the single-window leftover tail of the
+            # AVX2/NEON windowed kernel (up to 3 W-blocks before the scalar remainder).
+            short = Vector{Int8}(undef, 100); gen_code!(short, plan, fs, fc; backend = be)
+            @test short == one[1:100]
+        end
+    end
+
+    @testset "non-Int8 output (Int8 scratch path), one-shot and continuing" begin
+        plan = CodeReplicaLUT(GPSL1CA(), 1)
+        fc = get_code_frequency(plan.signal); fs = fc * 2
+        ref = Vector{Int8}(undef, 3000); gen_code!(ref, plan, fs, fc)
+        o16 = Vector{Int16}(undef, 3000); gen_code!(o16, plan, fs, fc)          # one-shot
+        @test o16 == ref
+        g = CodeGeneratorLUT(plan, fs, fc)
+        c16 = Vector{Int16}(undef, 3000); gen_code!(c16, g)                     # continuing
+        @test c16 == ref
+    end
+
+    @testset "non-baked secondary negate across NH10 periods (GPS L5I)" begin
+        # The continuing generator applies GPS L5I's non-baked NH10 secondary as a per-period
+        # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
+        # indices 4,5,7,9) and require byte-exact agreement with the original gen_code!.
+        sig = GPSL5I(); prn = 1
+        fc = get_code_frequency(sig); fs = Float64(fc) * 2
+        N = 230_000                       # > 10 NH10 periods (period = 10230·osr samples)
+        orig = Vector{Int8}(undef, N); gen_code!(orig, sig, prn, fs, fc)
+        plan = CodeReplicaLUT(sig, prn)
+        @test any(==(Int8(-1)), plan.mc.secondary)        # the negate branch can fire
+        g = CodeGeneratorLUT(plan, fs, fc)
+        got = Int8[]
+        for ch in (1, 99_999, 64, 100_000, N - 1 - 99_999 - 64 - 100_000)
+            b = Vector{Int8}(undef, ch); gen_code!(b, g); append!(got, b)
+        end
+        @test got == orig
+    end
+
+    @testset "_subchip_phase_split rounding edge (rem0 carries into θ_int)" begin
+        sd = CL._STEP_DEN
+        # A fractional start phase whose sub-chip residual rounds up to a whole sub-chip must
+        # carry into the integer offset, leaving rem0 in [0, step_den).
+        θ_int, rem0 = GNSSSignals._subchip_phase_split(5 - 0.5 / sd, 0, 1.0, 1.0, 1, sd)
+        @test 0 <= rem0 < sd
+        @test θ_int == 5                                  # residual carried (4 -> 5)
+        θ2, r2 = GNSSSignals._subchip_phase_split(3.25, 0, 1.0, 1.0, 1, sd)  # non-edge
+        @test θ2 == 3 && 0 <= r2 < sd
+    end
+
+    @testset "high-oversampling generic run-fill (ni>64): generic kernel + segmentation" begin
+        chips = rand(MersenneTwister(21), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
+        sn = _step_num(1 / 100)
+        @test CL._runfill_ni(sn) > CL._RUNFILL_MAX_NI     # generic (above the Val ladder)
+        # (a) > _RUNFILL_MAXFILL drives the generic segmentation loop
+        n = CL._RUNFILL_MAXFILL + 12_345
+        out = Vector{Int8}(undef, n)
+        CL.generate_code!(out, ct, sn, _SD; backend = CL.Portable())
+        @test count(!=(0), out .- _ref(chips, sn, 0, n)) <= 4
+        # (b) size-1 continuation lands on chip boundaries → the generic-core boundary return
+        gen = CL.make_generator(ct, sn, _SD; backend = CL.Portable())
+        m = 600; ref = _ref(chips, sn, 0, m); got = Int8[]
+        for _ in 1:m
+            b = Vector{Int8}(undef, 1); CL.fill_continue!(b, gen); append!(got, b)
+        end
+        @test count(!=(0), got .- ref) <= 4
+    end
+end
