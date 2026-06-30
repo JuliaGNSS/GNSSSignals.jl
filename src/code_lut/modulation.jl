@@ -82,12 +82,14 @@ a register-resident ±1 `CodeTable`. Build with [`code_replica`](@ref); resample
 permute pass). `code_frequency` is the **primary chip rate**; the table is resampled at
 `code_frequency · subchip_factor`.
 """
-struct ModulatedCode
-    table::CodeTable
+struct ModulatedCode{T<:CodeTable,S<:AbstractVector{Int8}}
+    table::T
     subchip_factor::Int        # P: output is resampled at chip_frequency · P
-    secondary::Vector{Int8}    # residual secondary to apply per primary period ([1] if baked/none)
+    secondary::S               # residual secondary to apply per primary period ([1] if baked/none)
     period_subchips::Int       # sub-chips in one primary period (Lp · P)
 end
+ModulatedCode(table::T, P, secondary::S, period_subchips) where {T<:CodeTable,S<:AbstractVector{Int8}} =
+    ModulatedCode{T,S}(table, P, secondary, period_subchips)
 
 Base.length(mc::ModulatedCode) = length(mc.table)
 
