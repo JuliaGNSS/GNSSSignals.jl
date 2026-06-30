@@ -16,6 +16,7 @@ export AbstractGNSSSignal,
     GPSL1C_D,
     GPSL1C_P,
     GPSL5I,
+    GPSL5Q,
     GalileoE1B,
     GalileoE1B_BOC11,
     GalileoE1C,
@@ -101,7 +102,7 @@ include("modulation.jl")
 include("bands.jl")
 include("secondary_codes.jl")
 include("gps/l1ca.jl")
-include("gps/l5i.jl")
+include("gps/l5.jl")
 include("gps/l1c_constants.jl")
 include("gps/l1c_codes.jl")
 include("gps/l1c_d.jl")
