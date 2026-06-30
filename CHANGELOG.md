@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.5.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.4.0...v2.5.0) (2026-06-30)
+
+
+### Features
+
+* add GPS L5-Q pilot signal ([21c1e1b](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/21c1e1b73944eb10a84776397fb9d6b686b6ee60))
+
 # [2.4.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.3.0...v2.4.0) (2026-06-30)
 
 
