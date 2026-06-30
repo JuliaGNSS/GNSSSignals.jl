@@ -16,6 +16,7 @@ get_band(e1b)          # L1()
 """
 struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
@@ -67,7 +68,9 @@ function read_galileo_e1b_codes()
 end
 
 function GalileoE1B()
-    GalileoE1B(widen_codes_to_storage(read_galileo_e1b_codes()))
+    codes = widen_codes_to_storage(read_galileo_e1b_codes())
+    lut = build_signal_lut(get_modulation(GalileoE1B), codes, NoSecondaryCode())
+    GalileoE1B(codes, lut)
 end
 
 """
@@ -175,6 +178,7 @@ get_code_length(e1b)   # 4092
 """
 struct GalileoE1B_BOC11{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
@@ -184,7 +188,9 @@ get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
 get_signal_name(::GalileoE1B_BOC11) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B_BOC11()
-    GalileoE1B_BOC11(widen_codes_to_storage(read_galileo_e1b_codes()))
+    codes = widen_codes_to_storage(read_galileo_e1b_codes())
+    lut = build_signal_lut(get_modulation(GalileoE1B_BOC11), codes, NoSecondaryCode())
+    GalileoE1B_BOC11(codes, lut)
 end
 
 @inline get_code_length(::GalileoE1B_BOC11) = 4092
