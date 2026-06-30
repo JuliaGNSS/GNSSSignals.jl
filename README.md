@@ -15,6 +15,8 @@ A Julia package for generating GNSS spreading codes and signals.
 * GPS L5-I (BPSK with Neuman-Hofman secondary code)
 * Galileo E1B (CBOC modulation)
 * Galileo E1B BOC(1,1) approximation (lower sampling rate, Int16 output; common SDR substitute for full CBOC)
+* Galileo E1C (CBOC(−) modulation, pilot component with 25-chip CS25 secondary code)
+* Galileo E1C BOC(1,1) approximation (lower sampling rate, Int16 output; common SDR substitute for full CBOC)
 * Galileo E5a-I (BPSK(10) with 20-bit CS20 secondary code)
 * Galileo E5a-Q (BPSK(10) pilot with 100-bit per-SVID CS100 secondary code)
 * Highly optimized code generation using fixed-point arithmetic for real-time signal processing

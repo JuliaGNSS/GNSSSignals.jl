@@ -653,7 +653,9 @@ function multiply_with_subcarrier!(
         )
 
     boc1_amplitude = Float32(sqrt(modulation.boc1_power))
-    boc2_amplitude = Float32(sqrt(1 - modulation.boc1_power))
+    # Fold the relative sign of the BOC(6,1) component into its amplitude so
+    # the inner loop stays a plain weighted sum (CBOC(−) for Galileo E1-C).
+    boc2_amplitude = modulation.boc2_sign * Float32(sqrt(1 - modulation.boc1_power))
 
     N = length(sampled_code)
     # Reinterpret as UInt32 so negative start_index values wrap correctly; the
@@ -723,7 +725,7 @@ function multiply_with_subcarrier!(
         )
 
     boc1_amplitude = T(sqrt(modulation.boc1_power))
-    boc2_amplitude = T(sqrt(1 - modulation.boc1_power))
+    boc2_amplitude = T(modulation.boc2_sign) * T(sqrt(1 - modulation.boc1_power))
 
     @inbounds for (index, i) in enumerate(
         PHASET(start_index):PHASET(length(sampled_code) - 1 + start_index),

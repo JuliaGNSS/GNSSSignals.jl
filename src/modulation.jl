@@ -65,30 +65,41 @@ Used for GPS L1 C/A and GPS L5-I.
 struct LOC <: Modulation end
 
 """
-    CBOC(boc1, boc2, boc1_power)
+    CBOC(boc1, boc2, boc1_power, boc2_sign = 1)
 
 Composite Binary Offset Carrier modulation.
 
 CBOC combines two BOC modulations with specified power distribution.
-Used for Galileo E1B signals as CBOC(6,1,1/11).
+Used for the Galileo E1 OS signals as CBOC(6,1,1/11).
+
+The two CBOC components are added as
+`sqrt(boc1_power) * boc1 + boc2_sign * sqrt(1 - boc1_power) * boc2`. The
+`boc2_sign` selects the relative phase of the BOC(6,1) component: the
+Galileo OS SIS ICD (§2.3.3) puts E1-B in phase (`+1`, "CBOC(+)") and E1-C
+in anti-phase (`-1`, "CBOC(−)"), so the BOC(6,1) contributions of the two
+components cancel in the composite. The sign does not affect the power
+spectral density (see [`get_code_spectrum`](@ref)).
 
 # Arguments
 - `boc1`: First BOC component
 - `boc2`: Second BOC component
 - `boc1_power`: Power fraction allocated to first BOC (0 < power < 1)
+- `boc2_sign`: Relative sign of the second BOC component (`+1` or `-1`, default `+1`)
 
 # Example
 ```julia
-cboc = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10/11)  # CBOC(6,1,1/11)
+cboc_b = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10/11)      # CBOC(6,1,1/11), E1-B
+cboc_c = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10/11, -1)  # CBOC(6,1,1/11), E1-C
 ```
 """
 struct CBOC{B1<:BOC,B2<:BOC} <: BOC
     boc1::B1
     boc2::B2
     boc1_power::Float32
-    CBOC(boc1, boc2, boc1_power) =
+    boc2_sign::Float32
+    CBOC(boc1, boc2, boc1_power, boc2_sign = 1) =
         0 < boc1_power < 1 && boc1.n == boc2.n ?
-        new{typeof(boc1),typeof(boc2)}(boc1, boc2, boc1_power) :
+        new{typeof(boc1),typeof(boc2)}(boc1, boc2, boc1_power, boc2_sign) :
         error("Power of BOC1 must be between 0 and 1 and n of both BOCs must match")
 end
 
@@ -248,6 +259,7 @@ end
 # Chapter 2.3.3. E1 Signal
 function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
     get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
+    modulation.boc2_sign *
     get_subcarrier_code(modulation.boc2, phase) * sqrt(1 - modulation.boc1_power)
 end
 

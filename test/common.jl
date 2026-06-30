@@ -1,9 +1,10 @@
 @testset "Common functions for $(get_signal_name(signal))" for signal in [
     GalileoE1B(),
+    GalileoE1C(),
     GPSL1CA(),
     GPSL5I(),
 ]
-    if typeof(signal) <: GalileoE1B
+    if get_modulation(signal) isa GNSSSignals.CBOC
         @test get_code_type(signal) == Float32
     else
         @test get_code_type(signal) == Int16
@@ -15,12 +16,14 @@ end
     @test min_bits_for_code_length(GPSL1CA()) == 10  # 1023 requires 10 bits
     @test min_bits_for_code_length(GPSL5I()) == 17  # 10230 * 10 = 102300 requires 17 bits
     @test min_bits_for_code_length(GalileoE1B()) == 12  # 4092 requires 12 bits
+    @test min_bits_for_code_length(GalileoE1C()) == 17  # 4092 * 25 = 102300 requires 17 bits
 end
 
 @testset "get_signal_name" begin
     @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
     @test get_signal_name(GPSL5I()) == "GPS L5-I"
     @test get_signal_name(GalileoE1B()) == "Galileo E1B"
+    @test get_signal_name(GalileoE1C()) == "Galileo E1C"
 end
 
 @testset "SecondaryCode dispatch" begin
@@ -56,6 +59,9 @@ end
 
     show(io, GalileoE1B())
     @test occursin("GalileoE1B", String(take!(io)))
+
+    show(io, GalileoE1C())
+    @test occursin("GalileoE1C", String(take!(io)))
 end
 
 @testset "Broadcasting GNSS signals" begin
@@ -71,6 +77,10 @@ end
     @test get_modulation(GPSL1CA) == GNSSSignals.LOC()
     @test get_modulation(GPSL5I) == GNSSSignals.LOC()
     @test get_modulation(GalileoE1B) isa GNSSSignals.CBOC
+    @test get_modulation(GalileoE1C) isa GNSSSignals.CBOC
+    # E1C is CBOC(−): the BOC(6,1) component is in anti-phase.
+    @test get_modulation(GalileoE1C).boc2_sign == -1
+    @test get_modulation(GalileoE1B).boc2_sign == 1
 end
 
 function conventional_gen_subcarrier(
@@ -124,6 +134,7 @@ function conventional_gen_subcarrier(
         start_phase,
         start_index,
     ) +
+           modulation.boc2_sign *
            sqrt(1 - modulation.boc1_power) * conventional_gen_subcarrier(
         code_length,
         modulation.boc2,
@@ -138,6 +149,7 @@ end
     BOCsin(2, 1),
     BOCcos(2, 1),
     CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11),
+    CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11, -1),  # E1C CBOC(−)
 ]
     sampling_frequency = 25e6Hz
     num_samples = 4000
@@ -273,7 +285,7 @@ end
 end
 
 @testset "Code generation $(get_signal_name(signal))" for signal in
-                                                          [GalileoE1B(), GPSL1CA(), GPSL5I()]
+                                                          [GalileoE1B(), GalileoE1C(), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
     code = zeros(get_code_type(signal), samples)
@@ -285,6 +297,7 @@ end
 
 @testset "Small code generation $(get_signal_name(signal))" for signal in [
     GalileoE1B(),
+    GalileoE1C(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -305,6 +318,7 @@ end
 # coincide.
 @testset "Very short code generation does not overflow $(get_signal_name(signal))" for signal in [
     GalileoE1B(),
+    GalileoE1C(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -344,6 +358,7 @@ end
 
 @testset "Code generation $(get_signal_name(signal)) with different index" for signal in [
     GalileoE1B(),
+    GalileoE1C(),
     GPSL1CA(),
     GPSL5I(),
 ]
