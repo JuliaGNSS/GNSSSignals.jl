@@ -17,14 +17,7 @@ get_band(gpsl5i)                   # L5()
 """
 struct GPSL5I{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    # Cached element-wise negation of `codes`. The NH10 secondary code is
-    # ±1, so for the half of primary periods where the secondary chip is
-    # -1 we read from `negated_codes` instead of multiplying every chip
-    # by `sec_val`. Selecting the matrix once per primary period (in the
-    # worker's outer `k` loop) hoists the multiply out of the hot inner
-    # loop and restores the fused load-broadcast pattern. Costs 757 KB
-    # of extra storage; gains ~15% in `gen_code!` for L5-I.
-    negated_codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
@@ -228,7 +221,8 @@ end
 
 function GPSL5I()
     codes = widen_codes_to_storage(read_gpsl5i_codes())
-    GPSL5I(codes, .-codes)
+    lut = build_signal_lut(get_modulation(GPSL5I), codes, _gpsl5i_secondary_code())
+    GPSL5I(codes, lut)
 end
 
 function GPSL5Q()
@@ -356,6 +350,12 @@ SharedSecondaryCode{10, Int8}((1, 1, 1, 1, -1, -1, 1, -1, 1, -1))
 ```
 """
 @inline function get_secondary_code(::GPSL5I)
+    _gpsl5i_secondary_code()
+end
+
+# NH10 secondary, shared across PRNs. Factored out so the `GPSL5I` constructor can build the
+# embedded `SignalLUT` (which needs the secondary) before an instance exists.
+@inline function _gpsl5i_secondary_code()
     SharedSecondaryCode(
         Int8(1), Int8(1), Int8(1), Int8(1), Int8(-1),
         Int8(-1), Int8(1), Int8(-1), Int8(1), Int8(-1),

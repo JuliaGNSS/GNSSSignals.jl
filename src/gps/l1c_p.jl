@@ -11,10 +11,7 @@ construction as L1C-D, different per-PRN parameters), modulo-2 added
 with an 18 s, 1800-bit per-PRN overlay code (IS-GPS-800G §3.2.2.1.2)
 exposed here as a [`PerPRNSecondaryCode`](@ref).
 
-The struct also caches an element-wise negated primary-code matrix so
-that `gen_code!` can hoist the per-overlay-chip sign multiply out of
-the inner loop (the same trick used for [`GPSL5I`](@ref)). PRNs 1-63
-supported.
+PRNs 1-63 supported.
 
 # Example
 ```julia
@@ -26,8 +23,8 @@ get_band(gpsl1c_p)                   # L1()
 """
 struct GPSL1C_P{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    negated_codes::C
     overlay_codes::M    # 1800 × 63 Int8 ±1 matrix, exposed via PerPRNSecondaryCode
+    lut::SignalLUT      # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GPSL1C_P}) =
@@ -56,7 +53,10 @@ end
 function GPSL1C_P()
     codes = widen_codes_to_storage(read_gpsl1c_p_codes())
     overlay = _l1c_build_overlay_codes()
-    GPSL1C_P(codes, .-codes, overlay)
+    # The 1800-chip per-PRN overlay is far too long to bake (1800·10230·12 ≫ typemax(Int16)),
+    # so it stays residual in the SignalLUT and is applied per primary period at gen time.
+    lut = build_signal_lut(get_modulation(GPSL1C_P), codes, PerPRNSecondaryCode(overlay))
+    GPSL1C_P(codes, overlay, lut)
 end
 
 """
@@ -82,10 +82,6 @@ one chip of a 1800-bit per-PRN LFSR-generated overlay code, giving an
 - [`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix
 """
 @inline get_secondary_code(s::GPSL1C_P) = PerPRNSecondaryCode(s.overlay_codes)
-
-# GPSL1C_P pre-negates its primary code matrix (overlay chips are ±1); the
-# shared `_select_codes_for` fast path for such signals lives on
-# `NegatedPrimaryCacheSignal` in `common.jl`.
 
 """
 $(SIGNATURES)
