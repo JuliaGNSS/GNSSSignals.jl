@@ -286,7 +286,8 @@ end
 """
     CodeGeneratorLUT(plan::CodeReplicaLUT, sampling_frequency,
                      code_frequency = get_code_frequency(plan.signal);
-                     start_phase = 0.0, start_index_shift = 0) -> CodeGeneratorLUT
+                     start_phase = 0.0, start_index_shift = 0,
+                     backend = default_backend()) -> CodeGeneratorLUT
 
 Construct a continuing code generator over `plan` at the given rate. The one-time DDA setup
 (fixed-point step + stream init) runs here; afterwards [`gen_code!`](@ref)`(out, gen)` fills
@@ -296,7 +297,9 @@ register-fused iteration; for a one-shot fill, the [`gen_code!`](@ref)`(out, pla
 method is simpler.
 
 Same oversampling requirement and fractional sub-chip phase support as the plan
-[`gen_code!`](@ref) method.
+[`gen_code!`](@ref) method. `backend` defaults to the host's best SIMD backend; pass a
+weaker one (e.g. `CodeLUT.AVX2()`/`CodeLUT.Portable()`) to force it — handy for testing the
+non-default paths on a given CPU. Forcing a backend the CPU does not support is invalid.
 """
 function CodeGeneratorLUT(
     plan::CodeReplicaLUT,
@@ -304,6 +307,7 @@ function CodeGeneratorLUT(
     code_frequency = get_code_frequency(plan.signal);
     start_phase = 0.0,
     start_index_shift::Integer = 0,
+    backend::CodeLUT.Backend = CodeLUT.default_backend(),
 )
     mc = plan.mc
     fc = _to_hz(code_frequency)
@@ -312,11 +316,11 @@ function CodeGeneratorLUT(
     fs < fc * P && error(
         "CodeGeneratorLUT needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
     )
-    # Parameterless default_backend() const-folds to the host's concrete backend; the
-    # table-aware overload's length guard (fall back to Portable for tables larger than
-    # typemax(Int32)) is dead code for GNSS codes and would erase that inference, boxing
-    # the runtime-typed engine on every construction.
-    backend = CodeLUT.default_backend()
+    # `backend` defaults to the parameterless `default_backend()`, which const-folds to the
+    # host's concrete backend (the table-aware overload's length guard is dead code for GNSS
+    # codes and would erase that inference, boxing the runtime-typed engine on every
+    # construction). It is exposed so tests can force a *weaker* backend than the host (e.g.
+    # AVX2/Portable on an AVX-512 runner) — forcing a backend the CPU lacks would SIGILL.
     # Resample the baked sub-chip table at fc·P. Split the real primary-chip start phase into
     # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`, so the
     # DDA reproduces the original gen_code!'s sub-sample phase (see `_subchip_phase_split`).
@@ -404,7 +408,8 @@ end
 """
     gen_code!(sampled_code, plan::CodeReplicaLUT, sampling_frequency,
               code_frequency = get_code_frequency(plan.signal),
-              start_phase = 0.0, start_index_shift = 0, PHASET = Int32)
+              start_phase = 0.0, start_index_shift = 0, PHASET = Int32;
+              backend = default_backend())
 
 Convenience one-shot: fills `sampled_code` once from the requested (fractional sub-chip)
 phase of the given rate, paying a fresh DDA setup each call. Fine for one-off use; for repeated
@@ -426,7 +431,8 @@ function gen_code!(
     code_frequency = get_code_frequency(plan.signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
-    PHASET = Int32,
+    PHASET = Int32;
+    backend::CodeLUT.Backend = CodeLUT.default_backend(),
 )
     mc = plan.mc
     fc = _to_hz(code_frequency)
@@ -440,9 +446,9 @@ function gen_code!(
     # phase at 2^-30-sub-chip precision (see `_subchip_phase_split`).
     sd = CodeLUT._STEP_DEN
     phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
-    # Parameterless default_backend() const-folds to a concrete backend, keeping
-    # generate_code! type-stable (the table-aware overload would erase that inference).
-    backend = CodeLUT.default_backend()
+    # `backend` defaults to the parameterless `default_backend()` (const-folds to a concrete
+    # backend, keeping generate_code! type-stable); exposed so tests can force a weaker
+    # backend than the host (forcing one the CPU lacks would SIGILL — see CodeGeneratorLUT).
     if eltype(sampled_code) == Int8
         CodeLUT.generate_code!(sampled_code, mc;
             code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)

@@ -7,14 +7,7 @@ coverage:
       default:
         threshold: 3%
 
-# The CodeLUT SIMD code resampler is per-architecture: it ships AVX-512 (vpermb),
-# AVX2 (vpshufb), NEON (tbl1) and portable backends, selected at run time from the
-# host CPU. The AVX-512 VBMI paths are the bulk of the code, and no GitHub-hosted
-# runner exposes AVX-512 VBMI, so they can never execute in CI; the remaining
-# arch-specific dispatch (NEON/portable/AVX2 helpers) is likewise spread across
-# every file in the submodule. This makes the feature inherently un-coverable on
-# CI, so exclude it from coverage rather than gate PRs on coverage we cannot
-# produce. Correctness is enforced by the byte-exact oracle tests in test/code_lut.jl.
-ignore:
-  - "src/code_lut.jl"
-  - "src/code_lut/"
+# Note: the CodeLUT SIMD resampler is per-architecture (AVX-512 / AVX2 / NEON / portable,
+# chosen at run time). All four are exercised on CI — AVX2/Portable on the x86 runners, NEON
+# on the Apple-Silicon macOS runner, and AVX-512 VBMI under QEMU Ice Lake emulation (see the
+# `test-avx512-emulated` job in ci.yml) — so the submodule is fully covered and NOT ignored.
