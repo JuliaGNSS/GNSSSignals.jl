@@ -54,15 +54,22 @@ Holds a GNSS spreading code of length `L` as `Int8` chips (values are stored ver
 pass ±1 for a standard correlation replica). Internally keeps a copy padded with its own
 first 63 chips so any 64-chip window `chips[base : base+63]` is a single contiguous load.
 """
-struct CodeTable
-    chips::Vector{Int8}    # length L
-    padded::Vector{Int8}   # length L + WINDOW_PAD
+struct CodeTable{V<:AbstractVector{Int8}}
+    chips::V    # length L
+    padded::V   # length L + WINDOW_PAD
     length::Int
 end
 
 # vpermb reads a 64-chip window; the last valid base is L-1, reading up to index L+62
 # (0-based). Pad by 63 so that load is always in-bounds.
 const WINDOW_PAD = 63
+
+# NOTE on zero-copy view tables: the parametric struct's auto-generated outer constructor
+# `CodeTable(chips, padded, length)` infers `V` from the arguments, so passing unit-stride
+# `SubArray{Int8}` column views (e.g. a column of `SignalLUT.padded`) yields a view-backed
+# `CodeTable{<:SubArray}` with NO data copied — the SIMD `VecRange{W}` loads in the permute
+# kernels read straight from the column (verified to lower to the same contiguous vload as a
+# `Vector{Int8}`). Passing `Vector{Int8}` (the bake path below) yields the original owning table.
 
 function CodeTable(chips::AbstractVector{<:Integer})
     L = length(chips)
