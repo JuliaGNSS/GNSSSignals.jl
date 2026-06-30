@@ -37,3 +37,50 @@ jobs:
           disable_search: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # The AVX-512 VBMI code path (CodeLUT's `vpermb` permute) cannot run on the AVX2-only
+  # GitHub-hosted x86 runners, and the matrix above only ever exercises AVX2/Portable
+  # (x86) and NEON (Apple-Silicon macOS). Run the suite once more under QEMU emulating an
+  # Ice Lake CPU so the AVX-512 backend is actually executed and covered. The suite forces
+  # every host-supported backend, so this job exercises AVX-512 *and* AVX2/Portable; the
+  # `GNSS_REQUIRE_BACKENDS` guard makes it fail loudly if emulation stops providing VBMI.
+  # (Intel SDE — `sde64 -icx -follow-execv -- julia ...` — is a faster alternative if QEMU's
+  # full translation proves too slow; it runs non-AVX-512 code natively.)
+  test-avx512-emulated:
+    name: AVX-512 (QEMU Ice Lake emulation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Install QEMU user-mode
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user
+      - name: Run tests under emulated Ice Lake (AVX-512 VBMI)
+        env:
+          GNSS_REQUIRE_BACKENDS: avx512vbmi,avx2
+          JULIA_NUM_THREADS: '1'
+        # Run runtests.jl *directly* under QEMU (not via Pkg.test, whose test subprocess would
+        # run natively and bypass emulation). Resolve the test deps into a throwaway shared env
+        # that develops this package in place, so coverage .cov files land next to src/.
+        run: |
+          JULIA=$(julia -e 'print(Base.julia_cmd().exec[1])')
+          qemu-x86_64 -cpu Icelake-Server "$JULIA" --color=yes \
+            --project=@gnss-avx512 --code-coverage=user -e '
+              using Pkg
+              Pkg.develop(PackageSpec(path=pwd()))
+              Pkg.add(["Aqua", "CodecZlib", "Random", "Test", "Statistics"])
+              Pkg.instantiate()
+              include("test/runtests.jl")'
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v7
+        with:
+          files: lcov.info
+          plugins: noop
+          disable_search: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
