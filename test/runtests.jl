@@ -19,21 +19,31 @@ function _load_packed_hex_fixture(filename::AbstractString, n_samples::Integer)
     out
 end
 
-@testset "Aqua.jl" begin
-    Aqua.test_all(GNSSSignals; deps_compat = (check_extras = false,))
+# The AVX-512 SDE-emulation CI job sets `GNSS_TEST_SIMD_ONLY` and exists only to exercise the
+# SIMD backends (`code_lut.jl` forces every host backend). The rest of the suite is CPU-agnostic
+# and fully covered by the native CI matrix, so scope the emulated run to the SIMD tests: under
+# emulation the full suite is the slowest job *and* flakes Aqua's timeout-based
+# `persistent_tasks` check. Native runs (no env var) run everything.
+const SIMD_ONLY = haskey(ENV, "GNSS_TEST_SIMD_ONLY")
+
+if !SIMD_ONLY
+    @testset "Aqua.jl" begin
+        Aqua.test_all(GNSSSignals; deps_compat=(check_extras=false,))
+    end
+
+    include("test_codes.jl")
+    include("bands.jl")
+    include("modulation.jl")
+    include("gps/l1ca.jl")
+    include("gps/l5.jl")
+    include("gps/l1c_codes.jl")
+    include("gps/l1c_d.jl")
+    include("gps/l1c_p.jl")
+    include("gps/l2c.jl")
+    include("galileo/e1b.jl")
+    include("galileo/e1c.jl")
+    include("galileo/e5a.jl")
+    include("common.jl")
 end
 
-include("test_codes.jl")
-include("bands.jl")
-include("modulation.jl")
-include("gps/l1ca.jl")
-include("gps/l5.jl")
-include("gps/l1c_codes.jl")
-include("gps/l1c_d.jl")
-include("gps/l1c_p.jl")
-include("gps/l2c.jl")
-include("galileo/e1b.jl")
-include("galileo/e1c.jl")
-include("galileo/e5a.jl")
-include("common.jl")
 include("code_lut.jl")
