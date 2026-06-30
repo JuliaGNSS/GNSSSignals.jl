@@ -47,10 +47,10 @@ jobs:
   #
   # SDE (not QEMU): QEMU's TCG does not implement AVX-512, so an emulated Ice Lake there has no
   # VBMI. SDE is Intel's own ISA emulator — it runs non-AVX-512 code natively and emulates only
-  # the AVX-512 instructions, so it is fast. `-follow-execv` makes SDE follow Julia's precompile
-  # and test subprocesses, which matters because CodeLUT bakes `HOST_FEATURES` (the CPUID-based
-  # backend choice) at *precompile* time — precompilation must see the emulated CPU. The cache
-  # action is intentionally omitted here so the precompile happens fresh under SDE. The
+  # the AVX-512 instructions, so it is fast. `-follow_subprocess` makes SDE follow Julia's
+  # precompile and test subprocesses, which matters because CodeLUT bakes `HOST_FEATURES` (the
+  # CPUID-based backend choice) at *precompile* time — precompilation must see the emulated CPU.
+  # The cache action is intentionally omitted here so the precompile happens fresh under SDE. The
   # `GNSS_REQUIRE_BACKENDS` guard fails the job loudly if the emulator stops providing VBMI.
   test-avx512-emulated:
     name: AVX-512 (Intel SDE emulation)
@@ -73,7 +73,7 @@ jobs:
           GNSS_REQUIRE_BACKENDS: avx512vbmi,avx2
           JULIA_NUM_THREADS: '1'
         run: |
-          "$SDE" -icx -follow-execv -- \
+          "$SDE" -icx -follow_subprocess -- \
             julia --project=. --color=yes -e 'using Pkg; Pkg.test("GNSSSignals"; coverage=true)'
       - uses: julia-actions/julia-processcoverage@v1
       - uses: codecov/codecov-action@v7
