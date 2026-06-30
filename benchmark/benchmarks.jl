@@ -178,24 +178,6 @@ let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Threaded multi-channel: build a Vector{CodeReplicaLUT} for 8 PRNs once, then
-# time filling 8 per-channel buffers in parallel with `Threads.@threads`. The
-# plans are immutable/read-only, so this is thread-safe.
-# ─────────────────────────────────────────────────────────────────────────────
-if isdefined(GNSSSignals, :CodeReplicaLUT)
-    let nch = 8, fs = 5e6Hz, fc = 1023e3Hz
-        N = round(Int, ustrip_hz(fs) * 1e-3)
-        plans = [GNSSSignals.CodeReplicaLUT(_GPSL1(), prn) for prn in 1:nch]
-        outs = [zeros(Int8, N) for _ in 1:nch]
-        SUITE["code"]["threaded multi-channel"]["GPSL1CA x8"] = @benchmarkable begin
-            Threads.@threads for ch in 1:$nch
-                gen_code!($outs[ch], $plans[ch], $fs, $fc, 0.0, 0)
-            end
-        end evals = 1 samples = 1000
-    end
-end
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Oversampling sweep — old gen_code! vs new LUT across oversampling ratios, at a small
 # and a steady-state buffer. "Oversampling ratio" = samples per code chip = fs / fc;
 # the level is labelled as a multiplier (2x = sample twice per chip). Grouped by signal /
