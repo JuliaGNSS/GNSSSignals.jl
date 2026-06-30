@@ -153,18 +153,18 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
-    @testset "continuing generator (make_generator + fill_continue!)" begin
+    @testset "continuing fill engine (make_fill_engine + fill_continue!)" begin
         # Concatenating consecutive fills equals one big generation.
         chips = rand(MersenneTwister(13), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
         for be in _BACKENDS, cps in (0.2046, 1 / 3)
             sn = _step_num(cps)
             n = 5000
             ref = _ref(chips, sn, 0, n)
-            gen = CL.make_generator(ct, cps; backend = be)
+            eng = CL.make_fill_engine(ct, cps; backend = be); st = CL.fill_state(eng)
             got = Int8[]
             for m in (777, 1, 1024, 64, n - 777 - 1 - 1024 - 64)   # uneven chunk sizes
                 buf = Vector{Int8}(undef, m)
-                CL.fill_continue!(buf, gen)
+                st = CL.fill_continue!(buf, eng, st)
                 append!(got, buf)
             end
             @test got == ref
@@ -172,7 +172,7 @@ const _BACKENDS = (CL.Portable(),
     end
 
     @testset "high-oversampling run-fill path" begin
-        # At high oversampling `make_generator` / `generate_code!` switch from the windowed
+        # At high oversampling `make_fill_engine` / `generate_code!` switch from the windowed
         # permute to a broadcast run-fill (`_runfill_*`). Its approximate samples-per-chip DDA
         # matches the exact `floor(step_num·n/2^_B)` fixed-point reference for any single fill
         # (the rounding drift only reaches ≤1 sample after ~10⁶ chips — see the drift test
@@ -195,11 +195,11 @@ const _BACKENDS = (CL.Portable(),
                         CL.generate_code!(out, ct, cps; phase = phase, backend = be)
                         @test out == ref
                         # continuing, uneven chunks across run boundaries
-                        gen = CL.make_generator(ct, cps; phase = phase, backend = be)
+                        eng = CL.make_fill_engine(ct, cps; phase = phase, backend = be); st = CL.fill_state(eng)
                         got = Int8[]
                         for chunk in (1, 333, 64, 2048, n - 1 - 333 - 64 - 2048)
                             buf = Vector{Int8}(undef, chunk)
-                            CL.fill_continue!(buf, gen)
+                            st = CL.fill_continue!(buf, eng, st)
                             append!(got, buf)
                         end
                         @test got == ref
@@ -255,10 +255,10 @@ const _BACKENDS = (CL.Portable(),
                     ref = _ref_rem0(chips, sn, rem0, phase, n)
                     for be in _BACKENDS
                         # continuing generator across uneven chunks
-                        gen = CL.make_generator(ct, sn, _SD; phase = phase, rem0 = rem0, backend = be)
+                        eng = CL.make_fill_engine(ct, sn, _SD; phase = phase, rem0 = rem0, backend = be); st = CL.fill_state(eng)
                         got = Int8[]
                         for m in (777, 1, 1024, 64, n - 777 - 1 - 1024 - 64)
-                            buf = Vector{Int8}(undef, m); CL.fill_continue!(buf, gen); append!(got, buf)
+                            buf = Vector{Int8}(undef, m); st = CL.fill_continue!(buf, eng, st); append!(got, buf)
                         end
                         if CL._use_runfill(sn, _SD, be)
                             @test count(!=(0), got .- ref) <= 4   # accumulated run-fill drift
@@ -486,10 +486,10 @@ end
 
     # End-to-end public adapter at HIGH oversampling, where the engine uses the broadcast
     # run-fill rather than the permute. The one-shot `gen_code!(out, plan, …)` and a *warm*
-    # continuing `gen_code!(out, gen)` must produce the identical fill, and chunked
+    # continuing `gen_code!(out, eng, st)` must produce the identical fill, and chunked
     # continuation must concatenate to one big generation — exercising the run-fill across
     # call boundaries together with the per-primary-period secondary negate (GPS L5I NH10).
-    @testset "plan/generator run-fill at high oversampling (L1CA + L5I secondary)" begin
+    @testset "plan/fill-engine run-fill at high oversampling (L1CA + L5I secondary)" begin
         for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
             plan = CodeReplicaLUT(signal, 1)
             fc = get_code_frequency(plan.signal)
@@ -498,17 +498,17 @@ end
             # one-shot (builds + run-fills from phase 0)
             oneshot = Vector{Int8}(undef, N)
             gen_code!(oneshot, plan, fs, fc)
-            # warm continuing generator, single fill of N
-            gen = CodeGeneratorLUT(plan, fs, fc)
+            # warm continuing fill engine, single fill of N
+            eng = code_engine(plan, fs, fc)
             warm = Vector{Int8}(undef, N)
-            gen_code!(warm, gen)
+            gen_code!(warm, eng, code_state(eng))
             @test warm == oneshot
             # chunked continuation == one big generation (crosses run + secondary-period boundaries)
-            gen2 = CodeGeneratorLUT(plan, fs, fc)
+            st = code_state(eng)
             got = Int8[]
             for chunk in (1, 999, 64, 4096, N - 1 - 999 - 64 - 4096)
                 buf = Vector{Int8}(undef, chunk)
-                gen_code!(buf, gen2)
+                st = gen_code!(buf, eng, st)
                 append!(got, buf)
             end
             @test got == oneshot
@@ -591,12 +591,12 @@ end
         fs = fc * P * 10                              # broadcast run-fill regime
         N = 9000
         oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, plan, fs, fc)
-        gen = CodeGeneratorLUT(plan, fs, fc)
-        warm = Vector{Int8}(undef, N); gen_code!(warm, gen)
+        eng = code_engine(plan, fs, fc)
+        warm = Vector{Int8}(undef, N); gen_code!(warm, eng, code_state(eng))
         @test warm == oneshot
-        gen2 = CodeGeneratorLUT(plan, fs, fc); got = Int8[]
+        st = code_state(eng); got = Int8[]
         for chunk in (1, 999, 64, 4096, N - 1 - 999 - 64 - 4096)
-            buf = Vector{Int8}(undef, chunk); gen_code!(buf, gen2); append!(got, buf)
+            buf = Vector{Int8}(undef, chunk); st = gen_code!(buf, eng, st); append!(got, buf)
         end
         @test got == oneshot
         @test all(in((-25, -13, 13, 25)), oneshot)   # run-fill preserves the multi-level values
@@ -668,19 +668,26 @@ end
         Sys.ARCH === :aarch64 && @test CL.Neon() in _BACKENDS
     end
 
-    @testset "gen_code! plan/generator == original, every supported backend" begin
+    @testset "gen_code! plan/fill-engine == original, every supported backend" begin
         # Forcing each supported backend must give identical signs to the original gen_code!,
         # so the AVX2/Portable adapter paths are covered regardless of the CI host CPU.
         signal = GPSL1CA(); prn = 1
         fc = get_code_frequency(signal); plan = CodeReplicaLUT(signal, prn)
         fs = fc * 2.5                                     # permute regime (sub-chip oversampled)
         orig = Vector{Int8}(undef, 20000); gen_code!(orig, signal, prn, fs, fc)
+        # Function barrier for the @allocated site so the engine/state types are concrete and
+        # the isbits state isn't boxed into the testset's soft scope (mirrors `drive` above).
+        fill_once(eng, out, st) = gen_code!(out, eng, st)
         for be in _BACKENDS
             one = Vector{Int8}(undef, 20000); gen_code!(one, plan, fs, fc; backend = be)
             @test count(sign.(orig) .!= sign.(one)) <= 8
-            g = CodeGeneratorLUT(plan, fs, fc; backend = be)
-            warm = Vector{Int8}(undef, 20000); gen_code!(warm, g)
+            eng = code_engine(plan, fs, fc; backend = be)
+            warm = Vector{Int8}(undef, 20000); gen_code!(warm, eng, code_state(eng))
             @test warm == one
+            # The threaded fill state is isbits, so the steady-state fill is allocation-free.
+            # 0-alloc is reliable on Julia ≥ 1.11 (1.10's weaker inference can leak a small box).
+            stw = code_state(eng); fill_once(eng, warm, stw)   # compile
+            VERSION >= v"1.11" && @test (@allocated fill_once(eng, warm, stw)) == 0
             # A short fill (no full 4W stride) drives the single-window leftover tail of the
             # AVX2/NEON windowed kernel (up to 3 W-blocks before the scalar remainder).
             short = Vector{Int8}(undef, 100); gen_code!(short, plan, fs, fc; backend = be)
@@ -694,13 +701,13 @@ end
         ref = Vector{Int8}(undef, 3000); gen_code!(ref, plan, fs, fc)
         o16 = Vector{Int16}(undef, 3000); gen_code!(o16, plan, fs, fc)          # one-shot
         @test o16 == ref
-        g = CodeGeneratorLUT(plan, fs, fc)
-        c16 = Vector{Int16}(undef, 3000); gen_code!(c16, g)                     # continuing
+        eng = code_engine(plan, fs, fc)
+        c16 = Vector{Int16}(undef, 3000); gen_code!(c16, eng, code_state(eng))  # continuing
         @test c16 == ref
     end
 
     @testset "non-baked secondary negate across NH10 periods (GPS L5I)" begin
-        # The continuing generator applies GPS L5I's non-baked NH10 secondary as a per-period
+        # The continuing fill engine applies GPS L5I's non-baked NH10 secondary as a per-period
         # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
         # indices 4,5,7,9) and require byte-exact agreement with the original gen_code!.
         sig = GPSL5I(); prn = 1
@@ -709,10 +716,10 @@ end
         orig = Vector{Int8}(undef, N); gen_code!(orig, sig, prn, fs, fc)
         plan = CodeReplicaLUT(sig, prn)
         @test any(==(Int8(-1)), plan.mc.secondary)        # the negate branch can fire
-        g = CodeGeneratorLUT(plan, fs, fc)
+        eng = code_engine(plan, fs, fc); st = code_state(eng)
         got = Int8[]
         for ch in (1, 99_999, 64, 100_000, N - 1 - 99_999 - 64 - 100_000)
-            b = Vector{Int8}(undef, ch); gen_code!(b, g); append!(got, b)
+            b = Vector{Int8}(undef, ch); st = gen_code!(b, eng, st); append!(got, b)
         end
         @test got == orig
     end
@@ -738,10 +745,10 @@ end
         CL.generate_code!(out, ct, sn, _SD; backend = CL.Portable())
         @test count(!=(0), out .- _ref(chips, sn, 0, n)) <= 4
         # (b) size-1 continuation lands on chip boundaries → the generic-core boundary return
-        gen = CL.make_generator(ct, sn, _SD; backend = CL.Portable())
+        eng = CL.make_fill_engine(ct, sn, _SD; backend = CL.Portable()); st = CL.fill_state(eng)
         m = 600; ref = _ref(chips, sn, 0, m); got = Int8[]
         for _ in 1:m
-            b = Vector{Int8}(undef, 1); CL.fill_continue!(b, gen); append!(got, b)
+            b = Vector{Int8}(undef, 1); st = CL.fill_continue!(b, eng, st); append!(got, b)
         end
         @test count(!=(0), got .- ref) <= 4
     end
