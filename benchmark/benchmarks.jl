@@ -25,6 +25,29 @@ ustrip_hz(x) = Float64(ustrip(u"Hz", x))
 const _GPSL1 = isdefined(GNSSSignals, :GPSL1CA) ? GNSSSignals.GPSL1CA : GNSSSignals.GPSL1
 const _GPSL5 = isdefined(GNSSSignals, :GPSL5I) ? GNSSSignals.GPSL5I : GNSSSignals.GPSL5
 
+# Continuing-code-fill adapter so the SAME benchmark script (taken from the PR head) runs
+# against BOTH revisions benchpkg compares. The mutable `CodeGeneratorLUT` (PR #69 base) and
+# the value-based `code_engine` + explicit `code_state` (this branch) have different continue
+# APIs; `_mk_codefill` builds the right carrier and `_codefill!(out, carrier)` fills the next
+# chunk, carrying state across calls (the value path threads its isbits state through a Ref —
+# preallocated, so the steady-state fill stays 0-alloc). Defined only when a LUT continuing
+# fill exists (neither on master), so `_HAS_CODEFILL` guards every use below.
+if isdefined(GNSSSignals, :CodeGeneratorLUT)            # PR #69 base: mutable continuing generator
+    _mk_codefill(plan, fs, fc) = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)
+    @inline _codefill!(out, gen) = (gen_code!(out, gen); out)
+elseif isdefined(GNSSSignals, :code_engine)             # this branch: value-based, explicit state
+    struct _ValFill{E,S}
+        eng::E
+        st::Base.RefValue{S}
+    end
+    function _mk_codefill(plan, fs, fc)
+        eng = GNSSSignals.code_engine(plan, fs, fc)
+        _ValFill(eng, Ref(GNSSSignals.code_state(eng)))
+    end
+    @inline _codefill!(out, vf::_ValFill) = (vf.st[] = gen_code!(out, vf.eng, vf.st[]); out)
+end
+const _HAS_CODEFILL = @isdefined(_mk_codefill)
+
 const SUITE = BenchmarkGroup()
 
 # ── original gen_code! rows (legacy fixed-size buffers, kept for continuity) ──
@@ -102,14 +125,13 @@ for (name, signal, prn, fs, fc) in _LUT_CASES
         $out16, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
 
-    # Warm continuing fill engine: DDA init paid once in code_engine (outside the timed
-    # region); gen_code!(out, eng, st) continues the state with no re-init — the fast repeat
-    # path. The state is isbits, so the steady-state fill allocates nothing.
-    if isdefined(GNSSSignals, :code_engine)
-        eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
-        st = GNSSSignals.code_state(eng)
+    # Warm continuing fill: DDA init paid once when the carrier is built (outside the timed
+    # region); _codefill! continues the state with no re-init — the fast repeat path. The
+    # value-based carrier's state is isbits, so the steady-state fill allocates nothing.
+    if _HAS_CODEFILL
+        cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
         out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable gen_code!($out8g, $eng, $st) evals = 10 samples = 1000
+        g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
     end
 
     # One-shot: builds the generator + DDA init on every call (the drop-in gen_code! form).
@@ -142,11 +164,10 @@ let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
     g["original"] = @benchmarkable gen_code!(
         $out_f32, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
-    if _LUT_CBOC_OK
-        eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
-        st = GNSSSignals.code_state(eng)
+    if _LUT_CBOC_OK && _HAS_CODEFILL
+        cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
         out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable gen_code!($out8g, $eng, $st) evals = 10 samples = 1000
+        g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
 
         plan = GNSSSignals.CodeReplicaLUT(signal, prn)
         out8 = zeros(Int8, N)
@@ -200,12 +221,11 @@ let fc = 1023e3Hz
             o16 = zeros(Int16, n)
             g["original"] =
                 @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
-            if isdefined(GNSSSignals, :code_engine)
-                eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
-                st = GNSSSignals.code_state(eng)
+            if _HAS_CODEFILL
+                cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
                 o8 = zeros(Int8, n)
                 g["LUT"] =
-                    @benchmarkable gen_code!($o8, $eng, $st) evals = 1 samples = 300
+                    @benchmarkable _codefill!($o8, $cf) evals = 1 samples = 300
             end
         end
     end
@@ -436,9 +456,9 @@ end
 # `ext[k]` holds the code at sample k−1−D, so at output sample n Early/Prompt/Late read
 # ext[n+1] / ext[n+D+1] / ext[n+2D+1]. Generator is warm (continuing); timed region is 0-alloc.
 function correlate_epl_unfused!(ext::Vector{Int8}, csin::Vector{Int8}, ccos::Vector{Int8},
-                                meas::Vector{Int16}, code_eng, tbl, fs, freq, N::Int,
+                                meas::Vector{Int16}, codefill, tbl, fs, freq, N::Int,
                                 ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
-    gen_code!(view(ext, (D + 1):(D + N + D)), code_eng, code_state(code_eng))   # samples 0 … N+D−1 (ext[1:D] stay 0)
+    _codefill!(view(ext, (D + 1):(D + N + D)), codefill)   # samples 0 … N+D−1 (ext[1:D] stay 0)
     generate_carrier!(view(csin, 1:N), view(ccos, 1:N), tbl; frequency = freq, sampling_frequency = fs)
     acc = _acc_zeros(TI, Val(W))
     n = 0
@@ -458,9 +478,9 @@ end
 # carrier never touches memory. So this writes/reads ONE scratch buffer per channel (≈ N Int8)
 # instead of the unfused's three (code + sin + cos), while still getting run-fill's fast code
 # generation that the fully-fused path lacks. Arithmetic is bit-identical to both kernels.
-function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, code_eng, reng, N::Int,
+function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, codefill, reng, N::Int,
                                ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
-    gen_code!(view(ext, (D + 1):(D + N + D)), code_eng, code_state(code_eng))   # samples 0 … N+D−1 (ext[1:D] stay 0)
+    _codefill!(view(ext, (D + 1):(D + N + D)), codefill)   # samples 0 … N+D−1 (ext[1:D] stay 0)
     acc = _acc_zeros(TI, Val(W))
     rs = carrier_state(reng, 0)
     n = 0; lim = length(meas) ÷ 2
@@ -523,20 +543,19 @@ end
 end
 
 function correlate_epl_hybrid_blocked!(extb::Vector{Int8}, csb::Vector{Int8}, ccb::Vector{Int8},
-                                       meas::Vector{Int16}, code_eng, reng,
+                                       meas::Vector{Int16}, codefill, reng,
                                        ::Val{W}, ::Val{D}, ::Val{BLK}, ::Val{TI}) where {W,D,BLK,TI}
     acc = _acc_zeros(TI, Val(W))
     lim = length(meas) ÷ 2
-    cst = code_state(code_eng)             # threaded explicitly across blocks (seamless)
     b = 0; prevlen = 0
     @inbounds while b < lim
         len = min(BLK, lim - b)
         if prevlen == 0                                      # block 0: leading D zeros, fill 0…len+D−1
             for i in 1:D; extb[i] = Int8(0); end
-            cst = gen_code!(view(extb, (D + 1):(D + len + D)), code_eng, cst)
+            _codefill!(view(extb, (D + 1):(D + len + D)), codefill)   # carrier continues seamlessly
         else                                                 # carry 2D overlap from the prev tail, fill len
             for i in 1:2D; extb[i] = extb[prevlen + i]; end
-            cst = gen_code!(view(extb, (2D + 1):(2D + len)), code_eng, cst)
+            _codefill!(view(extb, (2D + 1):(2D + len)), codefill)
         end
         _epl_fill_carrier!(csb, ccb, reng, b, len, Val(W))
         n = 0
@@ -562,7 +581,7 @@ end
 # Register the E/P/L benchmarks only where the value-based code engine exists (skipped on a
 # baseline without the code-LUT API, so AirspeedVelocity can still diff against it). Two rates:
 # 5 MHz (N=5000, D=2; D<W on every backend) and 40 MHz (N=40000, D=20; D>W on NEON).
-if isdefined(GNSSSignals, :code_engine)
+if isdefined(GNSSSignals, :code_engine) && _HAS_CODEFILL
     for (label, fs, fc) in (
         ("GPSL1CA E/P/L 5MHz 1ms", 5e6, 1.023e6),
         ("GPSL1CA E/P/L 40MHz 1ms", 40e6, 1.023e6),
@@ -573,7 +592,7 @@ if isdefined(GNSSSignals, :code_engine)
             D = round(Int, 0.5 * fs / fc)              # ½-chip Early/Late spacing, in samples
             # Carrier amplitude + wipe type auto-chosen from the 12-bit ADC range (Int16 fast path).
             plan = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1)
-            code_eng = GNSSSignals.code_engine(plan, fs, fc)   # warm fill engine for the unfused fill
+            code_eng = _mk_codefill(plan, fs, fc)   # warm continuing-fill carrier (mutable or value-based)
             tbl = SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP)
             ceng1, reng = _epl_engines(plan, tbl, fs, fc, freq)
 
@@ -673,7 +692,7 @@ struct _EPLChannels{W,D,CE,RE,CG,TB}
     out::Vector{Int}     # per-channel sink (prompt I) — prevents dead-code elimination
 end
 
-if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
+if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine) && _HAS_CODEFILL
     # Build `nch` independent channels (distinct PRN + Doppler) sharing one measurement.
     function _build_channels(nch::Int, fs, fc, ms)
         W = _CORR_W
@@ -689,7 +708,7 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         engs = [_epl_engines(plans[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
         cengs = [e[1] for e in engs]
         rengs = [e[2] for e in engs]
-        code_engs = [GNSSSignals.code_engine(plans[s], fs, fc) for s in 1:nch]
+        code_engs = [_mk_codefill(plans[s], fs, fc) for s in 1:nch]
         exts = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         extsH = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         csins = [zeros(Int8, Npad) for _ in 1:nch]
