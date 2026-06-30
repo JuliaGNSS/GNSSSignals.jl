@@ -1,5 +1,12 @@
 # Changelog
 
+# [2.4.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.3.0...v2.4.0) (2026-06-30)
+
+
+### Features
+
+* add Galileo E1C (pilot component of Galileo E1 OS) ([55210b9](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/55210b99d026da2a68b91e28ab2af491f8264937))
+
 # [2.3.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.2.2...v2.3.0) (2026-06-29)
 
 
