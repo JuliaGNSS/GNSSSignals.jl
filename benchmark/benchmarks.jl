@@ -90,7 +90,7 @@ end
 # fs/fc three ways, all under one parent `code/1 ms integration/<signal>/…` so the rows
 # sit adjacent in the sorted table:
 #   "original"      — classic gen_code!(out, signal, prn, fs, fc)              (Int16 out)
-#   "LUT generator" — warm CodeGeneratorLUT reused per call (steady state)     (Int8 out, 0 alloc)
+#   "LUT generator" — warm code_engine reused per call (steady state)          (Int8 out, 0 alloc)
 #   "LUT one-shot"  — gen_code!(out, plan, fs, fc): rebuilds the DDA each call (Int8 out)
 # Plan/generator are built ONCE outside the timed region (a receiver reuses them). Output
 # eltype differs by design: Int16 is the original's correlator type, Int8 the LUT's native ±1.
@@ -102,12 +102,14 @@ for (name, signal, prn, fs, fc) in _LUT_CASES
         $out16, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
 
-    # Warm continuing generator: DDA init paid once in the constructor (outside the timed
-    # region); gen_code!(out, gen) continues the state with no re-init — the fast repeat path.
-    if isdefined(GNSSSignals, :CodeGeneratorLUT)
-        gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+    # Warm continuing fill engine: DDA init paid once in code_engine (outside the timed
+    # region); gen_code!(out, eng, st) continues the state with no re-init — the fast repeat
+    # path. The state is isbits, so the steady-state fill allocates nothing.
+    if isdefined(GNSSSignals, :code_engine)
+        eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        st = GNSSSignals.code_state(eng)
         out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable gen_code!($out8g, $gen) evals = 10 samples = 1000
+        g["LUT generator"] = @benchmarkable gen_code!($out8g, $eng, $st) evals = 10 samples = 1000
     end
 
     # One-shot: builds the generator + DDA init on every call (the drop-in gen_code! form).
@@ -141,9 +143,10 @@ let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
         $out_f32, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
     if _LUT_CBOC_OK
-        gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        st = GNSSSignals.code_state(eng)
         out8g = zeros(Int8, N)
-        g["LUT generator"] = @benchmarkable gen_code!($out8g, $gen) evals = 10 samples = 1000
+        g["LUT generator"] = @benchmarkable gen_code!($out8g, $eng, $st) evals = 10 samples = 1000
 
         plan = GNSSSignals.CodeReplicaLUT(signal, prn)
         out8 = zeros(Int8, N)
@@ -197,11 +200,12 @@ let fc = 1023e3Hz
             o16 = zeros(Int16, n)
             g["original"] =
                 @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
-            if isdefined(GNSSSignals, :CodeGeneratorLUT)
-                gen = GNSSSignals.CodeGeneratorLUT(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+            if isdefined(GNSSSignals, :code_engine)
+                eng = GNSSSignals.code_engine(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+                st = GNSSSignals.code_state(eng)
                 o8 = zeros(Int8, n)
                 g["LUT"] =
-                    @benchmarkable gen_code!($o8, $gen) evals = 1 samples = 300
+                    @benchmarkable gen_code!($o8, $eng, $st) evals = 1 samples = 300
             end
         end
     end
@@ -432,9 +436,9 @@ end
 # `ext[k]` holds the code at sample k−1−D, so at output sample n Early/Prompt/Late read
 # ext[n+1] / ext[n+D+1] / ext[n+2D+1]. Generator is warm (continuing); timed region is 0-alloc.
 function correlate_epl_unfused!(ext::Vector{Int8}, csin::Vector{Int8}, ccos::Vector{Int8},
-                                meas::Vector{Int16}, code_gen, tbl, fs, freq, N::Int,
+                                meas::Vector{Int16}, code_eng, tbl, fs, freq, N::Int,
                                 ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
-    gen_code!(view(ext, (D + 1):(D + N + D)), code_gen)     # samples 0 … N+D−1 (ext[1:D] stay 0)
+    gen_code!(view(ext, (D + 1):(D + N + D)), code_eng, code_state(code_eng))   # samples 0 … N+D−1 (ext[1:D] stay 0)
     generate_carrier!(view(csin, 1:N), view(ccos, 1:N), tbl; frequency = freq, sampling_frequency = fs)
     acc = _acc_zeros(TI, Val(W))
     n = 0
@@ -454,9 +458,9 @@ end
 # carrier never touches memory. So this writes/reads ONE scratch buffer per channel (≈ N Int8)
 # instead of the unfused's three (code + sin + cos), while still getting run-fill's fast code
 # generation that the fully-fused path lacks. Arithmetic is bit-identical to both kernels.
-function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, code_gen, reng, N::Int,
+function correlate_epl_hybrid!(ext::Vector{Int8}, meas::Vector{Int16}, code_eng, reng, N::Int,
                                ::Val{W}, ::Val{D}, ::Val{TI}) where {W,D,TI}
-    gen_code!(view(ext, (D + 1):(D + N + D)), code_gen)     # samples 0 … N+D−1 (ext[1:D] stay 0)
+    gen_code!(view(ext, (D + 1):(D + N + D)), code_eng, code_state(code_eng))   # samples 0 … N+D−1 (ext[1:D] stay 0)
     acc = _acc_zeros(TI, Val(W))
     rs = carrier_state(reng, 0)
     n = 0; lim = length(meas) ÷ 2
@@ -519,19 +523,20 @@ end
 end
 
 function correlate_epl_hybrid_blocked!(extb::Vector{Int8}, csb::Vector{Int8}, ccb::Vector{Int8},
-                                       meas::Vector{Int16}, code_gen, reng,
+                                       meas::Vector{Int16}, code_eng, reng,
                                        ::Val{W}, ::Val{D}, ::Val{BLK}, ::Val{TI}) where {W,D,BLK,TI}
     acc = _acc_zeros(TI, Val(W))
     lim = length(meas) ÷ 2
+    cst = code_state(code_eng)             # threaded explicitly across blocks (seamless)
     b = 0; prevlen = 0
     @inbounds while b < lim
         len = min(BLK, lim - b)
         if prevlen == 0                                      # block 0: leading D zeros, fill 0…len+D−1
             for i in 1:D; extb[i] = Int8(0); end
-            gen_code!(view(extb, (D + 1):(D + len + D)), code_gen)
+            cst = gen_code!(view(extb, (D + 1):(D + len + D)), code_eng, cst)
         else                                                 # carry 2D overlap from the prev tail, fill len
             for i in 1:2D; extb[i] = extb[prevlen + i]; end
-            gen_code!(view(extb, (2D + 1):(2D + len)), code_gen)
+            cst = gen_code!(view(extb, (2D + 1):(2D + len)), code_eng, cst)
         end
         _epl_fill_carrier!(csb, ccb, reng, b, len, Val(W))
         n = 0
@@ -568,7 +573,7 @@ if isdefined(GNSSSignals, :code_engine)
             D = round(Int, 0.5 * fs / fc)              # ½-chip Early/Late spacing, in samples
             # Carrier amplitude + wipe type auto-chosen from the 12-bit ADC range (Int16 fast path).
             plan = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1)
-            code_gen = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)   # warm generator for the unfused fill
+            code_eng = GNSSSignals.code_engine(plan, fs, fc)   # warm fill engine for the unfused fill
             tbl = SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP)
             ceng1, reng = _epl_engines(plan, tbl, fs, fc, freq)
 
@@ -587,14 +592,14 @@ if isdefined(GNSSSignals, :code_engine)
                 $meas, $ceng1, $reng, $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
             g["unfused"] = @benchmarkable correlate_epl_unfused!(
-                $ext, $csin, $ccos, $meas, $code_gen, $tbl, $fs, $freq, $N,
+                $ext, $csin, $ccos, $meas, $code_eng, $tbl, $fs, $freq, $N,
                 $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
             g["hybrid"] = @benchmarkable correlate_epl_hybrid!(
-                $ext, $meas, $code_gen, $reng, $N, $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
+                $ext, $meas, $code_eng, $reng, $N, $(Val(_CORR_W)), $(Val(D)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
             g["hybrid-blocked"] = @benchmarkable correlate_epl_hybrid_blocked!(
-                $extb, $csb, $ccb, $meas, $code_gen, $reng,
+                $extb, $csb, $ccb, $meas, $code_eng, $reng,
                 $(Val(_CORR_W)), $(Val(D)), $(Val(_CORR_BLK)), $(Val(_WIPE_TI)),
             ) evals = 1 samples = 1000
         end
@@ -660,7 +665,7 @@ struct _EPLChannels{W,D,CE,RE,CG,TB}
     extbs::Vector{Vector{Int8}}
     csbs::Vector{Vector{Int8}}
     ccbs::Vector{Vector{Int8}}
-    code_gens::Vector{CG}
+    code_engs::Vector{CG}
     tbls::Vector{TB}
     fs::Float64
     freqs::Vector{Float64}
@@ -684,7 +689,7 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         engs = [_epl_engines(plans[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
         cengs = [e[1] for e in engs]
         rengs = [e[2] for e in engs]
-        code_gens = [GNSSSignals.CodeGeneratorLUT(plans[s], fs, fc) for s in 1:nch]
+        code_engs = [GNSSSignals.code_engine(plans[s], fs, fc) for s in 1:nch]
         exts = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         extsH = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         csins = [zeros(Int8, Npad) for _ in 1:nch]
@@ -692,9 +697,9 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
         extbs = [zeros(Int8, _CORR_BLK + 2D) for _ in 1:nch]
         csbs = [zeros(Int8, _CORR_BLK) for _ in 1:nch]
         ccbs = [zeros(Int8, _CORR_BLK) for _ in 1:nch]
-        ch = _EPLChannels{W,D,eltype(cengs),eltype(rengs),eltype(code_gens),eltype(tbls)}(
+        ch = _EPLChannels{W,D,eltype(cengs),eltype(rengs),eltype(code_engs),eltype(tbls)}(
             meas, cengs, rengs, exts, extsH, csins, ccoss, extbs, csbs, ccbs,
-            code_gens, tbls, Float64(fs), freqs, N, zeros(Int, nch))
+            code_engs, tbls, Float64(fs), freqs, N, zeros(Int, nch))
         ch
     end
 
@@ -707,19 +712,19 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine)
     end
     @inline function _epl_one_unfused!(ch::_EPLChannels{W,D}, s) where {W,D}
         @inbounds r = correlate_epl_unfused!(ch.exts[s], ch.csins[s], ch.ccoss[s], ch.meas,
-            ch.code_gens[s], ch.tbls[s], ch.fs, ch.freqs[s], ch.N, Val(W), Val(D), Val(_WIPE_TI))
+            ch.code_engs[s], ch.tbls[s], ch.fs, ch.freqs[s], ch.N, Val(W), Val(D), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
     @inline function _epl_one_hybrid!(ch::_EPLChannels{W,D}, s) where {W,D}
-        @inbounds r = correlate_epl_hybrid!(ch.extsH[s], ch.meas, ch.code_gens[s], ch.rengs[s],
+        @inbounds r = correlate_epl_hybrid!(ch.extsH[s], ch.meas, ch.code_engs[s], ch.rengs[s],
             ch.N, Val(W), Val(D), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end
     @inline function _epl_one_hybrid_blocked!(ch::_EPLChannels{W,D}, s) where {W,D}
         @inbounds r = correlate_epl_hybrid_blocked!(ch.extbs[s], ch.csbs[s], ch.ccbs[s], ch.meas,
-            ch.code_gens[s], ch.rengs[s], Val(W), Val(D), Val(_CORR_BLK), Val(_WIPE_TI))
+            ch.code_engs[s], ch.rengs[s], Val(W), Val(D), Val(_CORR_BLK), Val(_WIPE_TI))
         @inbounds ch.out[s] = r[2][1]
         nothing
     end

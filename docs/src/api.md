@@ -51,14 +51,16 @@ GNSSSignals.gen_code!
 ## LUT Code Generation
 
 Fast register-resident SIMD code resampling: build a [`CodeReplicaLUT`](@ref) plan once per
-`(signal, prn)`, then resample it with `gen_code!`, the continuing [`CodeGeneratorLUT`](@ref),
-or — for an allocation-free, fused loop — the value-based [`code_engine`](@ref) and its
-state stepping ([`code_state`](@ref) / [`code_lookup`](@ref) / [`code_advance`](@ref) /
-[`code_width`](@ref)).
+`(signal, prn)`, then resample it with the one-shot `gen_code!`, with the continuing fill
+engine ([`code_engine`](@ref)`(plan, fs, fc)` + [`code_state`](@ref), threading the state
+returned by `gen_code!(out, eng, st)` for seamless block-to-block tracking), or — for an
+allocation-free, fused loop — the value-based [`code_engine`](@ref)`(plan, fs, fc, Val(K))`
+and its state stepping ([`code_state`](@ref) / [`code_lookup`](@ref) / [`code_advance`](@ref)
+/ [`code_width`](@ref)). Both continuing paths use immutable, explicit state — nothing mutates
+behind your back.
 
 ```@docs
 GNSSSignals.CodeReplicaLUT
-GNSSSignals.CodeGeneratorLUT
 GNSSSignals.code_engine
 GNSSSignals.code_state
 GNSSSignals.code_lookup
