@@ -50,17 +50,18 @@ GNSSSignals.gen_code!
 
 ## LUT Code Generation
 
-Fast register-resident SIMD code resampling: build a [`CodeReplicaLUT`](@ref) plan once per
-`(signal, prn)`, then resample it with the one-shot `gen_code!`, with the continuing fill
-engine ([`code_engine`](@ref)`(plan, fs, fc)` + [`code_state`](@ref), threading the state
-returned by `gen_code!(out, eng, st)` for seamless block-to-block tracking), or — for an
-allocation-free, fused loop — the value-based [`code_engine`](@ref)`(plan, fs, fc, Val(K))`
-and its state stepping ([`code_state`](@ref) / [`code_lookup`](@ref) / [`code_advance`](@ref)
-/ [`code_width`](@ref)). Both continuing paths use immutable, explicit state — nothing mutates
-behind your back.
+`gen_code!`/`gen_code` (above) resample PRN `prn`'s fully-modulated replica from the signal's
+embedded `Int8` LUT. For continuing, block-to-block generation (tracking) build a
+[`code_engine`](@ref)`(signal, prn, fs, fc)` once and thread the immutable state: seed it with
+[`code_state`](@ref)`(eng)`, then call `gen_code!(out, eng, st)` per integration, threading the
+returned `CodeFillState`. For an allocation-free, register-resident fused loop, use the
+value-based [`code_engine`](@ref)`(signal, prn, fs, fc, Val(K))` and its state stepping
+([`code_state`](@ref) / [`code_lookup`](@ref) / [`code_advance`](@ref) / [`code_width`](@ref)).
+Both continuing paths use immutable, explicit state — nothing mutates behind your back.
 
 ```@docs
-GNSSSignals.CodeReplicaLUT
+GNSSSignals.CodeFillEngine
+GNSSSignals.CodeFillState
 GNSSSignals.code_engine
 GNSSSignals.code_state
 GNSSSignals.code_lookup

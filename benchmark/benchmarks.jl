@@ -26,33 +26,55 @@ const _GPSL1 = isdefined(GNSSSignals, :GPSL1CA) ? GNSSSignals.GPSL1CA : GNSSSign
 const _GPSL5 = isdefined(GNSSSignals, :GPSL5I) ? GNSSSignals.GPSL5I : GNSSSignals.GPSL5
 
 # Continuing-code-fill adapter so the SAME benchmark script (taken from the PR head) runs
-# against BOTH revisions benchpkg compares. The mutable `CodeGeneratorLUT` (PR #69 base) and
-# the value-based `code_engine` + explicit `code_state` (this branch) have different continue
-# APIs; `_mk_codefill` builds the right carrier and `_codefill!(out, carrier)` fills the next
-# chunk, carrying state across calls (the value path threads its isbits state through a Ref —
-# preallocated, so the steady-state fill stays 0-alloc). Defined only when a LUT continuing
-# fill exists (neither on master), so `_HAS_CODEFILL` guards every use below.
+# against BOTH revisions benchpkg compares. Two LUT eras:
+#   • PR #69 base — a rate-independent `CodeReplicaLUT(signal, prn)` PLAN, fed to a *mutable*
+#     `CodeGeneratorLUT(plan, fs, fc)` and to `code_engine(plan, fs, fc, …)`.
+#   • this branch — the EMBEDDED per-signal LUT (no plan): `code_engine(signal, prn, fs, fc)`
+#     returns an immutable `CodeFillEngine` driven by an explicit isbits `code_state`, and
+#     `gen_code!(out, signal, prn, fs, fc, …)` is the Int8-only one-shot. `CodeReplicaLUT`
+#     and `CodeGeneratorLUT` no longer exist.
+# `_lut_engine_source(signal, prn)` returns whatever the rate-taking constructors expect (a
+# plan on the base, the bare signal on this branch); `_mk_codefill` builds the right continuing
+# carrier and `_codefill!(out, carrier)` fills the next chunk, carrying state across calls (the
+# value path threads its isbits state through a preallocated Ref, so the steady-state fill stays
+# 0-alloc). `_HAS_CODEFILL` guards every use below (neither defined on master).
+const _HAS_PLAN     = isdefined(GNSSSignals, :CodeReplicaLUT)
+const _EMBEDDED_LUT = isdefined(GNSSSignals, :code_engine) && !_HAS_PLAN
+# On the base the rate-taking LUT calls want a plan; on this branch they take the bare signal.
+_lut_engine_source(signal, prn) =
+    _HAS_PLAN ? GNSSSignals.CodeReplicaLUT(signal, prn) : signal
 if isdefined(GNSSSignals, :CodeGeneratorLUT)            # PR #69 base: mutable continuing generator
-    _mk_codefill(plan, fs, fc) = GNSSSignals.CodeGeneratorLUT(plan, fs, fc)
+    _mk_codefill(signal, prn, fs, fc) =
+        GNSSSignals.CodeGeneratorLUT(_lut_engine_source(signal, prn), fs, fc)
     @inline _codefill!(out, gen) = (gen_code!(out, gen); out)
 elseif isdefined(GNSSSignals, :code_engine)             # this branch: value-based, explicit state
     struct _ValFill{E,S}
         eng::E
         st::Base.RefValue{S}
     end
-    function _mk_codefill(plan, fs, fc)
-        eng = GNSSSignals.code_engine(plan, fs, fc)
+    function _mk_codefill(signal, prn, fs, fc)
+        eng = _EMBEDDED_LUT ? GNSSSignals.code_engine(signal, prn, fs, fc) :
+                              GNSSSignals.code_engine(_lut_engine_source(signal, prn), fs, fc)
         _ValFill(eng, Ref(GNSSSignals.code_state(eng)))
     end
     @inline _codefill!(out, vf::_ValFill) = (vf.st[] = gen_code!(out, vf.eng, vf.st[]); out)
 end
 const _HAS_CODEFILL = @isdefined(_mk_codefill)
+# One-shot LUT fill, era-aware: this branch uses the embedded `gen_code!(out, signal, prn, …)`;
+# the base resamples a plan via `gen_code!(out, plan, fs, fc, …)`. Returns `out`.
+@inline _lut_oneshot!(out, signal, prn, fs, fc) =
+    _EMBEDDED_LUT ? gen_code!(out, signal, prn, fs, fc, 0.0, 0) :
+                    gen_code!(out, GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc, 0.0, 0)
 
 const SUITE = BenchmarkGroup()
 
-# ── original gen_code! rows (legacy fixed-size buffers, kept for continuity) ──
+# ── gen_code! rows (legacy fixed-size buffers, kept for continuity) ──
+# Buffer eltype is era-aware: on this branch the embedded-LUT `gen_code!` is Int8-only, so the
+# baseline's Int16/Float32 buffers would MethodError. Using Int8 here keeps the SAME SUITE keys
+# so benchpkg can diff the old generator (Int16/Float32 on the base) against the new embedded
+# generator (Int8 here) head-to-head across the two revisions.
 num_samples = 2000
-sampled_code = zeros(Int16, num_samples)
+sampled_code = zeros(_EMBEDDED_LUT ? Int8 : Int16, num_samples)
 
 SUITE["code"]["code generation"]["GPSL1"] = @benchmarkable gen_code!(
     $sampled_code,
@@ -74,7 +96,7 @@ SUITE["code"]["code generation"]["GPSL5"] = @benchmarkable gen_code!(
     $0,
 ) evals = 10 samples = 10000
 
-sampled_code_f32 = zeros(Float32, num_samples)
+sampled_code_f32 = zeros(_EMBEDDED_LUT ? Int8 : Float32, num_samples)
 SUITE["code"]["code generation"]["GalileoE1B"] = @benchmarkable gen_code!(
     $sampled_code_f32,
     $(GalileoE1B()),
@@ -120,7 +142,9 @@ end
 for (name, signal, prn, fs, fc) in _LUT_CASES
     N = round(Int, ustrip_hz(fs) * 1e-3)
     g = SUITE["code"]["1 ms integration"][name]
-    out16 = zeros(Int16, N)
+    # "original" is the drop-in one-shot gen_code!(out, signal, prn, …): Int16 on the base, Int8
+    # on this branch (the embedded LUT is Int8-only). Same SUITE key so benchpkg diffs them.
+    out16 = zeros(_EMBEDDED_LUT ? Int8 : Int16, N)
     g["original"] = @benchmarkable gen_code!(
         $out16, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
@@ -129,17 +153,18 @@ for (name, signal, prn, fs, fc) in _LUT_CASES
     # region); _codefill! continues the state with no re-init — the fast repeat path. The
     # value-based carrier's state is isbits, so the steady-state fill allocates nothing.
     if _HAS_CODEFILL
-        cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        cf = _mk_codefill(signal, prn, fs, fc)
         out8g = zeros(Int8, N)
         g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
     end
 
-    # One-shot: builds the generator + DDA init on every call (the drop-in gen_code! form).
-    if isdefined(GNSSSignals, :CodeReplicaLUT)
-        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
+    # One-shot: builds/inits the DDA on every call (the drop-in gen_code! form). On this branch
+    # `gen_code!(out, signal, prn, …)` resamples the embedded LUT; on the base it resamples a
+    # freshly built plan. `_lut_oneshot!` hides the era difference.
+    if _HAS_CODEFILL
         out8 = zeros(Int8, N)
-        g["LUT one-shot"] = @benchmarkable gen_code!(
-            $out8, $plan, $fs, $fc, $0.0, $0,
+        g["LUT one-shot"] = @benchmarkable _lut_oneshot!(
+            $out8, $signal, $prn, $fs, $fc,
         ) evals = 10 samples = 1000
     end
 end
@@ -148,11 +173,13 @@ end
 # as the rows above, but special-cased because CBOC differs from the ±1 cases:
 #   • the ORIGINAL `gen_code!` needs a Float32 buffer (the CBOC subcarrier amplitudes are
 #     irrational), whereas the LUT bakes an Int8 integer approximation (default (19,6));
-#   • the LUT plan only supports CBOC on this branch, so the LUT rows are probed and skipped
-#     on a baseline (the PR base #69) that errors on CBOC — the `original` row still compares.
+#   • the LUT only supports CBOC on this branch, so the LUT rows are probed and skipped on a
+#     baseline (the PR base #69) that errors on CBOC — the `original` row still compares.
 # fs ≥ fc·subchip_factor = 12·1.023 MHz; use 15 MHz (matches the legacy E1B row).
-const _LUT_CBOC_OK = isdefined(GNSSSignals, :CodeReplicaLUT) && try
-    GNSSSignals.CodeReplicaLUT(GalileoE1B(), 1)   # CBOC supported here, errors on the baseline
+const _LUT_CBOC_OK = _HAS_CODEFILL && try
+    # CBOC is bakeable on this branch (the embedded LUT is built at construction); on the base
+    # plan, build it; both error on a baseline that doesn't support CBOC.
+    _EMBEDDED_LUT ? GalileoE1B() : GNSSSignals.CodeReplicaLUT(GalileoE1B(), 1)
     true
 catch
     false
@@ -160,19 +187,20 @@ end
 let signal = GalileoE1B(), prn = 1, fs = 15e6Hz, fc = 1023e3Hz
     N = round(Int, ustrip_hz(fs) * 1e-3)
     g = SUITE["code"]["1 ms integration"]["GalileoE1B"]
-    out_f32 = zeros(Float32, N)
+    # CBOC: Float32 buffer on the base (irrational subcarrier amplitudes), Int8 on this branch
+    # (the embedded LUT bakes the (19,6) integer approximation). Same SUITE key for the diff.
+    out_f32 = zeros(_EMBEDDED_LUT ? Int8 : Float32, N)
     g["original"] = @benchmarkable gen_code!(
         $out_f32, $signal, $prn, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
     if _LUT_CBOC_OK && _HAS_CODEFILL
-        cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+        cf = _mk_codefill(signal, prn, fs, fc)
         out8g = zeros(Int8, N)
         g["LUT generator"] = @benchmarkable _codefill!($out8g, $cf) evals = 10 samples = 1000
 
-        plan = GNSSSignals.CodeReplicaLUT(signal, prn)
         out8 = zeros(Int8, N)
-        g["LUT one-shot"] = @benchmarkable gen_code!(
-            $out8, $plan, $fs, $fc, $0.0, $0,
+        g["LUT one-shot"] = @benchmarkable _lut_oneshot!(
+            $out8, $signal, $prn, $fs, $fc,
         ) evals = 10 samples = 1000
     end
 end
@@ -200,11 +228,11 @@ let fc = 1023e3Hz
             oversampling < P && continue             # LUT needs fs ≥ fc·P
             fs = oversampling * fc
             g = SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel]
-            o16 = zeros(Int16, n)
+            o16 = zeros(_EMBEDDED_LUT ? Int8 : Int16, n)   # Int8 embedded gen_code! on this branch
             g["original"] =
                 @benchmarkable gen_code!($o16, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
             if _HAS_CODEFILL
-                cf = _mk_codefill(GNSSSignals.CodeReplicaLUT(signal, prn), fs, fc)
+                cf = _mk_codefill(signal, prn, fs, fc)
                 o8 = zeros(Int8, n)
                 g["LUT"] =
                     @benchmarkable _codefill!($o8, $cf) evals = 1 samples = 300
@@ -553,11 +581,17 @@ function correlate_epl_hybrid_blocked!(extb::Vector{Int8}, csb::Vector{Int8}, cc
     _acc_sum(acc)
 end
 
-# Prompt code engine (a single stream — Early/Late are derived by lane-shift) + carrier engine.
-# Built once and reused. `code_engine`'s parameterless `default_backend()` const-folds to the
+# Value-based code engine, era-aware: this branch builds from `(signal, prn)`; the base from a
+# `CodeReplicaLUT` plan. `code_engine`'s parameterless `default_backend()` const-folds to the
 # host backend, so the engine types are concrete and the fused kernel stays 0-alloc.
-@inline _epl_engines(plan, tbl, fs, fc, freq) =
-    (GNSSSignals.code_engine(plan, fs, fc, Val(1)),
+@inline _make_code_engine(signal, prn, fs, fc) =
+    _EMBEDDED_LUT ? GNSSSignals.code_engine(signal, prn, fs, fc, Val(1)) :
+                    GNSSSignals.code_engine(_lut_engine_source(signal, prn), fs, fc, Val(1))
+
+# Prompt code engine (a single stream — Early/Late are derived by lane-shift) + carrier engine.
+# Built once and reused.
+@inline _epl_engines(signal, prn, tbl, fs, fc, freq) =
+    (_make_code_engine(signal, prn, fs, fc),
      carrier_engine(tbl; frequency = freq, sampling_frequency = fs))
 
 # Register the E/P/L benchmarks only where the value-based code engine exists (skipped on a
@@ -573,10 +607,10 @@ if isdefined(GNSSSignals, :code_engine) && _HAS_CODEFILL
             N = round(Int, fs * 1e-3)                  # 1 ms
             D = round(Int, 0.5 * fs / fc)              # ½-chip Early/Late spacing, in samples
             # Carrier amplitude + wipe type auto-chosen from the 12-bit ADC range (Int16 fast path).
-            plan = GNSSSignals.CodeReplicaLUT(_GPSL1(), 1)
-            code_eng = _mk_codefill(plan, fs, fc)   # warm continuing-fill carrier (mutable or value-based)
+            signal = _GPSL1(); prn = 1
+            code_eng = _mk_codefill(signal, prn, fs, fc)   # warm continuing-fill carrier (mutable or value-based)
             tbl = SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP)
-            ceng1, reng = _epl_engines(plan, tbl, fs, fc, freq)
+            ceng1, reng = _epl_engines(signal, prn, tbl, fs, fc, freq)
 
             # Zero-pad to a whole number of W-wide chunks (Npad samples). meas is complex with
             # re/im interleaved → 2·Npad Int16 words. ext spans samples −D … (Npad−1)+D.
@@ -684,13 +718,13 @@ if _HAS_POLYESTER && isdefined(GNSSSignals, :code_engine) && _HAS_CODEFILL
         lim = Int16(_MAX_MEAS)                                 # 12-bit ADC ±2048
         meas = zeros(Int16, 2 * Npad)
         meas[1:2N] .= rand(-lim:(lim - Int16(1)), 2N)
-        plans = [GNSSSignals.CodeReplicaLUT(_GPSL1(), prn) for prn in 1:nch]
+        signal = _GPSL1(); prns = collect(1:nch)               # one signal, distinct PRNs
         freqs = [1234.0 + 137.0 * (s - 1) for s in 1:nch]      # spread the residual Dopplers
         tbls = [SinCosTable(Int8; steps = 64, amplitude = _CARRIER_AMP) for _ in 1:nch]
-        engs = [_epl_engines(plans[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
+        engs = [_epl_engines(signal, prns[s], tbls[s], fs, fc, freqs[s]) for s in 1:nch]
         cengs = [e[1] for e in engs]
         rengs = [e[2] for e in engs]
-        code_engs = [_mk_codefill(plans[s], fs, fc) for s in 1:nch]
+        code_engs = [_mk_codefill(signal, prns[s], fs, fc) for s in 1:nch]
         exts = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         extsH = [zeros(Int8, Npad + 2D) for _ in 1:nch]
         csins = [zeros(Int8, Npad) for _ in 1:nch]
