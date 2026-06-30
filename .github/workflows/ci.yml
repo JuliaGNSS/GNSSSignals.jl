@@ -41,9 +41,13 @@ jobs:
   # The AVX-512 VBMI code path (CodeLUT's `vpermb` permute) only runs on a CPU exposing
   # AVX-512 VBMI. The x86 matrix runners are AVX2-only (AVX-512 turns up only sporadically
   # in GitHub's pool), and NEON is covered by the Apple-Silicon macOS runner — so the matrix
-  # above never deterministically exercises AVX-512. Run the suite once more under Intel SDE
-  # emulating an Ice Lake CPU so the AVX-512 backend is always executed and covered. The suite
-  # forces every host-supported backend, so this job exercises AVX-512 *and* AVX2/Portable.
+  # above never deterministically exercises AVX-512. Run the SIMD backend tests once more under
+  # Intel SDE emulating an Ice Lake CPU so the AVX-512 backend is always executed and covered.
+  # `test/code_lut.jl` forces every host-supported backend, so this job exercises AVX-512 *and*
+  # AVX2/Portable. `GNSS_TEST_SIMD_ONLY` scopes the run to that SIMD testset (see runtests.jl):
+  # the rest of the suite is CPU-agnostic and fully covered by the native matrix above, and
+  # running it under emulation only made this the slowest job *and* flaked Aqua's timeout-based
+  # `persistent_tasks` check — so we skip it here.
   #
   # SDE (not QEMU): QEMU's TCG does not implement AVX-512, so an emulated Ice Lake there has no
   # VBMI. SDE is Intel's own ISA emulator — it runs non-AVX-512 code natively and emulates only
@@ -71,6 +75,7 @@ jobs:
       - name: Run tests under emulated Ice Lake (AVX-512 VBMI)
         env:
           GNSS_REQUIRE_BACKENDS: avx512vbmi,avx2
+          GNSS_TEST_SIMD_ONLY: 'true'
           JULIA_NUM_THREADS: '1'
         run: |
           "$SDE" -icx -follow_subprocess -- \
