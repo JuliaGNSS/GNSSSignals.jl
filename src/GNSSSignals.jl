@@ -11,10 +11,13 @@ import Base.show
 export AbstractGNSSSignal,
     Band,
     L1,
+    L2,
     L5,
     GPSL1CA,
     GPSL1C_D,
     GPSL1C_P,
+    GPSL2CM,
+    GPSL2CL,
     GPSL5I,
     GPSL5Q,
     GalileoE1B,
@@ -107,6 +110,8 @@ include("gps/l1c_constants.jl")
 include("gps/l1c_codes.jl")
 include("gps/l1c_d.jl")
 include("gps/l1c_p.jl")
+include("gps/l2c_constants.jl")
+include("gps/l2c.jl")
 include("galileo/e1b.jl")
 include("galileo/e1c.jl")
 include("galileo/e5a.jl")

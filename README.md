@@ -12,6 +12,8 @@ A Julia package for generating GNSS spreading codes and signals.
 * GPS L1 C/A (BPSK)
 * GPS L1C-D (BOC(1,1))
 * GPS L1C-P (TMBOC(6,1,4/33) with 1800-bit overlay)
+* GPS L2 CM (BPSK 511.5 kcps, L2C data component carrying CNAV)
+* GPS L2 CL (BPSK 511.5 kcps, L2C dataless pilot, 1.5 s code)
 * GPS L5-I (BPSK(10) with 10-bit Neuman-Hofman NH10 secondary code)
 * GPS L5-Q (BPSK(10) pilot with 20-bit Neuman-Hofman NH20 secondary code)
 * Galileo E1B (CBOC modulation)

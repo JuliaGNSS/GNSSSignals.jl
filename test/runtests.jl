@@ -12,7 +12,7 @@ function _load_packed_hex_fixture(filename::AbstractString, n_samples::Integer)
     end
     out = Vector{Int16}(undef, n_samples)
     @inbounds for k = 1:n_samples
-        nibble = parse(UInt8, hex[(k - 1) ÷ 4 + 1]; base = 16)
+        nibble = parse(UInt8, hex[(k-1)÷4+1]; base = 16)
         bit = (nibble >> ((k - 1) % 4)) & UInt8(1)
         out[k] = bit == 0 ? Int16(-1) : Int16(1)
     end
@@ -20,7 +20,7 @@ function _load_packed_hex_fixture(filename::AbstractString, n_samples::Integer)
 end
 
 @testset "Aqua.jl" begin
-    Aqua.test_all(GNSSSignals; deps_compat=(check_extras=false,))
+    Aqua.test_all(GNSSSignals; deps_compat = (check_extras = false,))
 end
 
 include("test_codes.jl")
@@ -31,6 +31,7 @@ include("gps/l5.jl")
 include("gps/l1c_codes.jl")
 include("gps/l1c_d.jl")
 include("gps/l1c_p.jl")
+include("gps/l2c.jl")
 include("galileo/e1b.jl")
 include("galileo/e1c.jl")
 include("galileo/e5a.jl")
