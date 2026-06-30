@@ -146,6 +146,29 @@ get_code_type(e1b)           # Int16
 
 Use [`GalileoE1B`](@ref) for the full CBOC spec output (Float32); use [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) when the 0.45 dB loss is acceptable and Int16 / lower sampling rate is preferable.
 
+### Galileo E1C
+
+Galileo E1C is the pilot (dataless) component of Galileo E1 OS. It shares the 4092-chip primary memory codes' construction with E1B but uses *different* codes (Galileo OS SIS ICD Annex C), and it carries a 25-chip secondary code (CS25) overlaid one chip per 4 ms primary period, giving a 100 ms tiered code. Its CBOC uses the BOC(6,1) component in anti-phase — CBOC(−) — where E1B uses CBOC(+) (Galileo OS SIS ICD §2.3.3):
+
+```julia
+gal_e1c = GalileoE1C()
+get_code_length(gal_e1c)           # 4092
+get_secondary_code_length(gal_e1c) # 25 (CS25)
+get_band(gal_e1c)                  # L1()
+get_data_frequency(gal_e1c)        # 0 Hz (pilot)
+get_modulation(gal_e1c)            # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
+```
+
+The secondary code is shared across all PRNs, so [`get_secondary_code`](@ref) returns a [`SharedSecondaryCode`](@ref GNSSSignals.SharedSecondaryCode) of length 25. As with E1B, CBOC modulation makes the code values floating-point.
+
+A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the BOC(1,1) approximation (Int16 output, lower sampling rate) — the same substitution PocketSDR uses for E1C by default — with identical primary and CS25 secondary codes:
+
+```julia
+e1c = GalileoE1C_BOC11()
+get_modulation(e1c)          # BOCsin(1, 1)
+get_code_type(e1c)           # Int16
+```
+
 ### Galileo E5a-I
 
 Galileo E5a-I (the data-carrying component of Galileo E5a) uses a 10230-chip primary code at 10.23 Mcps with a 20-bit CS20 secondary code (shared by all SVIDs, giving a 20 ms tiered code). It is transmitted on the same RF carrier as GPS L5 — [`get_band`](@ref) returns [`L5`](@ref GNSSSignals.L5) for both. The wideband E5 signal is AltBOC(15,10), but like GNSS-SDR and PocketSDR this implementation models the E5a sideband on its own as BPSK(10):
@@ -183,6 +206,7 @@ A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two 
 ```julia
 get_band(GPSL1CA())            # L1()
 get_band(GalileoE1B())         # L1()
+get_band(GalileoE1C())         # L1()
 get_band(GPSL5I())             # L5()
 
 get_center_frequency(L1())     # 1575420000 Hz

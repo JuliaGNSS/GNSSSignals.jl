@@ -82,3 +82,27 @@ if isdefined(GNSSSignals, :GalileoE1B_BOC11)
         $0,
     ) evals = 10 samples = 10000
 end
+
+if isdefined(GNSSSignals, :GalileoE1C)
+    SUITE["code"]["code generation"]["GalileoE1C"] = @benchmarkable gen_code!(
+        $sampled_code_f32,
+        $(GNSSSignals.GalileoE1C()),
+        $1,
+        $(15e6Hz),
+        $(1023e3Hz),
+        $0.0,
+        $0,
+    ) evals = 10 samples = 10000
+end
+
+if isdefined(GNSSSignals, :GalileoE1C_BOC11)
+    SUITE["code"]["code generation"]["GalileoE1C_BOC11"] = @benchmarkable gen_code!(
+        $sampled_code,
+        $(GNSSSignals.GalileoE1C_BOC11()),
+        $1,
+        $(15e6Hz),
+        $(1023e3Hz),
+        $0.0,
+        $0,
+    ) evals = 10 samples = 10000
+end

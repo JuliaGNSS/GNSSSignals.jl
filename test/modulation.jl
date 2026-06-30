@@ -36,6 +36,20 @@
     @test GNSSSignals.get_subcarrier_code(cboc, 1.25) ≈ sqrt(1 / 2) * 2
     @test GNSSSignals.get_subcarrier_code(cboc, 1.75) ≈ -sqrt(1 / 2) * 2
 
+    # CBOC defaults to boc2_sign = +1 ("CBOC(+)"); E1C uses boc2_sign = -1
+    # ("CBOC(−)"), negating the BOC(6,1) component.
+    @test cboc.boc2_sign == 1
+    cboc_minus =
+        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(6, 1), 10 / 11, -1)
+    @test cboc_minus.boc2_sign == -1
+    a = sqrt(10 / 11)
+    b = sqrt(1 / 11)
+    cboc_plus =
+        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(6, 1), 10 / 11)
+    # At a chip boundary BOC(1,1) = BOC(6,1) = +1, so the two signs give a ± b.
+    @test GNSSSignals.get_subcarrier_code(cboc_plus, 0.0) ≈ a + b
+    @test GNSSSignals.get_subcarrier_code(cboc_minus, 0.0) ≈ a - b
+
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 1), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 2), 2.3) == 4
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 1), 2.3) == 2
