@@ -11,17 +11,20 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 | GPS L1 C/A | L1 | 1575.42 MHz | 1.023 MHz | 1023 chips | BPSK |
 | GPS L1C-D | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | BOC(1,1) |
 | GPS L1C-P | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips + 1800-bit overlay | TMBOC(6,1,4/33) |
-| GPS L5-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | BPSK + Neuman-Hofman |
+| GPS L5-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips + 10-bit NH10 overlay | BPSK + Neuman-Hofman |
+| GPS L5-Q | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips + 20-bit NH20 overlay | BPSK + Neuman-Hofman (pilot) |
 | Galileo E1B | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | CBOC(6,1,1/11) |
 | Galileo E1B (BOC(1,1) approximation) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | BOC(1,1) |
 | Galileo E1C | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips + 25-chip CS25 secondary | CBOC(6,1,1/11), BOC(6,1) anti-phase |
 | Galileo E1C (BOC(1,1) approximation) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips + 25-chip CS25 secondary | BOC(1,1) |
+| Galileo E5a-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips + 20-bit CS20 overlay | BPSK(10) |
+| Galileo E5a-Q | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips + 100-bit CS100 overlay | BPSK(10) (pilot) |
 
 GPS L1 C/A, GPS L1C-D, GPS L1C-P, Galileo E1B, and Galileo E1C all report the same [`Band`](@ref GNSSSignals.Band) ([`L1`](@ref GNSSSignals.L1)) because they share the 1575.42 MHz RF carrier — a receiver can drive them with the same carrier NCO.
 
 ### Modulation Types
 
-- **LOC** — Linear Offset Carrier; the BPSK-like baseline with no subcarrier (GPS L1 C/A, GPS L5-I)
+- **LOC** — Linear Offset Carrier; the BPSK-like baseline with no subcarrier (GPS L1 C/A, GPS L5-I, GPS L5-Q, Galileo E5a)
 - **BOCsin** — Sine-phased Binary Offset Carrier (GPS L1C-D)
 - **BOCcos** — Cosine-phased Binary Offset Carrier
 - **CBOC** — Composite Binary Offset Carrier (Galileo E1B uses CBOC(+), Galileo E1C uses CBOC(−))
@@ -77,7 +80,7 @@ For more detailed examples, see the [Usage](@ref) guide.
 
 GNSSSignals.jl provides functionality to:
 
-- Generate spreading codes for GPS L1 C/A, GPS L1C-D, GPS L1C-P, GPS L5-I, Galileo E1B, and Galileo E1C
+- Generate spreading codes for GPS L1 C/A, GPS L1C-D, GPS L1C-P, GPS L5-I, GPS L5-Q, Galileo E1B, Galileo E1C, and Galileo E5a
 - Sample codes at arbitrary frequencies with [`gen_code`](@ref) and [`gen_code!`](@ref)
 - Access code values at specific phases with [`get_code`](@ref)
 - Query signal parameters (code length, frequencies, modulation type)
