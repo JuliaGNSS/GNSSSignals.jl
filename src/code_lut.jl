@@ -376,6 +376,7 @@ struct CodeFillEngine{E<:CodeLUT.FillEngineAny}
     step_num::Int             # sub-chip step over the *sub-chip* table
     step_den::Int
     phase_sub::Int            # initial sub-chip phase offset
+    rem0::Int                 # initial fractional sub-chip residual (for the secondary boundaries)
 end
 
 """
@@ -439,7 +440,7 @@ function code_engine(
     engine = CodeLUT.make_fill_engine(mc.table, sn, sd; phase = phase_sub, rem0 = rem0, backend = backend)
     # `mc.secondary` is a view into `signal.lut.secondary`; materialise it as an owning Vector
     # so the engine does not alias the (otherwise read-only) embedded matrix.
-    return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, P, sn, sd, phase_sub)
+    return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, P, sn, sd, phase_sub, Int(rem0))
 end
 
 # Function barrier. `make_fill_engine` returns a small Union over the phase type (Int16 vs
@@ -449,10 +450,10 @@ end
 # every construction (the one-shot/threaded allocation hot spot).
 function _wrap_code_fill_engine(
     engine::E, secondary, period_subchips,
-    subchip_factor, step_num, step_den, phase_sub,
+    subchip_factor, step_num, step_den, phase_sub, rem0,
 ) where {E<:CodeLUT.FillEngineAny}
     CodeFillEngine{E}(
-        engine, secondary, period_subchips, subchip_factor, step_num, step_den, phase_sub,
+        engine, secondary, period_subchips, subchip_factor, step_num, step_den, phase_sub, rem0,
     )
 end
 
@@ -482,18 +483,20 @@ end
     length(sec) <= 1 && return out
     Ls = length(sec); per = eng.period_subchips
     sn = eng.step_num; sd = eng.step_den
-    N = length(out); ps = eng.phase_sub
-    # Absolute sample n (0-based) maps to sub-chip floor(n·sn/sd) + ps; period p spans
-    # sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with sub-chip ≥ p·per.
+    N = length(out); ps = eng.phase_sub; r0 = eng.rem0
+    # Absolute sample n (0-based) maps to sub-chip floor((n·sn + rem0)/sd) + ps; period p spans
+    # sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with sub-chip ≥ p·per,
+    # i.e. n ≥ cld(T·sd − rem0, sn) (T·sd > rem0 whenever T ≥ 1, since rem0 < sd). Omitting rem0
+    # would misplace the sign flip by a sample at a period edge for a fractional start phase.
     # The first emitted sample is absolute n0, so window index = n - n0.
-    sub0 = (n0 * sn) ÷ sd + ps
-    p = (sub0) ÷ per                # period index of the first emitted sample
+    sub0 = (n0 * sn + r0) ÷ sd + ps
+    p = fld(sub0, per)              # period index of the first emitted sample
     @inbounds while true
         T0 = p * per - ps
-        n_start = T0 <= 0 ? 0 : cld(T0 * sd, sn)      # absolute first sample of period p
+        n_start = T0 <= 0 ? 0 : cld(T0 * sd - r0, sn) # absolute first sample of period p
         n_start - n0 >= N && break
         T1 = (p + 1) * per - ps
-        n_end = min(T1 <= 0 ? 0 : cld(T1 * sd, sn), n0 + N)  # absolute end (exclusive)
+        n_end = min(T1 <= 0 ? 0 : cld(T1 * sd - r0, sn), n0 + N)  # absolute end (exclusive)
         if sec[mod(p, Ls) + 1] == -1
             lo = max(n_start, n0) - n0 + 1            # 1-based into out
             hi = n_end - n0                            # 1-based inclusive
