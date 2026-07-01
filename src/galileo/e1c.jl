@@ -136,13 +136,9 @@ SharedSecondaryCode{25, Int8}((-1, -1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1, 1, -
 """
 @inline get_secondary_code(::GalileoE1C) = galileo_e1c_secondary_code()
 
-# Specialization of the `_select_codes_for` hot-path helper. Because the
-# CS25 secondary entries are ±1, we pre-negate the primary code matrix at
-# construction (stored as `negated_codes`) and pick the right matrix once
-# per primary period in the worker, avoiding the per-chip multiply.
-@inline function _select_codes_for(signal::GalileoE1C, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
+# GalileoE1C pre-negates its primary code matrix (CS25 secondary chips are ±1);
+# the shared `_select_codes_for` fast path for such signals lives on
+# `NegatedPrimaryCacheSignal` in `common.jl`.
 
 """
 $(SIGNATURES)
@@ -232,6 +228,5 @@ end
 @inline get_code_frequency(::GalileoE1C_BOC11) = 1023_000Hz
 @inline get_data_frequency(::GalileoE1C_BOC11) = 0Hz
 
-@inline function _select_codes_for(signal::GalileoE1C_BOC11, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
+# GalileoE1C_BOC11 shares the `NegatedPrimaryCacheSignal` fast path (see
+# `common.jl`).
