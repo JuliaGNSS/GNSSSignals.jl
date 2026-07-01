@@ -616,7 +616,9 @@ end
 # large-epoch fills.
 @inline _runfill_min_m(::AVX512)   = 7
 @inline _runfill_min_m(::AVX2)     = 3
-@inline _runfill_min_m(::Neon)     = 3
+@inline _runfill_min_m(::Neon)     = 9   # EXPERIMENT: was 3 (Zen-5-tuned). Route ~4-5 samples/chip
+                                         # plain signals + 8x sweep to the tbl1 windowed path; keep
+                                         # 32x on run-fill as a control. Measure on macos-14 CI.
 @inline _runfill_min_m(::Portable) = 2
 # N-aware overload (one-shot fills): lower the threshold for short fills. Only AVX-512's
 # permute is fast enough for this to matter; the others fall back to their steady threshold.
