@@ -449,23 +449,20 @@ end
         delta += ff - (pos << FP)
         base = delta >> FP                   # = rem_run (first full-chip boundary)
         c += 1; c >= L && (c -= L)
-        # main: counted full chips with Val over-store (no per-chip bound check). Conservative
-        # count: base(k)+NI ≤ N is implied by k ≤ (N-NI-1)·2^FP / ff (base(k) < 1 + k·ff/2^FP).
-        rem_samps = N - base
-        nmc = rem_samps > NI ? Int(((Int128(rem_samps - NI)) << FP) ÷ ff) : 0
-        done = 0
-        while done < nmc
-            seg = L - c
-            seg > nmc - done && (seg = nmc - done)
-            for t = 0:seg-1
-                vv = chips[c + t + 1]
-                for j = 1:NI
-                    out[base + j] = vv
-                end
-                delta += ff; base = delta >> FP
+        # main: full chips with Val over-store (no per-chip bound check), mirroring master's
+        # `sample_code_worker!` — a flat `while base ≤ N-NI` loop with the chip index wrapped
+        # per iteration, instead of an Int128-division chip count + `L-c` chunked inner loop.
+        # `base ≤ N-NI` guarantees the unchecked `out[base+NI]` write stays in bounds; the
+        # recurrence and over-store are identical, so output is byte-identical to the counted
+        # form (the bounds-checked tail below just picks up fewer chips).
+        limit = N - NI
+        while base <= limit
+            vv = chips[c + 1]
+            for j = 1:NI
+                out[base + j] = vv
             end
-            c += seg; done += seg
-            c >= L && (c -= L)
+            delta += ff; base = delta >> FP
+            c += 1; c >= L && (c -= L)
         end
         # tail: bounds-checked, one run at a time, until the buffer is full
         while base < N
