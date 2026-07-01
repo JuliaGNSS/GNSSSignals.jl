@@ -40,9 +40,9 @@
     # CBOC output is floating point (the BOC1/BOC2 amplitudes are irrational).
     @test get_code_type(galileo_e1c) === Float32
 
-    # The cached negated-code matrix is the element-wise negation of the
-    # primary codes (used by `_select_codes_for`).
-    @test galileo_e1c.negated_codes == .-galileo_e1c.codes
+    # The embedded per-signal LUT is always populated (the anti-phase CBOC(−)
+    # composite is baked into it; see `build_signal_lut` / `gen_code!`).
+    @test galileo_e1c.lut isa GNSSSignals.SignalLUT
 end
 
 @testset "Galileo E1C secondary code (CS25)" begin
@@ -111,24 +111,25 @@ end
           [GNSSSignals.secondary_value(get_secondary_code(GalileoE1C()), 1, k) for k = 0:24]
 end
 
-@testset "Galileo E1C gen_code! matches get_code" begin
-    # Use a non-chip-aligned sampling rate (25 MHz): at chip-aligned rates
-    # `gen_code!`'s ceil-rounded integer subcarrier accumulator and
-    # `get_code`'s exact-floor disagree on samples landing exactly on a BOC
-    # half-cycle boundary. The repo compares the two code paths at 25 MHz
-    # for the same reason (see test/common.jl) and uses packed fixtures for
-    # chip-aligned exactness.
-    for (sig, fs) in ((GalileoE1C(), 25e6Hz), (GalileoE1C_BOC11(), 25e6Hz))
+@testset "Galileo E1C gen_code! sign matches get_code" begin
+    # The embedded LUT emits an Int8 replica: ±1 for the BOC(1,1) approximation
+    # and the multi-level integer approximation of the sqrt-power CBOC amplitudes
+    # for full E1C — so it matches `get_code`'s SIGN, not its (irrational) value.
+    # Sample at the sub-chip rate `fc · subchip_factor` (12.276 MHz for the CBOC
+    # P=12, 2.046 MHz for the BOC(1,1) P=2) so every sample lands on a sub-chip
+    # start and the drift-free DDA agrees with `get_code`'s exact floor bit-for-bit.
+    for sig in (GalileoE1C(), GalileoE1C_BOC11())
         cf = get_code_frequency(sig)
+        fs = cf * sig.lut.subchip_factor
         # Span several primary periods to cross CS25 secondary boundaries,
         # and start past the first period so the secondary index offset is
         # exercised too.
         for (samples, start_phase, prn) in
             ((20000, 0.0, 1), (4000, 3.456, 7), (200, 4092.0 * 3 + 1.5, 12))
-            code = zeros(get_code_type(sig), samples)
+            code = zeros(Int8, samples)
             gen_code!(code, sig, prn, fs, cf, start_phase)
             phase = (0:samples-1) .* cf ./ fs .+ start_phase
-            @test code ≈ get_code.(sig, phase, prn)
+            @test sign.(Int.(code)) == sign.(get_code.(sig, phase, prn))
         end
     end
 end
@@ -161,7 +162,8 @@ end
     sampling_rate = 12.276e6Hz
     code_rate = 1023e3Hz
 
-    buf = zeros(Int16, n_samples)
+    # The embedded LUT emits Int8 ±1; byte-exact to the ±1 fixture at this chip-aligned rate.
+    buf = zeros(Int8, n_samples)
     gen_code!(buf, GalileoE1C_BOC11(), 1, sampling_rate, code_rate, 0.0, 0)
     @test buf == ref
 end

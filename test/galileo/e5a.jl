@@ -109,7 +109,9 @@ end
         # Cover several primary periods so the secondary overlay is exercised.
         n_chips = 3 * get_code_length(signal)
         n_samples = samples_per_chip * n_chips
-        buf = zeros(Int16, n_samples)
+        # The embedded LUT emits Int8 ±1; at an integer samples-per-chip rate it is
+        # byte-exact to the tiered `get_code` chips below.
+        buf = zeros(Int8, n_samples)
         gen_code!(buf, signal, 1, samples_per_chip * code_freq, code_freq, 0.0, 0)
 
         @test all(x -> x == 1 || x == -1, buf)

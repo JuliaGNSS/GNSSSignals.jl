@@ -32,6 +32,7 @@ get_band(gpsl2cm)             # L2()
 """
 struct GPSL2CM{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
@@ -65,6 +66,7 @@ get_band(gpsl2cl)             # L2()
 """
 struct GPSL2CL{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
@@ -115,11 +117,15 @@ read_gpsl2cm_codes() = _build_l2c_codes(GPS_L2CM_INITIAL_STATES, GPS_L2CM_CODE_L
 read_gpsl2cl_codes() = _build_l2c_codes(GPS_L2CL_INITIAL_STATES, GPS_L2CL_CODE_LENGTH)
 
 function GPSL2CM()
-    GPSL2CM(widen_codes_to_storage(read_gpsl2cm_codes()))
+    codes = widen_codes_to_storage(read_gpsl2cm_codes())
+    lut = build_signal_lut(get_modulation(GPSL2CM), codes, NoSecondaryCode())
+    GPSL2CM(codes, lut)
 end
 
 function GPSL2CL()
-    GPSL2CL(widen_codes_to_storage(read_gpsl2cl_codes()))
+    codes = widen_codes_to_storage(read_gpsl2cl_codes())
+    lut = build_signal_lut(get_modulation(GPSL2CL), codes, NoSecondaryCode())
+    GPSL2CL(codes, lut)
 end
 
 # Shared interface (modulation, band, frequencies).

@@ -31,11 +31,7 @@ get_band(e1c)                   # L1()
 """
 struct GalileoE1C{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    # Cached element-wise negation of `codes`. The CS25 secondary code is
-    # ±1, so for the primary periods where the secondary chip is -1 we read
-    # from `negated_codes` instead of multiplying every chip by `sec_val`.
-    # See [`GPSL5I`](@ref) and `_select_codes_for` for the rationale.
-    negated_codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GalileoE1C}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11, -1)
@@ -81,7 +77,8 @@ end
 
 function GalileoE1C()
     codes = widen_codes_to_storage(read_galileo_e1c_codes())
-    GalileoE1C(codes, .-codes)
+    lut = build_signal_lut(get_modulation(GalileoE1C), codes, galileo_e1c_secondary_code())
+    GalileoE1C(codes, lut)
 end
 
 """
@@ -135,10 +132,6 @@ SharedSecondaryCode{25, Int8}((-1, -1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1, 1, -
 ```
 """
 @inline get_secondary_code(::GalileoE1C) = galileo_e1c_secondary_code()
-
-# GalileoE1C pre-negates its primary code matrix (CS25 secondary chips are ±1);
-# the shared `_select_codes_for` fast path for such signals lives on
-# `NegatedPrimaryCacheSignal` in `common.jl`.
 
 """
 $(SIGNATURES)
@@ -209,7 +202,7 @@ get_code_length(e1c)   # 4092
 """
 struct GalileoE1C_BOC11{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    negated_codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 get_modulation(::Type{<:GalileoE1C_BOC11}) = BOCsin(1, 1)
@@ -220,13 +213,11 @@ get_signal_name(::GalileoE1C_BOC11) = "Galileo E1C (BOC(1,1) approximation)"
 
 function GalileoE1C_BOC11()
     codes = widen_codes_to_storage(read_galileo_e1c_codes())
-    GalileoE1C_BOC11(codes, .-codes)
+    lut = build_signal_lut(get_modulation(GalileoE1C_BOC11), codes, galileo_e1c_secondary_code())
+    GalileoE1C_BOC11(codes, lut)
 end
 
 @inline get_code_length(::GalileoE1C_BOC11) = 4092
 @inline get_secondary_code(::GalileoE1C_BOC11) = galileo_e1c_secondary_code()
 @inline get_code_frequency(::GalileoE1C_BOC11) = 1023_000Hz
 @inline get_data_frequency(::GalileoE1C_BOC11) = 0Hz
-
-# GalileoE1C_BOC11 shares the `NegatedPrimaryCacheSignal` fast path (see
-# `common.jl`).
