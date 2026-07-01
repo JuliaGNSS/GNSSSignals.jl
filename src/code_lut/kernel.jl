@@ -620,9 +620,17 @@ end
 @inline _runfill_min_m(::Portable) = 2
 # N-aware overload (one-shot fills): lower the threshold for short fills. Only AVX-512's
 # permute is fast enough for this to matter; the others fall back to their steady threshold.
-@inline _runfill_min_m(be::AVX512, N::Int) = N < 1024 ? 4 : N < 4096 ? 5 : _runfill_min_m(be)
+# Tiers re-tuned from a direct permute-vs-run-fill kernel sweep on Zen 5 (true-OSR crossover
+# where run-fill overtakes: N=1000→3, N∈{2048,4000}→5, N≥8192→6).
+@inline _runfill_min_m(be::AVX512, N::Int) = N < 1024 ? 3 : N < 8192 ? 5 : 6
 @inline _runfill_min_m(be::Backend, ::Int) = _runfill_min_m(be)
+# Estimate samples-per-chip (true oversampling) from the fixed-point step. `step_den ÷ step_num`
+# floors ~1 below the true OSR because `_fixed_point_step(1/m)` rounds the reciprocal *up*
+# (e.g. m=5 → 4, m=6 → 5), which pushed the run-fill switch 1–2× oversampling too late. Round
+# to nearest instead: div(2·sd + sn, 2·sn) == round(sd/sn) for positive sn (no float, no overflow
+# since sd ≤ 2^30).
+@inline _osr_round(step_num::Int, step_den::Int) = div(2 * step_den + step_num, 2 * step_num)
 @inline _use_runfill(step_num::Int, step_den::Int, backend::Backend) =          # continuing
-    step_den ÷ step_num >= _runfill_min_m(backend)
+    _osr_round(step_num, step_den) >= _runfill_min_m(backend)
 @inline _use_runfill(step_num::Int, step_den::Int, backend::Backend, N::Int) =  # one-shot (N-aware)
-    step_den ÷ step_num >= _runfill_min_m(backend, N)
+    _osr_round(step_num, step_den) >= _runfill_min_m(backend, N)
