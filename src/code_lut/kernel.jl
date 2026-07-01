@@ -576,26 +576,21 @@ end
 
 # Pick the run-fill path when there are at least `_runfill_min_m` samples per chip. The
 # threshold is the per-chip count where broadcast-fill overtakes the windowed permute.
-# Because the split-constant permute kernels (`_generate_simd_single!` / `_generate_simd_avx2!`)
-# are faster than the previous phase/rel DDA, the permute path stays competitive to a HIGHER
-# oversampling than before, so these thresholds moved up. Steady-state (long fills, Zen-class):
-#   • AVX-512 permute ~29 ps/sample (was ~36), flat in oversampling; run-fill ~216/m ps/sample,
-#     so it overtakes at m ≈ 8 (was 7).
-#   • AVX2 permute ~42 ps/sample (was ~85 — the split-constant kernel roughly halved it), so
-#     run-fill (still ~216/m) now only wins from m ≈ 6 (was 3). This is the biggest shift.
-#   • NEON `tbl1` is the single-window v2 kernel (W=16) like AVX-512; its crossover was not
-#     re-measured on Apple Silicon, so it is left at the previous conservative 3 (using run-fill
-#     a little earlier than optimal never regresses — run-fill perf is unchanged). TODO: re-tune
-#     on the macos-14 CI now that the NEON permute is faster.
-#   • Portable (per-sample scalar lookup) ≈ 2, unchanged.
-# Short fills: permute pays a fixed init cost (building the constant lane vectors + a few scalar
-# steps — cheaper than the old 4× `_init_rel` `vpmullq` setup) vs run-fill's ~15 ns freqfix
-# divide, an edge that ∝ 1/N pulls the AVX-512 crossover to lower m for tiny N (`_runfill_min_m
-# (backend, N)`). Only the one-shot `generate_code!` knows the fill length, so only it uses the
-# N-aware overload; the continuing fill engine fixes its kernel at construction (no N yet), so
-# it uses the steady-state threshold — correct for its typical large-epoch fills.
-@inline _runfill_min_m(::AVX512)   = 8
-@inline _runfill_min_m(::AVX2)     = 6
+# The split-constant permute kernels are faster, which RAISES the ideal crossover on fast
+# hardware (a Zen 5 desktop wants AVX-512 ≈ 8, AVX2 ≈ 6). But the crossover is strongly
+# hardware-dependent: on the ubuntu-latest CI runner, run-fill still beats the (now faster)
+# AVX2 permute from m = 3, so bumping the AVX2 threshold to 6 REGRESSED the m ∈ {3,4,5} cases
+# there (GPSL1CA@5MHz, GPSL5@40MHz, …). Since a single constant can't be optimal on both, we
+# keep the conservative #69-validated values — the permute speedup still applies unconditionally
+# below these thresholds (the common low-OSR cases, e.g. m = 2), and no case regresses vs #69.
+# The other backends: NEON `tbl1` (Apple-Silicon single-window v2) and Portable are unchanged.
+# Short fills (N-aware overload below): permute pays a fixed init cost vs run-fill's ~15 ns
+# freqfix divide, an edge ∝ 1/N that pulls the AVX-512 crossover to lower m for tiny N. Only the
+# one-shot `generate_code!` knows the fill length, so only it uses the N-aware overload; the
+# continuing fill engine fixes its kernel at construction (no N yet), so it uses the steady-state
+# threshold — correct for its typical large-epoch fills.
+@inline _runfill_min_m(::AVX512)   = 7
+@inline _runfill_min_m(::AVX2)     = 3
 @inline _runfill_min_m(::Neon)     = 3
 @inline _runfill_min_m(::Portable) = 2
 # N-aware overload (one-shot fills): lower the threshold for short fills. Only AVX-512's
