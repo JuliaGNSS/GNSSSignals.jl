@@ -134,23 +134,17 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 # Oversampling sweep — gen_code! across oversampling ratios, at a small and a steady-state
 # buffer. "Oversampling ratio" = samples per code chip = fs / fc (2x = sample twice per chip).
-# One one-shot gen_code! row per (signal, oversampling, size) under `code/oversampling sweep/…`,
-# same key in every era so benchpkg diffs old vs new. The LUT uses the windowed permute (flat in
-# the oversampling ratio) at low oversampling and switches to a broadcast run-fill once the baked
-# table is oversampled ≳7× (AVX-512) / ≳4× (AVX2). Two representative signals (BPSK + BOC(1,1)).
-const _SWEEP_SIGS = let s = Any[("GPSL1CA", _GPSL1(), 1, 1)]   # (name, signal, prn, subchip_factor P)
-    isdefined(GNSSSignals, :GalileoE1B_BOC11) &&
-        push!(s, ("GalileoE1B_BOC11", GNSSSignals.GalileoE1B_BOC11(), 1, 2))
-    s
-end
-let fc = 1023e3Hz
-    for (name, signal, prn, P) in _SWEEP_SIGS
-        for oversampling in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
-            oversampling < P && continue             # LUT needs fs ≥ fc·P
-            fs = oversampling * fc
-            out = zeros(_EMBEDDED_LUT ? Int8 : Int16, n)   # Int8 embedded gen_code! on this branch
-            SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel] =
-                @benchmarkable gen_code!($out, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
-        end
+# One one-shot gen_code! row per (oversampling, size) under `code/oversampling sweep/…`, same key
+# in every era so benchpkg diffs old vs new. The LUT uses the windowed permute (flat in the
+# oversampling ratio) at low oversampling and switches to a broadcast run-fill once the baked
+# table is oversampled ≳7× (AVX-512) / ≳4× (AVX2). One representative signal (GPS L1 C/A, plain
+# BPSK): its oversampling ratio equals the table-oversampling, so 2× exercises the permute path
+# and 8×/32× the run-fill it switches to across the threshold.
+let name = "GPSL1CA", signal = _GPSL1(), prn = 1, fc = 1023e3Hz
+    for oversampling in (2, 8, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
+        fs = oversampling * fc
+        out = zeros(_EMBEDDED_LUT ? Int8 : Int16, n)   # Int8 embedded gen_code! on this branch
+        SUITE["code"]["oversampling sweep"][name]["$(lpad(oversampling, 2, '0'))x"][slabel] =
+            @benchmarkable gen_code!($out, $signal, $prn, $fs, $fc, $0.0, $0) evals = 1 samples = 300
     end
 end
