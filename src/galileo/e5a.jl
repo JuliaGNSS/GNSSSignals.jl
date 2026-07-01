@@ -28,11 +28,7 @@ get_band(e5a_i)                   # L5()
 """
 struct GalileoE5aI{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    # Cached element-wise negation of `codes`, exactly as in `GPSL5I`: the
-    # CS20 secondary chips are ±1, so we pick the positive or negated code
-    # matrix once per primary period instead of multiplying every chip by
-    # `sec_val` in the hot inner loop.
-    negated_codes::C
+    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
@@ -65,8 +61,8 @@ get_data_frequency(e5a_q)         # 0 Hz
 """
 struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGNSSSignal{C}
     codes::C
-    negated_codes::C
     secondary_codes::M    # 100 × 50 Int8 ±1 matrix, exposed via PerPRNSecondaryCode
+    lut::SignalLUT        # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 #= E5a primary code generation (Galileo OS SIS ICD §3.5).
@@ -163,7 +159,8 @@ end
 
 function GalileoE5aI()
     codes = widen_codes_to_storage(read_galileo_e5a_codes(E5A_I_X2_INIT))
-    GalileoE5aI(codes, .-codes)
+    lut = build_signal_lut(get_modulation(GalileoE5aI), codes, _galileo_e5a_i_secondary_code())
+    GalileoE5aI(codes, lut)
 end
 
 #= E5a-I secondary code (CS20, Galileo OS SIS ICD §3.5).
@@ -227,7 +224,11 @@ end
 
 function GalileoE5aQ()
     codes = widen_codes_to_storage(read_galileo_e5a_codes(E5A_Q_X2_INIT))
-    GalileoE5aQ(codes, .-codes, _build_galileo_e5a_q_secondary())
+    secondary = _build_galileo_e5a_q_secondary()
+    # The 100-chip per-SVID CS100 overlay is too long to bake (100·10230·1 > typemax(Int16)),
+    # so it stays residual in the SignalLUT and is applied per primary period at gen time.
+    lut = build_signal_lut(get_modulation(GalileoE5aQ), codes, PerPRNSecondaryCode(secondary))
+    GalileoE5aQ(codes, secondary, lut)
 end
 
 # Shared interface (band, modulation, frequencies).
@@ -321,7 +322,11 @@ tiered code.
 # Returns
 - [`SharedSecondaryCode`](@ref) of length 20
 """
-@inline get_secondary_code(::GalileoE5aI) = SharedSecondaryCode(E5A_I_SECONDARY_CHIPS...)
+@inline get_secondary_code(::GalileoE5aI) = _galileo_e5a_i_secondary_code()
+
+# CS20 secondary, shared across SVIDs. Factored out so the `GalileoE5aI` constructor can build
+# the embedded `SignalLUT` (which needs the secondary) before an instance exists.
+@inline _galileo_e5a_i_secondary_code() = SharedSecondaryCode(E5A_I_SECONDARY_CHIPS...)
 
 """
 $(SIGNATURES)
@@ -335,7 +340,3 @@ SIS ICD §3.5), giving a 100 ms tiered code.
 - [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 CS100 matrix
 """
 @inline get_secondary_code(s::GalileoE5aQ) = PerPRNSecondaryCode(s.secondary_codes)
-
-# GalileoE5aI and GalileoE5aQ pre-negate their primary code matrix (CS20/CS100
-# secondary chips are ±1); the shared `_select_codes_for` fast path for such
-# signals lives on `NegatedPrimaryCacheSignal` in `common.jl`.
