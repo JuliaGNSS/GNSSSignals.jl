@@ -150,27 +150,35 @@ function generate_code!(out::AbstractVector{<:Integer}, mc::ModulatedCode;
     generate_code!(out, mc.table;
         code_frequency = code_frequency * mc.subchip_factor, sampling_frequency = sampling_frequency,
         phase = phase_sub, rem0 = rem0, backend = backend)
-    any(!=(Int8(1)), mc.secondary) && _apply_secondary!(out, mc, code_frequency, sampling_frequency, Int(phase_sub))
+    any(!=(Int8(1)), mc.secondary) &&
+        _apply_secondary!(out, mc, code_frequency, sampling_frequency, Int(phase_sub), _RemT(rem0))
     out
 end
 
 # Multiply each whole primary period by its secondary chip. The secondary is constant over
 # a period (period_subchips sub-chips), so we negate contiguous sample ranges — a handful
 # of vectorisable negates, not a per-sample multiply. `phase_sub` is the integer sub-chip
-# start offset (θ_int).
-function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub)
+# start offset (θ_int); `rem0` the fractional sub-chip residual seeded into the DDA (both must
+# match the baked-table lookup, or the sign flip lands on the wrong sample at a period edge).
+function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub,
+                           rem0::_RemT = _RemT(0))
     Ls = length(mc.secondary); per = mc.period_subchips
     sn, sd = _fixed_point_step(code_frequency * mc.subchip_factor / sampling_frequency)
-    phase_sub = Int(phase_sub)
-    N = length(out); p = 0
-    # sample n maps to sub-chip floor(n·sn/sd) + phase_sub; period p spans sub-chips
-    # [p·per, (p+1)·per). First sample of period p: smallest n with that sub-chip ≥ p·per.
+    phase_sub = Int(phase_sub); r0 = Int(rem0)
+    N = length(out)
+    # sample n (0-based) maps to sub-chip floor((n·sn + rem0)/sd) + phase_sub; period p spans
+    # sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with that sub-chip
+    # ≥ p·per, i.e. n ≥ cld(T·sd − rem0, sn) (T·sd > rem0 whenever T ≥ 1, since rem0 < sd).
+    # Start at the period sample 0 falls in (A(0) = phase_sub) — NOT 0: a negative
+    # start_index_shift puts sample 0 in a negative period, and start_phase ≥ one code period
+    # in a period ≥ 1; starting at 0 would apply the wrong secondary chip to the leading samples.
+    p = fld(phase_sub, per)
     @inbounds while true
         T = p * per - phase_sub
-        s_p = T <= 0 ? 0 : cld(T * sd, sn)
+        s_p = T <= 0 ? 0 : cld(T * sd - r0, sn)
         s_p >= N && break
         Tn = (p + 1) * per - phase_sub
-        s_next = min(Tn <= 0 ? 0 : cld(Tn * sd, sn), N)
+        s_next = min(Tn <= 0 ? 0 : cld(Tn * sd - r0, sn), N)
         if mc.secondary[mod(p, Ls) + 1] == -1
             @simd for n in (s_p + 1):s_next
                 out[n] = -out[n]

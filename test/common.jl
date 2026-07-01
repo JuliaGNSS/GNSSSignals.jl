@@ -95,37 +95,25 @@ end
 const _CL = GNSSSignals.CodeLUT
 
 # Shared fixed-point scalar oracle (defined here so test/code_lut.jl and test/signal_lut.jl,
-# both included after common.jl, can reuse it). Builds the secondary-FREE resample from the
-# baked column `full` exactly as the kernel does — sample n (1-based) reads sub-chip
-# `((sn·(n-1) + rem0) >> _B) + psub` (mod L) — then applies any non-baked `sec` as a
-# per-primary-period range-negate, mirroring `GNSSSignals._apply_secondary!` precisely
-# (period boundaries via `cld((p·per − psub)·sd, sn)`, on the integer `psub` only). Byte-exact
-# vs the embedded gen_code! in the permute regime; the run-fill regime gets a ≤2-sample
-# boundary tolerance at the call site. `sec` is the per-PRN residual vector (`Int8[1]` = none).
+# both included after common.jl, can reuse it). This is the INDEPENDENT definition of correct
+# output: for each sample n (1-based) it forms the absolute sub-chip phase
+# `A = ((sn·(n-1) + rem0) >> _B) + psub`, reads the baked chip `full[mod(A, Lf) + 1]`, and — for
+# a non-baked `sec` — multiplies by the secondary chip of that sample's OWN primary period
+# `fld(A, per)`. Deriving the period from the very same `A` as the chip lookup (rather than
+# re-deriving period boundaries the way `_apply_secondary!` does) is deliberate: it makes the
+# oracle a genuine check on the boundary math instead of a mirror of it. Byte-exact vs the
+# embedded gen_code! in the permute regime; the run-fill regime gets a ≤2-sample boundary
+# tolerance at the call site. `sec` is the per-PRN residual vector (`Int8[1]` = none).
 function _gen_code_scalar_oracle(full, sn::Int, sd::Int, rem0::Int, psub::Int, N::Int,
                                  sec::AbstractVector{Int8}, per::Int)
-    Lf = length(full)
+    Lf = length(full); Ls = length(sec)
+    has_sec = any(!=(Int8(1)), sec)
     ref = Vector{Int8}(undef, N)
     @inbounds for i in 1:N
-        subi = ((sn * Int64(i - 1) + Int64(rem0)) >> _CL._B) + psub
-        ref[i] = full[mod(subi, Lf) + 1]
-    end
-    Ls = length(sec)
-    if any(!=(Int8(1)), sec)
-        p = 0
-        @inbounds while true
-            T = p * per - psub
-            s_p = T <= 0 ? 0 : cld(T * sd, sn)
-            s_p >= N && break
-            Tn = (p + 1) * per - psub
-            s_next = min(Tn <= 0 ? 0 : cld(Tn * sd, sn), N)
-            if sec[mod(p, Ls) + 1] == -1
-                for n in (s_p + 1):s_next
-                    ref[n] = -ref[n]
-                end
-            end
-            p += 1
-        end
+        A = ((sn * Int64(i - 1) + Int64(rem0)) >> _CL._B) + psub
+        chip = full[mod(A, Lf) + 1]
+        has_sec && (chip *= sec[mod(fld(A, per), Ls) + 1])
+        ref[i] = chip
     end
     ref
 end
@@ -208,6 +196,43 @@ end
     sampling_rate = 25e6Hz
     for samples in (1, 2, 3, 5, 7, 63, 65, 127, 129)
         @test_nowarn _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 3.5, 0, samples)
+    end
+end
+
+# Regression: a fractional start phase (nonzero sub-chip residual `rem0`) together with a
+# NON-baked secondary (GPS L5I's NH10, GPS L1C-P's overlay) must still flip the secondary sign
+# on exactly the sample the DDA places at each primary-period boundary. The earlier code
+# derived the boundary from `psub` alone (ignoring `rem0`), misplacing the flip by one sample
+# at each transition. This needs enough samples to cross several secondary periods AND a
+# fractional phase — the short/integer-phase cases above never exercised it. Byte-exact in the
+# permute regime, so `_check_gen_code` asserts equality against the independent oracle.
+@testset "Fractional phase + non-baked secondary $(get_signal_name(signal))" for signal in [
+    GPSL5I(),
+    GPSL1C_P(),
+]
+    fc = get_code_frequency(signal)
+    P = signal.lut.subchip_factor
+    per = signal.lut.period_subchips
+    sampling_rate = fc * P * 5 // 2                       # permute regime, sub-chip oversampled
+    sec = GNSSSignals._signal_lut_secondary(signal.lut, 1); Ls = length(sec)
+    # Size the buffer to cross the first secondary sign transition (a couple of periods past it),
+    # so the test is non-vacuous for both the 10-chip NH10 (L5I) and the 1800-chip overlay
+    # (L1C-P, whose primary period — hence per-period sample count — is ~12× longer).
+    s0 = sec[1]
+    flip = findfirst(p -> sec[mod(p, Ls) + 1] != s0, 1:Ls)
+    @test flip !== nothing                                # residual secondary must actually vary
+    samples_per_period = per * 5 ÷ 2                      # per / cps, cps = 2/5
+    num_samples = (flip + 2) * samples_per_period
+    for (sp, sis) in ((0.3, 0), (0.7, 0), (1.7, 0), (0.0, -1), (2.4, 3))
+        one = _check_gen_code(signal, 1, sampling_rate, fc, sp, sis, num_samples)
+        # continuing engine (chunked) must reproduce the one-shot across period + call boundaries
+        eng = code_engine(signal, 1, sampling_rate, fc; start_phase = sp, start_index_shift = sis)
+        st = code_state(eng); got = Int8[]
+        h = num_samples ÷ 2
+        for ch in (1, h, 64, num_samples - 1 - h - 64)
+            b = Vector{Int8}(undef, ch); st = gen_code!(b, eng, st); append!(got, b)
+        end
+        @test got == one
     end
 end
 
