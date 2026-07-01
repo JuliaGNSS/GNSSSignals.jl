@@ -70,16 +70,13 @@ jobs:
       - name: Run benchmarks (base vs PR head, using the PR's benchmark suite)
         env:
           GITHUB_TOKEN: ""
-          # The parallel multi-channel correlation rows use Polyester's @batch, which only
-          # parallelises with >1 thread; benchpkg's benchmark subprocess inherits this.
-          JULIA_NUM_THREADS: auto
         run: |
           mkdir -p results
           benchpkg GNSSSignals \
             --url=${{ github.event.repository.clone_url }} \
             --rev=${{ github.event.pull_request.base.sha }},${{ github.event.pull_request.head.sha }} \
             --bench-on=${{ github.event.pull_request.head.sha }} \
-            --add=Unitful,SIMD,SinCosLUT,Polyester \
+            --add=Unitful \
             --output-dir=results/ \
             --tune
 
