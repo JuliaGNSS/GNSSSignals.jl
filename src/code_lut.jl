@@ -173,7 +173,11 @@ function _codelut_modulation(m::CBOC, cboc_amplitudes::Tuple{Integer,Integer})
         error("cboc_amplitudes must be positive integers; got $cboc_amplitudes")
     Int(a1) + Int(a2) <= typemax(Int8) ||
         error("cboc_amplitudes must satisfy a1 + a2 ≤ $(typemax(Int8)) (Int8 table); got $cboc_amplitudes")
-    CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), Int8(a2))
+    # `boc2_sign` selects the relative phase of the BOC(m2,1) component: CBOC(+) for Galileo
+    # E1B (`+1`), CBOC(−) for Galileo E1C (`-1`). CodeLUT.CBOC bakes `a1·BOC(m1,1) + a2·BOC(m2,1)`,
+    # so a negative second amplitude reproduces the anti-phase composite.
+    a2_signed = m.boc2_sign < 0 ? Int8(-Int(a2)) : Int8(a2)
+    CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), a2_signed)
 end
 function _codelut_modulation(m::BOCcos)
     error("the embedded LUT does not support cosine-phased BOC (Int8/±1 only)")
