@@ -233,124 +233,102 @@ end
 end
 @inline _rel_lookup(::AVX512, padded, rel::Vec{64,Int8}, base::Int) =
     _permute((@inbounds padded[VecRange{64}(base + 1)]), rel)
+@inline _rel_lookup(::Neon, padded, rel::Vec{16,Int8}, base::Int) =
+    _tbl1((@inbounds padded[VecRange{16}(base + 1)]), rel)
 
-# AVX2: two independent 16-chip windows (low/high 128-bit lane) → two scalar bases. `rel`
-# is relative to lane 0 in the low half and lane 16 in the high half.
+# ── one-shot single-window kernel (AVX-512 W=64 `vpermb`, NEON W=16 `tbl1`) ──────────────
+# Split-constant recompute. Within a W-sample block the window-relative index is, exactly,
+#   rel[j] = ⌊(r + step_num·j) / 2^_B⌋ = base_lane[j] + [ r + frac_lane[j] ≥ 2^_B ]
+# where base_lane[j] = (step_num·j) >> _B and frac_lane[j] = (step_num·j) & (2^_B−1) are
+# COMPILE-TIME-CONSTANT per-lane vectors (r < 2^_B and frac_lane[j] < 2^_B ⇒ the sum is a
+# single 0/1 carry mask, no 64-bit product). Only a scalar `(r, base)` pair advances between
+# blocks, so there is no loop-carried per-lane remainder and no lane-0 vector→scalar extract —
+# ~1.4× (AVX-512) / ~1.6× (AVX2) over the previous four-stream phase/rel DDA. `Wstep_whole` is
+# reduced mod L so the single-subtract `_wrapL` stays valid (needs L ≥ W; every GNSS code is
+# ≫ 64). Byte-identical to the Portable oracle. NEON's `tbl1` llvmcall is aarch64-only, but
+# this kernel is only instantiated for `backend = Neon()`, which never happens on x86.
 function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX512, rem0::_RemT = _RemT(0))
-    _generate_simd_avx512!(out, table, step_num, step_den, phase_offset, rem0)
+    _generate_simd_single!(out, table, step_num, step_den, phase_offset, AVX512(), Val(64), rem0)
 end
-function _generate_simd_avx512!(out, table::CodeTable, step_num, step_den, phase_offset, rem0::_RemT = _RemT(0))
-    W = 64; stride = 4W
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Neon, rem0::_RemT = _RemT(0))
+    _check_windowed_length(table, Neon())
+    _generate_simd_single!(out, table, step_num, step_den, phase_offset, Neon(), Val(16), rem0)
+end
+function _generate_simd_single!(out, table::CodeTable, step_num, step_den, phase_offset,
+                                backend, ::Val{W}, rem0::_RemT = _RemT(0)) where {W}
     L = table.length; padded = table.padded
-    whole_step = div(stride * step_num, step_den) % L        # chips per stride, pre-reduced mod L
-    frac_step  = _RemT(mod(stride * step_num, step_den)); modulus = _RemT(step_den)
-    zero8 = zero(Vec{64,Int8}); one8 = one(Vec{64,Int8})
-    rel1, rem1, b1 = _init_rel(Val(W), step_num, step_den, L, 0,  phase_offset, rem0)
-    rel2, rem2, b2 = _init_rel(Val(W), step_num, step_den, L, W,  phase_offset, rem0)
-    rel3, rem3, b3 = _init_rel(Val(W), step_num, step_den, L, 2W, phase_offset, rem0)
-    rel4, rem4, b4 = _init_rel(Val(W), step_num, step_den, L, 3W, phase_offset, rem0)
-    num = length(out); chunk_start = 0
-    @inbounds while chunk_start + stride <= num
-        out[VecRange{W}(chunk_start + 1)]      = _rel_lookup(AVX512(), padded, rel1, b1)
-        out[VecRange{W}(chunk_start + W + 1)]  = _rel_lookup(AVX512(), padded, rel2, b2)
-        out[VecRange{W}(chunk_start + 2W + 1)] = _rel_lookup(AVX512(), padded, rel3, b3)
-        out[VecRange{W}(chunk_start + 3W + 1)] = _rel_lookup(AVX512(), padded, rel4, b4)
-        rem1 += frac_step; rem2 += frac_step; rem3 += frac_step; rem4 += frac_step
-        c1 = rem1 >= modulus; c2 = rem2 >= modulus; c3 = rem3 >= modulus; c4 = rem4 >= modulus
-        rem1 = vifelse(c1, rem1 - modulus, rem1); rem2 = vifelse(c2, rem2 - modulus, rem2)
-        rem3 = vifelse(c3, rem3 - modulus, rem3); rem4 = vifelse(c4, rem4 - modulus, rem4)
-        h1 = Int(c1[1]); h2 = Int(c2[1]); h3 = Int(c3[1]); h4 = Int(c4[1])  # lane-0 carry
-        rel1 += vifelse(c1, one8, zero8) - Int8(h1); rel2 += vifelse(c2, one8, zero8) - Int8(h2)
-        rel3 += vifelse(c3, one8, zero8) - Int8(h3); rel4 += vifelse(c4, one8, zero8) - Int8(h4)
-        b1 = _wrapL(b1 + whole_step + h1, L); b2 = _wrapL(b2 + whole_step + h2, L)
-        b3 = _wrapL(b3 + whole_step + h3, L); b4 = _wrapL(b4 + whole_step + h4, L)
-        chunk_start += stride
+    SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
+    base_lane = Vec{W,Int8}(ntuple(j -> Int8((SN * (j - 1)) >> _B), Val(W)))
+    frac_lane = Vec{W,UInt32}(ntuple(j -> UInt32((SN * (j - 1)) & mask), Val(W)))
+    thr   = Vec{W,UInt32}(sd); one8 = one(Vec{W,Int8}); zero8 = zero(Vec{W,Int8})
+    Wstep = Int64(W) * SN
+    Wstep_whole = Int(Wstep >> _B) % L             # chips per block (≤ W), reduced mod L
+    Wstep_frac  = _RemT(Wstep & mask)
+    r    = _RemT(Int64(rem0) & mask)               # block-start fractional phase (< 2^_B)
+    base = Int(mod(Int64(rem0) >> _B + phase_offset, L))
+    num  = length(out); blk = 0
+    @inbounds while blk + W <= num
+        rel = base_lane + vifelse(frac_lane + Vec{W,UInt32}(r) >= thr, one8, zero8)
+        out[VecRange{W}(blk + 1)] = _rel_lookup(backend, padded, rel, base)
+        t = r + Wstep_frac
+        c = t >= sd ? 1 : 0
+        r = _RemT(Int64(t) & mask)
+        base = _wrapL(base + Wstep_whole + c, L)
+        blk += W
     end
-    # Leftover < 4W samples: do up to 3 full W-blocks as single-stream SIMD before the
-    # scalar tail. Streams 1–3 are already positioned at chunk_start + {0,W,2W}, so reuse them.
-    @inbounds if chunk_start + W <= num
-        out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel1, b1); chunk_start += W
-        if chunk_start + W <= num
-            out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel2, b2); chunk_start += W
-            if chunk_start + W <= num
-                out[VecRange{W}(chunk_start + 1)] = _rel_lookup(AVX512(), padded, rel3, b3); chunk_start += W
-            end
-        end
-    end
-    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1, rem0)
+    _generate_tail!(out, table, step_num, step_den, phase_offset, blk + 1, rem0)
 end
 
-# AVX2 (W=32, two `vpshufb` 16-chip windows) and NEON (W=16, one `tbl1` window) share the
-# SAME phase-based four-stream DDA kernel (`_generate_simd_windowed!`) — only the lane count
-# W and the `_window_lookup` backend differ, and both are compile-time constants, so each
-# backend still gets its own fully-specialized, unrolled kernel with no abstraction cost.
-# They keep the phase-based DDA rather than AVX-512's rel/scalar-base trick, which regressed
-# the windowed backends (the per-half "halfcarry" vector costs more than the in-vector
-# subtract + Int16→Int8 narrow it saves — measured ~95 vs ~56 ps on AVX2). The phase type
-# adapts to the table: Int16 (~70 ps) for length ≤ 32767, Int32 for longer tables such as
-# L1C-P's 122760-entry TMBOC table — still ~20× over the scalar fallback.
-#
-# Four interleaved streams (stride = 4W), as on AVX-512, so the DDA carry chains overlap for
-# full throughput. (The UInt32 remainder for the fine `_B = 30` rate is fine at 4 streams —
-# the earlier ~2400 ps/sample regression was `_init_state`'s SIMD widening-multiply build
-# poisoning the loop's register allocation, not stream pressure; see `_init_state`.)
-# Byte-identical to the AVX-512 / Portable output. NEON is never selected/called on x86, so
-# its `tbl1` llvmcall is never compiled there.
-function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, be::Union{AVX2,Neon}, rem0::_RemT = _RemT(0))
-    _check_windowed_length(table, be)
-    if table.length <= typemax(Int16)
-        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int16, rem0)
-    else
-        _generate_simd_windowed!(out, table, step_num, step_den, phase_offset, be, _vwidth(be), Int32, rem0)
+# ── one-shot AVX2 kernel (W=32, two `vpshufb` 16-chip windows) ────────────────────────────
+# `vpshufb` shuffles each 128-bit lane independently, so the 32 lanes are TWO independent
+# 16-lane single-window sub-blocks: the low half (lanes 0..15, window `base`) and the high
+# half (lanes 16..31, window `base_hi`) — the latter is the same recurrence advanced 16
+# samples, derived from the shared scalar `r` with one cheap scalar micro-step per block
+# (`r16`, `base_hi`). One `vpshufb` over the packed `[lo;hi]` windows. This split-constant
+# form does NOT carry a per-half remainder vector, so it avoids the "halfcarry" cost that made
+# the earlier phase/rel DDA regress on AVX2 — it is ~1.6× faster than that kernel here.
+@inline _rel_lookup_avx2(padded, rel::Vec{32,Int8}, base_lo::Int, base_hi::Int) = begin
+    lo16 = @inbounds padded[VecRange{16}(base_lo + 1)]
+    hi16 = @inbounds padded[VecRange{16}(base_hi + 1)]
+    window = shufflevector(lo16, hi16, Val(ntuple(j -> j - 1, Val(32))))
+    _pshufb(window, rel)
+end
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX2, rem0::_RemT = _RemT(0))
+    _check_windowed_length(table, AVX2())
+    _generate_simd_avx2!(out, table, step_num, step_den, phase_offset, rem0)
+end
+function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_offset, rem0::_RemT = _RemT(0))
+    W = 32; H = 16
+    L = table.length; padded = table.padded
+    SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
+    # 16-lane constants (each half is relative to its own lane 0)
+    base16 = Vec{32,Int8}(ntuple(j -> Int8((SN * ((j - 1) % H)) >> _B), Val(32)))
+    frac16 = Vec{32,UInt32}(ntuple(j -> UInt32((SN * ((j - 1) % H)) & mask), Val(32)))
+    thr = Vec{32,UInt32}(sd); one8 = one(Vec{32,Int8}); zero8 = zero(Vec{32,Int8})
+    Hfrac = _RemT((Int64(H) * SN) & mask); Hwhole = Int((Int64(H) * SN) >> _B) % L   # 16-sample step
+    Wfrac = _RemT((Int64(W) * SN) & mask); Wwhole = Int((Int64(W) * SN) >> _B) % L   # 32-sample step
+    r    = _RemT(Int64(rem0) & mask)
+    base = Int(mod(Int64(rem0) >> _B + phase_offset, L))
+    num  = length(out); blk = 0
+    @inbounds while blk + W <= num
+        # high-half window phase (scalar advance of 16 samples from the low half)
+        th = r + Hfrac; ch = th >= sd ? 1 : 0
+        r16 = _RemT(Int64(th) & mask)
+        base_hi = _wrapL(base + Hwhole + ch, L)
+        rbroad = vifelse(_AVX2_LOW16, Vec{32,UInt32}(r), Vec{32,UInt32}(r16))
+        rel = base16 + vifelse(frac16 + rbroad >= thr, one8, zero8)
+        out[VecRange{W}(blk + 1)] = _rel_lookup_avx2(padded, rel, base, base_hi)
+        t = r + Wfrac; c = t >= sd ? 1 : 0
+        r = _RemT(Int64(t) & mask)
+        base = _wrapL(base + Wwhole + c, L)
+        blk += W
     end
+    _generate_tail!(out, table, step_num, step_den, phase_offset, blk + 1, rem0)
 end
 @inline _check_windowed_length(table::CodeTable, be) =
     table.length <= typemax(Int32) || throw(ArgumentError(
         "$(backend_name(be)) backend supports code length ≤ $(Int(typemax(Int32))); table " *
         "length is $(table.length). Use backend=Portable() (or AVX512() on x86)."))
-function _generate_simd_windowed!(out, table::CodeTable, step_num, step_den, phase_offset,
-                                  backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
-    stride = 4W
-    L = table.length; padded = table.padded
-    Lc = T(L)
-    whole_step = T(div(stride * step_num, step_den) % L)   # integer chips per stride, mod L
-    frac_step  = _RemT(mod(stride * step_num, step_den))
-    modulus    = _RemT(step_den)
-    phase1, rem1 = _init_state(Val(W), step_num, step_den, L, 0,  phase_offset, T, rem0)
-    phase2, rem2 = _init_state(Val(W), step_num, step_den, L, W,  phase_offset, T, rem0)
-    phase3, rem3 = _init_state(Val(W), step_num, step_den, L, 2W, phase_offset, T, rem0)
-    phase4, rem4 = _init_state(Val(W), step_num, step_den, L, 3W, phase_offset, T, rem0)
-    num = length(out); chunk_start = 0
-    @inbounds while chunk_start + stride <= num
-        out[VecRange{W}(chunk_start + 1)]      = _window_lookup(backend, padded, phase1, L)
-        out[VecRange{W}(chunk_start + W + 1)]  = _window_lookup(backend, padded, phase2, L)
-        out[VecRange{W}(chunk_start + 2W + 1)] = _window_lookup(backend, padded, phase3, L)
-        out[VecRange{W}(chunk_start + 3W + 1)] = _window_lookup(backend, padded, phase4, L)
-        rem1 += frac_step; rem2 += frac_step; rem3 += frac_step; rem4 += frac_step
-        c1 = rem1 >= modulus; c2 = rem2 >= modulus; c3 = rem3 >= modulus; c4 = rem4 >= modulus
-        rem1 = vifelse(c1, rem1 - modulus, rem1); rem2 = vifelse(c2, rem2 - modulus, rem2)
-        rem3 = vifelse(c3, rem3 - modulus, rem3); rem4 = vifelse(c4, rem4 - modulus, rem4)
-        phase1 += whole_step; phase2 += whole_step; phase3 += whole_step; phase4 += whole_step
-        phase1 = vifelse(c1, phase1 + one(T), phase1); phase2 = vifelse(c2, phase2 + one(T), phase2)
-        phase3 = vifelse(c3, phase3 + one(T), phase3); phase4 = vifelse(c4, phase4 + one(T), phase4)
-        # phase ∈ [0, 2L-1] after the advance → one conditional subtract restores [0, L-1]
-        phase1 = vifelse(phase1 >= Lc, phase1 - Lc, phase1); phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
-        phase3 = vifelse(phase3 >= Lc, phase3 - Lc, phase3); phase4 = vifelse(phase4 >= Lc, phase4 - Lc, phase4)
-        chunk_start += stride
-    end
-    # Leftover < 4W samples: up to 3 full W-blocks as single-stream SIMD before the scalar
-    # tail. Streams 1–3 are already positioned at chunk_start + {0,W,2W}, so reuse them.
-    @inbounds if chunk_start + W <= num
-        out[VecRange{W}(chunk_start + 1)] = _window_lookup(backend, padded, phase1, L); chunk_start += W
-        if chunk_start + W <= num
-            out[VecRange{W}(chunk_start + 1)] = _window_lookup(backend, padded, phase2, L); chunk_start += W
-            if chunk_start + W <= num
-                out[VecRange{W}(chunk_start + 1)] = _window_lookup(backend, padded, phase3, L); chunk_start += W
-            end
-        end
-    end
-    _generate_tail!(out, table, step_num, step_den, phase_offset, chunk_start + 1, rem0)
-end
 
 function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Portable, rem0::_RemT = _RemT(0))
     _generate_tail!(out, table, step_num, step_den, phase_offset, 1, rem0)
@@ -597,25 +575,27 @@ end
 end
 
 # Pick the run-fill path when there are at least `_runfill_min_m` samples per chip. The
-# threshold is the per-chip count where broadcast-fill overtakes the windowed permute, set
-# by two effects, both measured on Zen 5:
-#   • Steady state (long fills): permute is ~36 ps/sample on AVX-512, flat in oversampling;
-#     run-fill is ~216/m ps/sample (fewer chip-boundary recomputes as runs lengthen), so it
-#     overtakes at m ≈ 6–7 (7 = smallest m where it wins at every length). The other backends'
-#     slower permute crosses earlier: AVX2 `vpshufb` (~85 ps) ≈ 3 (run-fill's 216/3 ≈ 72 ps
-#     beats it; N-independent, as ~85 ps sits between 216/3 and 216/2 ≈ 108), NEON `tbl1` ≈ 3,
-#     Portable (per-sample scalar lookup) ≈ 2. This is the `_runfill_min_m(backend)` below.
-#   • Short fills: permute pays a fixed ~37 ns init (4× `_init_rel`, a 64-lane `vpmullq`
-#     running-product setup per stream) vs run-fill's ~15 ns (one Int128 freqfix divide), a
-#     ~22 ns edge that ∝ 1/N pulls the crossover to lower m. Only matters where permute is
-#     fast: on AVX-512 the sweep puts it at m ≈ 4 by N ≈ 512 and 5 by N ≈ 1–4k, rising back to
-#     the steady 7 once the init amortises. This is the `_runfill_min_m(backend, N)` overload.
-# Only the one-shot `generate_code!` knows the fill length, so only it can use the N-aware
-# overload; the continuing fill engine (`make_fill_engine`) fixes its kernel at construction
-# before any N is known, so it uses the steady-state threshold — correct for its typical
-# large-epoch fills.
-@inline _runfill_min_m(::AVX512)   = 7
-@inline _runfill_min_m(::AVX2)     = 3
+# threshold is the per-chip count where broadcast-fill overtakes the windowed permute.
+# Because the split-constant permute kernels (`_generate_simd_single!` / `_generate_simd_avx2!`)
+# are faster than the previous phase/rel DDA, the permute path stays competitive to a HIGHER
+# oversampling than before, so these thresholds moved up. Steady-state (long fills, Zen-class):
+#   • AVX-512 permute ~29 ps/sample (was ~36), flat in oversampling; run-fill ~216/m ps/sample,
+#     so it overtakes at m ≈ 8 (was 7).
+#   • AVX2 permute ~42 ps/sample (was ~85 — the split-constant kernel roughly halved it), so
+#     run-fill (still ~216/m) now only wins from m ≈ 6 (was 3). This is the biggest shift.
+#   • NEON `tbl1` is the single-window v2 kernel (W=16) like AVX-512; its crossover was not
+#     re-measured on Apple Silicon, so it is left at the previous conservative 3 (using run-fill
+#     a little earlier than optimal never regresses — run-fill perf is unchanged). TODO: re-tune
+#     on the macos-14 CI now that the NEON permute is faster.
+#   • Portable (per-sample scalar lookup) ≈ 2, unchanged.
+# Short fills: permute pays a fixed init cost (building the constant lane vectors + a few scalar
+# steps — cheaper than the old 4× `_init_rel` `vpmullq` setup) vs run-fill's ~15 ns freqfix
+# divide, an edge that ∝ 1/N pulls the AVX-512 crossover to lower m for tiny N (`_runfill_min_m
+# (backend, N)`). Only the one-shot `generate_code!` knows the fill length, so only it uses the
+# N-aware overload; the continuing fill engine fixes its kernel at construction (no N yet), so
+# it uses the steady-state threshold — correct for its typical large-epoch fills.
+@inline _runfill_min_m(::AVX512)   = 8
+@inline _runfill_min_m(::AVX2)     = 6
 @inline _runfill_min_m(::Neon)     = 3
 @inline _runfill_min_m(::Portable) = 2
 # N-aware overload (one-shot fills): lower the threshold for short fills. Only AVX-512's
