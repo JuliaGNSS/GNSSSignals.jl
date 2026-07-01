@@ -27,21 +27,21 @@ const SUITE = BenchmarkGroup()
 _buf(signal, n) = zeros(_EMBEDDED_LUT ? Int8 : get_code_type(signal), n)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# code generation — fixed 2000-sample spot-check at a couple of representative rates. A small,
-# stable sanity row for the plain (GPSL1/GPSL5) and CBOC (GalileoE1B, Float32 on a pre-embedded
-# base) generators; full per-signal coverage lives in "1 ms integration" below.
+# 2000 sample code generation — fixed 2000-sample spot-check at a couple of representative rates. A
+# small, stable sanity row for the plain (GPSL1/GPSL5) and CBOC (GalileoE1B, Float32 on a
+# pre-embedded base) generators; full per-signal coverage lives in "1 ms code generation" below.
 # ─────────────────────────────────────────────────────────────────────────────
 for (name, signal, fs) in (("GPSL1", _GPSL1(), 2e6Hz), ("GPSL5", _GPSL5(), 20e6Hz),
                            ("GalileoE1B", GalileoE1B(), 15e6Hz))
     fc = get_code_frequency(signal)
     out = _buf(signal, 2000)
-    SUITE["code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
+    SUITE["2000 sample code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
         $out, $signal, $1, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 10000
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1 ms integration — one gen_code! fill of an N = round(Int, fs·1e-3)-sample epoch per signal, for
+# 1 ms code generation — one gen_code! fill of an N = round(Int, fs·1e-3)-sample epoch per signal, for
 # EVERY signal the package defines. `fs` is chosen per (code_frequency, subchip_factor P) family,
 # so signals sharing a chip rate + modulation order share a rate and timing differences reflect the
 # signal/modulation rather than a different fs; each row carries its fs in the label. fs clears the
@@ -71,7 +71,7 @@ for (name, signal, fs) in _MS_CASES
     fc = get_code_frequency(signal)
     N = round(Int, ustrip_hz(fs) * 1e-3)
     out = _buf(signal, N)
-    SUITE["1 ms integration"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
+    SUITE["1 ms code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
         $out, $signal, $1, $fs, $fc, $0.0, $0,
     ) evals = 10 samples = 1000
 end
