@@ -408,20 +408,19 @@ const _RUNFILL_MAX_NI  = 64                     # largest `Val`-specialised inne
 @inline _runfill_freqfix(step_num::Int) =
     Int((Int128(_STEP_DEN) << _RUNFILL_FP + (step_num >> 1)) ÷ step_num)
 
-# Pad the fixed inner-store count to a value LLVM emits a clean wide store for; the over-store
-# is harmless (overwritten by the next chip, tail handled), costing only mild extra store
-# bandwidth. Tuned for the LUT's **Int8** buffer — unlike the original `gen_code!`'s Int16
-# buffer (`GNSSSignals._pad_inner_iterations`), an Int8 SIMD store packs 16/xmm, 32/ymm,
-# 64/zmm, so the clean-store widths are 16/32/64 rather than the Int16 ladder's 8/16/…/24.
-# A direct NI sweep on Zen 5 (byte-exact vs the permute path at every NI) picks these three
-# steps at every run length 4..64: e.g. run-length 8 pads 8→16 for a 42 % speedup, 18→32 for
-# 26 %, 24→32 for 19 %. The old Int16 ladder's unpadded exceptions (9, 18, 20, 24) all lose
-# here. Run-fill is store-width-bound and backend-independent, so one ladder serves every
-# backend.
+# Pad the fixed inner-store count to a value LLVM emits a clean wide store for; min 4 so the
+# `Val` dispatcher always has a branch. Mirrors `GNSSSignals._pad_inner_iterations` but kept
+# local (the baked table is Int8, not the original's Int16, so the ladder may diverge); the
+# over-store is harmless (overwritten), only mild extra store bandwidth.
 @inline function _runfill_pad(x::Int)
+    x <= 4  ? 4  :
+    x <= 8  ? 8  :
+    x == 9  ? 9  :
+    x <= 12 ? 12 :
     x <= 16 ? 16 :
-    x <= 32 ? 32 :
-    x <= 64 ? 64 : x
+    x <= 18 ? x  :
+    x <= 20 ? 20 :
+    x <= 23 ? 24 : x
 end
 
 # Padded inner count for a step (samples/chip ≈ `2^_B / step_num`, run length `m` or `m+1`).
