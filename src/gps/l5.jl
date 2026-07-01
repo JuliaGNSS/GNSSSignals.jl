@@ -389,14 +389,6 @@ SharedSecondaryCode{20, Int8}((1, 1, 1, 1, 1, -1, 1, 1, -1, -1, 1, -1, 1, -1, 1,
     )
 end
 
-# Specialization of the `_select_codes_for` hot-path helper. Because the NH10
-# and NH20 secondary entries are ±1, we pre-negate the primary code matrix at
-# construction (stored as `negated_codes`) and pick the right matrix once per
-# primary period in the worker, avoiding the per-chip multiply that would
-# otherwise prevent the fused load-broadcast pattern.
-@inline function _select_codes_for(signal::GPSL5I, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
-@inline function _select_codes_for(signal::GPSL5Q, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
+# GPSL5I and GPSL5Q pre-negate their primary code matrix (NH10/NH20 secondary
+# chips are ±1); the shared `_select_codes_for` fast path for such signals lives
+# on `NegatedPrimaryCacheSignal` in `common.jl`.

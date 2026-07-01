@@ -336,13 +336,6 @@ SIS ICD §3.5), giving a 100 ms tiered code.
 """
 @inline get_secondary_code(s::GalileoE5aQ) = PerPRNSecondaryCode(s.secondary_codes)
 
-# The E5a-I CS20 and E5a-Q CS100 secondary chips are ±1, so for every primary
-# period we select the positive or negated primary-code matrix once (in the
-# worker's outer `k` loop), hoisting the per-chip multiply out of the hot
-# inner loop — the same optimization used by GPSL5I and GPSL1C_P.
-@inline function _select_codes_for(signal::GalileoE5aI, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
-@inline function _select_codes_for(signal::GalileoE5aQ, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
+# GalileoE5aI and GalileoE5aQ pre-negate their primary code matrix (CS20/CS100
+# secondary chips are ±1); the shared `_select_codes_for` fast path for such
+# signals lives on `NegatedPrimaryCacheSignal` in `common.jl`.

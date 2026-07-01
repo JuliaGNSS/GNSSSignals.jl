@@ -83,13 +83,9 @@ one chip of a 1800-bit per-PRN LFSR-generated overlay code, giving an
 """
 @inline get_secondary_code(s::GPSL1C_P) = PerPRNSecondaryCode(s.overlay_codes)
 
-# Specialization of the `_select_codes_for` hot-path helper. The L1C-P
-# overlay chips are ±1, so for every primary code period we pick the
-# positive or negated code matrix once (in the worker's outer `k`
-# loop), hoisting the per-chip multiply out of the hot inner loop.
-@inline function _select_codes_for(signal::GPSL1C_P, sec_val)
-    return sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
-end
+# GPSL1C_P pre-negates its primary code matrix (overlay chips are ±1); the
+# shared `_select_codes_for` fast path for such signals lives on
+# `NegatedPrimaryCacheSignal` in `common.jl`.
 
 """
 $(SIGNATURES)

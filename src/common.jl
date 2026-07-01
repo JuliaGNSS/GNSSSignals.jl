@@ -287,6 +287,32 @@ straightforward lookup and does not use this dispatch.
 """
 @inline _select_codes_for(signal::AbstractGNSSSignal, sec_val) = (signal.codes, sec_val)
 
+# Signals whose secondary/overlay chips are ±1 cache an element-wise-negated
+# copy of their primary-code matrix in a `negated_codes` field at construction.
+# For the primary periods where the secondary chip is -1, the worker then reads
+# that pre-negated matrix instead of multiplying every chip by `sec_val`.
+# Selecting the matrix once per primary period (in the worker's outer `k` loop)
+# hoists the multiply out of the hot inner loop and restores the fused
+# load-broadcast pattern, at the cost of storing a second copy of the codes.
+# Each signal's own `negated_codes` field comment records its exact storage cost
+# and speedup.
+#
+# This Union is formed in `common.jl` (included last, after every signal file),
+# so all member types exist. Any new signal that stores a `negated_codes` cache
+# should be added here — that is the single place to touch.
+const NegatedPrimaryCacheSignal = Union{
+    GPSL5I,
+    GPSL5Q,
+    GPSL1C_P,
+    GalileoE5aI,
+    GalileoE5aQ,
+    GalileoE1C,
+    GalileoE1C_BOC11,
+}
+
+@inline _select_codes_for(signal::NegatedPrimaryCacheSignal, sec_val) =
+    sec_val > 0 ? (signal.codes, true) : (signal.negated_codes, true)
+
 # Shared tail loop for both `sample_code_worker!` and
 # `sample_code_worker_generic!`. The tail handles the chips held back
 # from the main loop (`tail_slack`) plus a 3-chip safety margin; each
