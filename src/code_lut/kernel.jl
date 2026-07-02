@@ -231,94 +231,78 @@ end
     rem = convert(Vec{64,_RemT},  p & Int64(step_den - 1))
     (rel, rem, Int(mod(d0 + phase_offset, L)))
 end
+# Scalar-base single-window lookups. The AVX-512 form is also used by the streaming iterators
+# (generator.jl / iterate.jl); the single-window `_perm_lookup` (S=1) forwards to these.
 @inline _rel_lookup(::AVX512, padded, rel::Vec{64,Int8}, base::Int) =
     _permute((@inbounds padded[VecRange{64}(base + 1)]), rel)
 @inline _rel_lookup(::Neon, padded, rel::Vec{16,Int8}, base::Int) =
     _tbl1((@inbounds padded[VecRange{16}(base + 1)]), rel)
 
-# ── one-shot single-window kernel (AVX-512 W=64 `vpermb`, NEON W=16 `tbl1`) ──────────────
-# Split-constant recompute. Within a W-sample block the window-relative index is, exactly,
-#   rel[j] = ⌊(r + step_num·j) / 2^_B⌋ = base_lane[j] + [ r + frac_lane[j] ≥ 2^_B ]
-# where base_lane[j] = (step_num·j) >> _B and frac_lane[j] = (step_num·j) & (2^_B−1) are
-# COMPILE-TIME-CONSTANT per-lane vectors (r < 2^_B and frac_lane[j] < 2^_B ⇒ the sum is a
-# single 0/1 carry mask, no 64-bit product). Only a scalar `(r, base)` pair advances between
-# blocks, so there is no loop-carried per-lane remainder and no lane-0 vector→scalar extract —
-# ~1.4× (AVX-512) / ~1.6× (AVX2) over the previous four-stream phase/rel DDA. `Wstep_whole` is
-# reduced mod L so the single-subtract `_wrapL` stays valid (needs L ≥ W; every GNSS code is
-# ≫ 64). Byte-identical to the Portable oracle. NEON's `tbl1` llvmcall is aarch64-only, but
-# this kernel is only instantiated for `backend = Neon()`, which never happens on x86.
+# ── unified split-constant one-shot kernel ───────────────────────────────────────────────
+# One DDA for all three SIMD backends. Within a W-sample block the window-relative index is,
+# exactly,  rel[j] = ⌊(r + step_num·j) / 2^_B⌋ = base_lane[j] + [ r + frac_lane[j] ≥ 2^_B ],
+# with base_lane / frac_lane COMPILE-TIME-CONSTANT per-lane vectors (r < 2^_B and frac_lane[j]
+# < 2^_B ⇒ the carry is a single 0/1 mask, no 64-bit product). Only a scalar `(r, base)` pair
+# advances between blocks — no loop-carried per-lane remainder, no lane-0 extract.
+#
+# The one architectural difference is the permute's sub-window geometry: a block of W lanes is
+# served by `S = W ÷ Wwin` INDEPENDENT windows of Wwin chips each —
+#   AVX-512 `vpermb` → 1×64 ·  NEON `tbl1` → 1×16 ·  AVX2 `vpshufb` → 2×16 (per-128-bit-lane).
+# So the lane constants are relative to each sub-window's own lane 0 (`(j-1) % Wwin`), and each
+# block derives the S window bases from the shared scalar `(r, base)` via `_sub_phases`: S−1
+# cheap scalar micro-steps of Wwin samples (a no-op for the single-window backends, so their
+# generated code is identical to a bespoke single-window loop). `Wstep_whole` is reduced mod L
+# so the single-subtract `_wrapL` stays valid (needs L ≥ W). Byte-identical to the Portable
+# oracle. NEON's `tbl1` is aarch64-only but only instantiated for `Neon()`, never on x86.
+
+# Per-sub-window phase (broadcast `r` vector, S window bases) from the shared scalar (r, base).
+@inline _sub_phases(::Val{1}, ::Val{W}, r, base, Hfrac, Hwhole, sd, mask, L) where {W} =
+    (Vec{W,UInt32}(r), (base,))
+@inline function _sub_phases(::Val{2}, ::Val{W}, r, base, Hfrac, Hwhole, sd, mask, L) where {W}
+    th = r + Hfrac; ch = th >= sd ? 1 : 0                     # advance one Wwin-sample sub-window
+    r1 = _RemT(Int64(th) & mask); b1 = _wrapL(base + Hwhole + ch, L)
+    (vifelse(_AVX2_LOW16, Vec{W,UInt32}(r), Vec{W,UInt32}(r1)), (base, b1))
+end
+
+# One permute over the S sub-window bases. Single-window backends (S=1) forward to the scalar
+# `_rel_lookup` above, so the arch-specific `vpermb` / `tbl1` lines live in exactly one place.
+@inline _perm_lookup(be::Union{AVX512,Neon}, padded, rel, bases::NTuple{1,Int}) =
+    _rel_lookup(be, padded, rel, bases[1])
+@inline function _perm_lookup(::AVX2, padded, rel::Vec{32,Int8}, bases::NTuple{2,Int})
+    lo16 = @inbounds padded[VecRange{16}(bases[1] + 1)]
+    hi16 = @inbounds padded[VecRange{16}(bases[2] + 1)]
+    _pshufb(shufflevector(lo16, hi16, Val(ntuple(j -> j - 1, Val(32)))), rel)
+end
+
 function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX512, rem0::_RemT = _RemT(0))
-    _generate_simd_single!(out, table, step_num, step_den, phase_offset, AVX512(), Val(64), rem0)
+    _generate_simd!(out, table, step_num, step_den, phase_offset, AVX512(), Val(64), Val(64), rem0)
+end
+function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX2, rem0::_RemT = _RemT(0))
+    _check_windowed_length(table, AVX2())
+    _generate_simd!(out, table, step_num, step_den, phase_offset, AVX2(), Val(32), Val(16), rem0)
 end
 function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::Neon, rem0::_RemT = _RemT(0))
     _check_windowed_length(table, Neon())
-    _generate_simd_single!(out, table, step_num, step_den, phase_offset, Neon(), Val(16), rem0)
+    _generate_simd!(out, table, step_num, step_den, phase_offset, Neon(), Val(16), Val(16), rem0)
 end
-function _generate_simd_single!(out, table::CodeTable, step_num, step_den, phase_offset,
-                                backend, ::Val{W}, rem0::_RemT = _RemT(0)) where {W}
+function _generate_simd!(out, table::CodeTable, step_num, step_den, phase_offset,
+                         backend, ::Val{W}, ::Val{Wwin}, rem0::_RemT = _RemT(0)) where {W,Wwin}
     L = table.length; padded = table.padded
     SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
-    base_lane = Vec{W,Int8}(ntuple(j -> Int8((SN * (j - 1)) >> _B), Val(W)))
-    frac_lane = Vec{W,UInt32}(ntuple(j -> UInt32((SN * (j - 1)) & mask), Val(W)))
+    base_lane = Vec{W,Int8}(ntuple(j -> Int8((SN * ((j - 1) % Wwin)) >> _B), Val(W)))
+    frac_lane = Vec{W,UInt32}(ntuple(j -> UInt32((SN * ((j - 1) % Wwin)) & mask), Val(W)))
     thr   = Vec{W,UInt32}(sd); one8 = one(Vec{W,Int8}); zero8 = zero(Vec{W,Int8})
-    Wstep = Int64(W) * SN
-    Wstep_whole = Int(Wstep >> _B) % L             # chips per block (≤ W), reduced mod L
-    Wstep_frac  = _RemT(Wstep & mask)
+    Hfrac = _RemT((Int64(Wwin) * SN) & mask); Hwhole = Int((Int64(Wwin) * SN) >> _B) % L  # sub-window step
+    Wstep = Int64(W) * SN; Wfrac = _RemT(Wstep & mask); Wwhole = Int(Wstep >> _B) % L      # block step
     r    = _RemT(Int64(rem0) & mask)               # block-start fractional phase (< 2^_B)
     base = Int(mod(Int64(rem0) >> _B + phase_offset, L))
     num  = length(out); blk = 0
     @inbounds while blk + W <= num
-        rel = base_lane + vifelse(frac_lane + Vec{W,UInt32}(r) >= thr, one8, zero8)
-        out[VecRange{W}(blk + 1)] = _rel_lookup(backend, padded, rel, base)
-        t = r + Wstep_frac
+        rbroad, bases = _sub_phases(Val(W ÷ Wwin), Val(W), r, base, Hfrac, Hwhole, sd, mask, L)
+        rel = base_lane + vifelse(frac_lane + rbroad >= thr, one8, zero8)
+        out[VecRange{W}(blk + 1)] = _perm_lookup(backend, padded, rel, bases)
+        t = r + Wfrac
         c = t >= sd ? 1 : 0
-        r = _RemT(Int64(t) & mask)
-        base = _wrapL(base + Wstep_whole + c, L)
-        blk += W
-    end
-    _generate_tail!(out, table, step_num, step_den, phase_offset, blk + 1, rem0)
-end
-
-# ── one-shot AVX2 kernel (W=32, two `vpshufb` 16-chip windows) ────────────────────────────
-# `vpshufb` shuffles each 128-bit lane independently, so the 32 lanes are TWO independent
-# 16-lane single-window sub-blocks: the low half (lanes 0..15, window `base`) and the high
-# half (lanes 16..31, window `base_hi`) — the latter is the same recurrence advanced 16
-# samples, derived from the shared scalar `r` with one cheap scalar micro-step per block
-# (`r16`, `base_hi`). One `vpshufb` over the packed `[lo;hi]` windows. This split-constant
-# form does NOT carry a per-half remainder vector, so it avoids the "halfcarry" cost that made
-# the earlier phase/rel DDA regress on AVX2 — it is ~1.6× faster than that kernel here.
-@inline _rel_lookup_avx2(padded, rel::Vec{32,Int8}, base_lo::Int, base_hi::Int) = begin
-    lo16 = @inbounds padded[VecRange{16}(base_lo + 1)]
-    hi16 = @inbounds padded[VecRange{16}(base_hi + 1)]
-    window = shufflevector(lo16, hi16, Val(ntuple(j -> j - 1, Val(32))))
-    _pshufb(window, rel)
-end
-function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX2, rem0::_RemT = _RemT(0))
-    _check_windowed_length(table, AVX2())
-    _generate_simd_avx2!(out, table, step_num, step_den, phase_offset, rem0)
-end
-function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_offset, rem0::_RemT = _RemT(0))
-    W = 32; H = 16
-    L = table.length; padded = table.padded
-    SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
-    # 16-lane constants (each half is relative to its own lane 0)
-    base16 = Vec{32,Int8}(ntuple(j -> Int8((SN * ((j - 1) % H)) >> _B), Val(32)))
-    frac16 = Vec{32,UInt32}(ntuple(j -> UInt32((SN * ((j - 1) % H)) & mask), Val(32)))
-    thr = Vec{32,UInt32}(sd); one8 = one(Vec{32,Int8}); zero8 = zero(Vec{32,Int8})
-    Hfrac = _RemT((Int64(H) * SN) & mask); Hwhole = Int((Int64(H) * SN) >> _B) % L   # 16-sample step
-    Wfrac = _RemT((Int64(W) * SN) & mask); Wwhole = Int((Int64(W) * SN) >> _B) % L   # 32-sample step
-    r    = _RemT(Int64(rem0) & mask)
-    base = Int(mod(Int64(rem0) >> _B + phase_offset, L))
-    num  = length(out); blk = 0
-    @inbounds while blk + W <= num
-        # high-half window phase (scalar advance of 16 samples from the low half)
-        th = r + Hfrac; ch = th >= sd ? 1 : 0
-        r16 = _RemT(Int64(th) & mask)
-        base_hi = _wrapL(base + Hwhole + ch, L)
-        rbroad = vifelse(_AVX2_LOW16, Vec{32,UInt32}(r), Vec{32,UInt32}(r16))
-        rel = base16 + vifelse(frac16 + rbroad >= thr, one8, zero8)
-        out[VecRange{W}(blk + 1)] = _rel_lookup_avx2(padded, rel, base, base_hi)
-        t = r + Wfrac; c = t >= sd ? 1 : 0
         r = _RemT(Int64(t) & mask)
         base = _wrapL(base + Wwhole + c, L)
         blk += W
