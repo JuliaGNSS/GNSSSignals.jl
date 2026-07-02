@@ -834,6 +834,45 @@ end
         end
         @test got == ref
     end
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # #104: CPU features are detected at PRECOMPILE time and baked into `HOST_FEATURES`. If the
+    # pkgimage is precompiled on an AVX-512-VBMI host and later loaded on a CPU without VBMI
+    # (JULIA_CPU_TARGET=generic, shared/NFS depot, Docker/CI), the stale const would make
+    # `default_backend()` return `AVX512()` and the first `gen_code!` would emit `vpermb` and
+    # SIGILL. The fix re-detects features in `__init__` (into a runtime Ref) and selects the
+    # backend from *those*. A true SIGILL can't be triggered safely in-process, so we test the
+    # pure, CPU-independent selection function + the runtime feature Ref instead.
+    @static if Sys.ARCH in (:x86_64, :i686)
+        @testset "CPU feature runtime re-validation (#104)" begin
+            # Pure backend selection is a function of a plain feature set: a non-VBMI set must
+            # NEVER yield AVX512() (its vpermb would SIGILL), a VBMI set may (fast path kept).
+            @test CL._select_backend((avx2 = false, avx512vbmi = false)) isa CL.Portable
+            @test CL._select_backend((avx2 = true, avx512vbmi = false)) isa CL.AVX2
+            @test !(CL._select_backend((avx2 = true, avx512vbmi = false)) isa CL.AVX512)
+            @test CL._select_backend((avx2 = true, avx512vbmi = true)) isa CL.AVX512
+
+            # __init__ populated the runtime feature Ref with the CPU actually executing.
+            @test CL.RUNTIME_FEATURES[] == CL._x86_features()
+
+            # default_backend() consults the RUNTIME-detected features, not just the const.
+            @test CL.default_backend() === CL._select_backend(CL.RUNTIME_FEATURES[])
+
+            # Demotion path: simulate a pkgimage precompiled on a VBMI host but loaded on a
+            # non-VBMI CPU by pointing the runtime Ref at a non-VBMI feature set. Selection must
+            # demote AVX512 -> AVX2/Portable rather than emit vpermb.
+            saved = CL.RUNTIME_FEATURES[]
+            try
+                CL.RUNTIME_FEATURES[] = (avx2 = true, avx512vbmi = false)
+                @test !(CL.default_backend() isa CL.AVX512)
+                @test CL.default_backend() isa CL.AVX2
+                CL.RUNTIME_FEATURES[] = (avx2 = false, avx512vbmi = false)
+                @test CL.default_backend() isa CL.Portable
+            finally
+                CL.RUNTIME_FEATURES[] = saved
+            end
+        end
+    end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────

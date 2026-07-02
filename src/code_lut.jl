@@ -96,10 +96,19 @@ include("code_lut/generator.jl")
 
 # ---- backend selection ----
 @static if Sys.ARCH in (:x86_64, :i686)
-    function default_backend()
-        HOST_FEATURES.avx512vbmi ? AVX512() :
-        HOST_FEATURES.avx2       ? AVX2()   : Portable()
-    end
+    # Select from the RUNTIME-detected feature set (populated in `__init__`), NOT the
+    # precompile-time `HOST_FEATURES` const: a pkgimage baked on a VBMI host but loaded on a
+    # non-VBMI CPU must demote AVX512 -> AVX2/Portable instead of emitting `vpermb` and SIGILL
+    # (#104). This trades the old const-fold for a single Ref load per call — off the hot path
+    # (called once per gen_code!/engine build, not per sample), and the returned value is a
+    # small `Union{AVX512,AVX2,Portable}` the callers branch on statically.
+    default_backend() = _select_backend(RUNTIME_FEATURES[])
+
+    # Re-validate CPU features on the machine actually running, once per session. `HOST_FEATURES`
+    # was baked at precompile and may over-claim on a relocated/shared pkgimage; refreshing the
+    # runtime Ref here is what makes `default_backend()` demote away from AVX-512 on a non-VBMI
+    # host (see permute.jl / #104).
+    __init__() = _refresh_host_features!()
 elseif Sys.ARCH === :aarch64
     default_backend() = Neon()
 else
@@ -343,8 +352,9 @@ end
     # fractional residual `rem0` at 2^-30-sub-chip precision (see `_subchip_phase_split`).
     sd = CodeLUT._STEP_DEN
     phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
-    # Parameterless default_backend() const-folds to a concrete backend, keeping
-    # generate_code! type-stable (the table-aware overload would erase that inference).
+    # Parameterless default_backend() returns the host's concrete backend as a small
+    # Union{AVX512,AVX2,Portable} (a runtime Ref read since #104, so no longer const-folded, but
+    # union-split at the barrier below); the table-aware overload would erase even that.
     backend = CodeLUT.default_backend()
     CodeLUT.generate_code!(sampled_code, mc;
         code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
@@ -443,11 +453,12 @@ function code_engine(
     fs < fc * P && error(
         "code_engine needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
     )
-    # `backend` defaults to the parameterless `default_backend()`, which const-folds to the
-    # host's concrete backend (the table-aware overload's length guard is dead code for GNSS
-    # codes and would erase that inference, boxing the runtime-typed engine on every
-    # construction). It is exposed so tests can force a *weaker* backend than the host (e.g.
-    # AVX2/Portable on an AVX-512 runner) — forcing a backend the CPU lacks would SIGILL.
+    # `backend` defaults to the parameterless `default_backend()`, a small
+    # `Union{AVX512,AVX2,Portable}` (a runtime Ref read since #104) union-split at the
+    # `_wrap_code_fill_engine` barrier — the table-aware overload's length guard is dead code
+    # for GNSS codes and would additionally box the engine. It is exposed so tests can force a
+    # *weaker* backend than the host (e.g. AVX2/Portable on an AVX-512 runner) — forcing a
+    # backend the CPU lacks would SIGILL.
     # Resample the baked sub-chip table at fc·P. Split the real primary-chip start phase into
     # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`.
     cps = (fc * P) / fs
@@ -557,9 +568,9 @@ function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequenc
     # fractional residual `rem0` (see `_subchip_phase_split`).
     sd = CodeLUT._STEP_DEN
     phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
-    # Resample the baked sub-chip table at fc·P. Parameterless default_backend() const-folds
-    # to the host's concrete backend (keeps the engine type inferable; the table-aware
-    # overload would box it).
+    # Resample the baked sub-chip table at fc·P. Parameterless default_backend() returns the
+    # host's concrete backend as a small Union (a runtime Ref read since #104), union-split into
+    # the inferable per-backend engine; the table-aware overload would box it instead.
     CodeLUT.code_engine(mc.table, (fc * P) / fs, Val(K);
                         phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
