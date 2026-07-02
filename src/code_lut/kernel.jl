@@ -77,15 +77,16 @@ chips_per_sample(code_frequency, sampling_frequency) = code_frequency / sampling
 Fill `out::AbstractVector{Int8}` with `table`'s code resampled so the chip index advances
 by an exact `step_numerator / step_denominator` chips per sample (drift-free integer DDA).
 `phase` is an initial **integer chip offset** (default 0). Requires
-`0 < step_numerator ≤ step_denominator` (oversampling) and a sane denominator
-`0 < step_denominator ≤ 2^_B` (the fixed-point DDA denominator; see `_fixed_point_step`).
+`0 < step_numerator ≤ step_denominator` (oversampling) and exactly
+`step_denominator == 2^_B` (the fixed-point DDA denominator the kernels hardcode; see
+`_fixed_point_step`).
 """
 function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
                         step_numerator::Integer, step_denominator::Integer;
                         phase::Integer = 0, rem0::Integer = 0,
                         backend::Backend = default_backend(table))
-    (0 < step_denominator ≤ _STEP_DEN) ||
-        throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
+    (step_denominator == _STEP_DEN) ||
+        throw(ArgumentError("need step_denominator == 2^$_B (the fixed-point DDA denominator; kernels hardcode it)"))
     (0 < step_numerator ≤ step_denominator) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample, chips/sample ≤ 1)"))
     (0 ≤ rem0 < step_denominator) ||

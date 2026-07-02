@@ -304,8 +304,8 @@ const FillEngineAny = Union{FillEngine512,FillEnginePhase,FillEngineBoundary}
 function make_fill_engine(table::CodeTable, step_num::Integer, step_den::Integer;
                           phase::Integer = 0, rem0::Integer = 0,
                           backend::Backend = default_backend(table))
-    (0 < step_den ≤ _STEP_DEN) ||
-        throw(ArgumentError("need 0 < step_denominator ≤ 2^$_B"))
+    (step_den == _STEP_DEN) ||
+        throw(ArgumentError("need step_denominator == 2^$_B (the fixed-point DDA denominator; kernels hardcode it)"))
     (0 < step_num ≤ step_den) ||
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample)"))
     (0 ≤ rem0 < step_den) ||

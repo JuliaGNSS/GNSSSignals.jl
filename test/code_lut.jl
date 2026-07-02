@@ -96,6 +96,25 @@ const _BACKENDS = (CL.Portable(),
         @test_throws ArgumentError CL.generate_code!(out, ct, _SD + 1, _SD - 1)
     end
 
+    @testset "step_denominator != 2^_B rejected (issue #109)" begin
+        # Every kernel hardcodes the 2^_B denominator (`>> _B`, `& (2^_B-1)`), so any other
+        # denominator must be rejected loudly rather than silently produce garbage. Here
+        # 1/2 chips-per-sample expressed as 1/2 (unsupported) must throw, while the exact
+        # equivalent 2^(_B-1)/2^_B (supported) must produce the correct resampled sequence.
+        chips = rand(MersenneTwister(17), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
+        n = 4096; sn_half = _SD >> 1   # numerator for exactly 0.5 chips/sample at den = 2^_B
+        for be in _BACKENDS
+            out = Vector{Int8}(undef, n)
+            # Unsupported denominator (2 ≠ 2^_B): all three entry points must throw.
+            @test_throws ArgumentError CL.generate_code!(out, ct, 1, 2; backend = be)
+            @test_throws ArgumentError CL.code_engine(ct, 1, 2, Val(1); backend = be)
+            @test_throws ArgumentError CL.make_fill_engine(ct, 1, 2; backend = be)
+            # Supported denominator (== 2^_B): correct resampled sequence.
+            CL.generate_code!(out, ct, sn_half, _SD; backend = be)
+            @test out == _ref(chips, sn_half, 0, n)
+        end
+    end
+
     @testset "real-frequency interface" begin
         chips = rand(MersenneTwister(42), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
         n = 20000
