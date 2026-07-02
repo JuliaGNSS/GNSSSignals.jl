@@ -90,7 +90,10 @@ let signal = _GPSL1(), fc = 1023e3Hz
     for oversampling in (2, 8, 17, 24, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
         fs = oversampling * fc
         out = _buf(signal, n)
+        # evals = 10 (average out per-call scheduling jitter — the 4k fills run in a few
+        # hundred ns, where evals = 1 made the reported minimum swing ±25% on shared runners)
+        # and samples = 10000, matching the "2000 sample" group, for a stable minimum.
         SUITE["oversampling sweep"]["$(lpad(oversampling, 2, '0'))x"][slabel] =
-            @benchmarkable gen_code!($out, $signal, $1, $fs, $fc, $0.0, $0) evals = 1 samples = 300
+            @benchmarkable gen_code!($out, $signal, $1, $fs, $fc, $0.0, $0) evals = 10 samples = 10000
     end
 end
