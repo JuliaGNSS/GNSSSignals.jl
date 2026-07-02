@@ -130,15 +130,21 @@ end
 
 function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, ::AVX512, ::Val{64}) where {K}
     W = 64; stride = K * W
+    # Widen the stride·step_num product to Int64: with step_num up to 2^_B = 2^30 it exceeds
+    # typemax(Int32), so a native-`Int` product overflows on 32-bit Julia (issue #125; residual
+    # gap of #108). Match generator.jl / the fill engines, which already form this in Int64.
+    SSN = Int64(stride) * Int64(sn); sdw = Int64(sd)
     CodeEngine512(table.padded, sn, sd, ph, rem0, _RemT(sd),
-        _RemT(mod(stride * sn, sd)), div(stride * sn, sd) % table.length, table.length)
+        _RemT(mod(SSN, sdw)), Int(div(SSN, sdw) % table.length), table.length)
 end
 function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, backend, ::Val{W}) where {K,W}
     backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
     stride = K * W; L = table.length; T = _phase_type(L)
     prepared = prepare_code(table; backend = backend)
+    # Int64 stride·step_num (2^_B·stride overflows Int32 on 32-bit Julia — issue #125; see above).
+    SSN = Int64(stride) * Int64(sn); sdw = Int64(sd)
     CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, rem0, _RemT(sd),
-        _RemT(mod(stride * sn, sd)), T(div(stride * sn, sd) % L), L)
+        _RemT(mod(SSN, sdw)), T(Int(div(SSN, sdw) % L)), L)
 end
 
 """
