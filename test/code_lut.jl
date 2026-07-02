@@ -1218,3 +1218,57 @@ end
         @test all(==(0), @view A[:, 2])
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strided targets on the *continuing permute* engines (issue #124). #103 gave the one-shot
+# permute path (kernel.jl) and the boundary `fill_continue!` a `_is_dense_target` guard, but
+# the two permute `fill_continue!` methods — `FillEngine512` (AVX-512) and `FillEnginePhase`
+# (AVX2/NEON/Portable) — still stored through `out[VecRange]`, which SIMD.jl defines only for a
+# contiguous target: a strided `SubArray` threw. Both must route non-dense targets through the
+# plain indexed fallback, byte-identically to the dense path and without clobbering neighbours.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "strided Int8 view targets on continuing permute engines (issue #124)" begin
+    chips = rand(MersenneTwister(124), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
+    N = 4000
+    for be in _BACKENDS
+        # cps in each backend's *permute* regime (m = 2^_B ÷ step_num below the boundary
+        # threshold): m = 1 (cps = 2/3) is permute for every backend; m = 2 (cps = 0.4) stays
+        # permute on AVX2/NEON (min_m = 3) and AVX-512 (min_m = 10) but hits the boundary on
+        # Portable (min_m = 2) — the `FillEngineBoundary` `continue` skips that already-fixed case.
+        for cps in (2 / 3, 0.4)
+            sn = _step_num(cps)
+            eng = CL.make_fill_engine(ct, cps; backend = be)
+            eng isa CL.FillEngineBoundary && continue   # only permute engines are under test here
+            ref = _ref(chips, sn, 0, N)
+
+            # single strided fill: must not throw, must match the dense oracle, must not clobber
+            A = zeros(Int8, 2, N); v = view(A, 1, :)     # stride 2, NOT a FastContiguousSubArray
+            CL.fill_continue!(v, eng, CL.fill_state(eng))
+            @test collect(v) == ref
+            @test all(==(0), @view A[2, :])
+
+            # chunked continuation into successive strided sub-views stays exact across boundaries
+            B = zeros(Int8, 2, N); st = CL.fill_state(eng); pos = 0
+            for chunk in (1, 777, 1024, 64, N - 1 - 777 - 1024 - 64)
+                st = CL.fill_continue!(view(B, 1, (pos + 1):(pos + chunk)), eng, st)
+                pos += chunk
+            end
+            @test collect(@view B[1, :]) == ref
+            @test all(==(0), @view B[2, :])
+        end
+    end
+end
+
+# Issue #124 reproduction at the public `code_engine` / `gen_code!` level: a permute engine
+# (1.5 MHz over GPS L1CA's 1.023 MHz → m = 1, below every backend's boundary threshold, so a
+# permute engine on any host incl. Portable) filling a strided matrix-row view must match the
+# dense fill and leave the neighbouring row intact.
+@testset "continuing permute gen_code! into a matrix row (issue #124)" begin
+    signal = GPSL1CA(); fs = 1.5MHz; N = 4000
+    ref = gen_code(N, signal, 1, fs)
+    eng = code_engine(signal, 1, fs)
+    A = zeros(Int8, 2, N); v = view(A, 1, :)
+    gen_code!(v, eng, code_state(eng))
+    @test collect(v) == ref
+    @test all(==(0), @view A[2, :])
+end
