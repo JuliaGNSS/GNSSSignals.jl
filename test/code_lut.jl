@@ -250,6 +250,54 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
+    @testset "boundary store-width ladder: one-shot == continuing across all five rungs (#130)" begin
+        # The rung → (store width, EXTRAS) ladder is a pure speed choice — every variant is
+        # exact for every rate, so it can NEVER change the output. That's exactly why it's
+        # dangerous: it lives in one shared helper (`_with_boundary_width`) feeding BOTH the
+        # one-shot `_generate_boundary!` dispatch and the continuing `FillEngineBoundary` ctor,
+        # and a retune at only one site would silently pick different store widths for the same
+        # rate — byte-identical output, so the exact-vs-oracle tests (which never pit the two
+        # paths against each other) could never notice. This characterization pins the two
+        # sites to agree for a rate in EVERY rung. Not a bug-style failing test: the refactor is
+        # behaviour-preserving, so it passes before and after — its job is to catch a FUTURE
+        # desync, which is uncatchable by output-vs-oracle checks.
+        rng = MersenneTwister(1300)
+        L = 1023; chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
+        # one cps per rung: m = _STEP_DEN ÷ step_num lands in ≤6, ≤14, ≤30, ≤62, >62.
+        seen = Set{Tuple{Int,Bool}}()
+        for cps in (1 / 4, 1 / 10, 1 / 20, 1 / 50, 1 / 100)
+            sn = _step_num(cps); m = _SD ÷ sn
+            # mirror of the shared ladder, only to assert the sweep really spans all five rungs
+            push!(seen, m <= 6  ? (8, false)  : m <= 14 ? (16, false) : m <= 30 ? (32, false) :
+                        m <= 62 ? (64, false) : (64, true))
+            for phase in (0, L - 1), rem0 in (0, _SD ÷ 3, _SD - 1)
+                n = 4096
+                ref = _ref_rem0(chips, sn, rem0, phase, n)
+                # one-shot: `_generate_boundary!` → `_boundary_dispatch!` selection site
+                oneshot = Vector{Int8}(undef, n)
+                CL._generate_boundary!(oneshot, ct, sn, _SD, phase, CL._RemT(rem0))
+                # continuing: `FillEngineBoundary` ctor selection site, across uneven chunks
+                eng = CL.FillEngineBoundary(ct, sn, _SD, phase, CL._RemT(rem0)); st = CL.fill_state(eng)
+                cont = Int8[]
+                for chunk in (700, 1, 1000, 64, n - 700 - 1 - 1000 - 64)
+                    buf = Vector{Int8}(undef, chunk); st = CL.fill_continue!(buf, eng, st); append!(cont, buf)
+                end
+                @test oneshot == ref
+                @test cont == oneshot          # the two selection sites agree byte-for-byte
+            end
+        end
+        # the sweep really did walk all five rungs (both sites share this same ladder)
+        @test seen == Set([(8, false), (16, false), (32, false), (64, false), (64, true)])
+
+        # After the CPS refactor `_boundary_dispatch!` must stay type-stable: the `@inline`d
+        # `_with_boundary_width` inlines its continuation so no 5-way `Val` union / dynamic
+        # dispatch leaks in (that was the whole reason for CPS over `m -> (Val, Val)`).
+        out = Vector{Int8}(undef, 256); pad = ct.padded
+        @inferred CL._boundary_dispatch!(out, pad, ct.length, Int64(_step_num(1 / 20)), 0, Int64(0))
+        # …and the ctor still stores a concrete `Val` (no abstractly-typed engine field).
+        @test isconcretetype(typeof(CL.FillEngineBoundary(ct, _step_num(1 / 20), _SD, 0, CL._RemT(0))))
+    end
+
     @testset "fractional sub-chip start phase (rem0) — all backends == shifted reference" begin
         # A fixed-point fractional sub-chip offset `rem0 ∈ [0, 2^_B)` seeds the DDA's running
         # remainder so it tracks the SHIFTED stream `((step_num·n + rem0) >> _B + phase)`. Every
