@@ -96,13 +96,28 @@ include("code_lut/generator.jl")
 
 # ---- backend selection ----
 @static if Sys.ARCH in (:x86_64, :i686)
-    # Select from the RUNTIME-detected feature set (populated in `__init__`), NOT the
-    # precompile-time `HOST_FEATURES` const: a pkgimage baked on a VBMI host but loaded on a
-    # non-VBMI CPU must demote AVX512 -> AVX2/Portable instead of emitting `vpermb` and SIGILL
-    # (#104). This trades the old const-fold for a single Ref load per call — off the hot path
-    # (called once per gen_code!/engine build, not per sample), and the returned value is a
-    # small `Union{AVX512,AVX2,Portable}` the callers branch on statically.
-    default_backend() = _select_backend(RUNTIME_FEATURES[])
+    # The AVX-512 branch is gated on the PRECOMPILE-time `HOST_FEATURES` const via `@static`: the
+    # `vpermb`/`Vec{64,Int8}` `FillEngine512` path only *compiles* (and only its LLVM `<64 x i8>`
+    # ops are legalised) when this pkgimage was precompiled on an AVX-512 host — compiling it on a
+    # non-AVX-512 target aborts LLVM ("Do not know how to split the result of this operator!").
+    # So we must never let `default_backend()` return `AVX512()` unless the const already enabled
+    # that code path at precompile.
+    #
+    # Given the const *did* enable AVX-512 (precompiled on a VBMI host), it may still OVER-claim:
+    # the pkgimage can later be loaded on a CPU without VBMI (JULIA_CPU_TARGET=generic, shared/NFS
+    # depot, Docker/CI) where issuing `vpermb` SIGILLs (#104). So inside that branch we consult
+    # the RUNTIME-detected feature set (`RUNTIME_FEATURES`, populated in `__init__`) and demote
+    # AVX512 -> AVX2/Portable when the running CPU lacks VBMI. The AVX2-only precompile branch
+    # likewise re-checks avx2 at runtime. The fast path for genuinely-capable CPUs is preserved.
+    @static if HOST_FEATURES.avx512vbmi
+        default_backend() =
+            RUNTIME_FEATURES[].avx512vbmi ? AVX512() :
+            RUNTIME_FEATURES[].avx2       ? AVX2()   : Portable()
+    elseif HOST_FEATURES.avx2
+        default_backend() = RUNTIME_FEATURES[].avx2 ? AVX2() : Portable()
+    else
+        default_backend() = Portable()
+    end
 
     # Re-validate CPU features on the machine actually running, once per session. `HOST_FEATURES`
     # was baked at precompile and may over-claim on a relocated/shared pkgimage; refreshing the
