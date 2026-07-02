@@ -230,12 +230,12 @@ get_modulation(gal_e1c)            # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
 
 The secondary code is shared across all PRNs, so [`get_secondary_code`](@ref) returns a [`SharedSecondaryCode`](@ref GNSSSignals.SharedSecondaryCode) of length 25. As with E1B, CBOC modulation makes the code values floating-point.
 
-A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the BOC(1,1) approximation (Int16 output, lower sampling rate) — the same substitution PocketSDR uses for E1C by default — with identical primary and CS25 secondary codes:
+A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the BOC(1,1) approximation (lower minimum sampling rate) — the same substitution PocketSDR uses for E1C by default — with identical primary and CS25 secondary codes:
 
 ```julia
 e1c = GalileoE1C_BOC11()
 get_modulation(e1c)          # BOCsin(1, 1)
-get_code_type(e1c)           # Int16
+get_code_type(e1c)           # Int16  (the get_code accessor type; gen_code! is Int8)
 ```
 
 ### Galileo E5a-I
