@@ -376,6 +376,11 @@ end
 # is no vector arithmetic at all — the splat stores are plain unaligned SIMD.jl stores — so
 # this ONE kernel serves every backend (and any table length; no `_check_windowed_length`).
 
+# Boundary-step instruction selection: x86 favours the accumulated add/adc product,
+# aarch64 the independent `umulh`s (see the two branches in `_boundary_fill!`). Both are
+# bit-identical; compile-time constant, so the dead branch is eliminated.
+const _BOUNDARY_ACCUM = Sys.ARCH in (:x86_64, :i686)
+
 # ⌊log₂ SN⌋ and the round-up reciprocal; magic == 0 marks the power-of-two shift path.
 @inline _boundary_lg(SN::Int64) = 63 - leading_zeros(SN)
 @inline _boundary_magic(SN::Int64, lg::Int) =
@@ -434,13 +439,14 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                         d += Int64(1) << _B
                         i += 1
                     end
-                else
-                    # ACCUMULATED 128-bit product: P_i = (d_i−1)·magic advances by the
+                elseif _BOUNDARY_ACCUM
+                    # x86: ACCUMULATED 128-bit product. P_i = (d_i−1)·magic advances by the
                     # constant 2^_B·magic, kept as a manual (hi, lo) pair so it lowers to
-                    # add/adc (LLVM's Int128 lowering is worse) — the boundary is
-                    # hi >> lg, so each chip costs one add/adc + shift instead of a
-                    # multiply-high (bit-identical to `_boundary_ceildiv`; measured
-                    # ~1.15–1.2× over the mulx form on Zen 5).
+                    # add/adc (LLVM's Int128 lowering is worse) — the boundary is hi >> lg,
+                    # so each chip costs one add/adc + shift instead of a multiply-high.
+                    # Bit-identical to `_boundary_ceildiv`; measured ~1.15–1.2× over the
+                    # mulx form on Zen 5 and it recovered the CI AVX2 GPSL1CA @ 5 MHz row
+                    # (0.68 → 0.95 vs run-fill).
                     Clo = (magic << _B) % UInt64
                     Chi = (magic >>> (64 - _B)) % UInt64
                     P = widemul((((Int64(1) << _B) - r0 - 1)) % UInt64, magic)
@@ -452,6 +458,31 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                         vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 1)), po + jn, nothing)
                         lo, c = Base.add_with_overflow(lo, Clo)
                         hi = hi + Chi + c
+                        i += 1
+                    end
+                else
+                    # aarch64: four INDEPENDENT multiply-highs per iteration (`umulh` is
+                    # cheap on Apple Silicon; the add/adc carry chain is what regressed the
+                    # macos benchmark rows from 1.2–1.4× back to ~0.8×, so the ISA picks
+                    # the form — output is bit-identical either way).
+                    d = (Int64(1) << _B) - r0
+                    while i + 3 <= nlim
+                        j1 = pos + _boundary_ceildiv(d, lg, magic)
+                        j2 = pos + _boundary_ceildiv(d + (Int64(1) << _B), lg, magic)
+                        j3 = pos + _boundary_ceildiv(d + (Int64(2) << _B), lg, magic)
+                        j4 = pos + _boundary_ceildiv(d + (Int64(3) << _B), lg, magic)
+                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 1)), po + j1, nothing)
+                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 2)), po + j2, nothing)
+                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 3)), po + j3, nothing)
+                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 4)), po + j4, nothing)
+                        jn = j4
+                        d += Int64(4) << _B
+                        i += 4
+                    end
+                    while i <= nlim
+                        jn = pos + _boundary_ceildiv(d, lg, magic)
+                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 1)), po + jn, nothing)
+                        d += Int64(1) << _B
                         i += 1
                     end
                 end
@@ -554,13 +585,13 @@ end
 # stores (cost ≈ flat per chip), so it scales with the backend's block width — wider
 # vectors amortise the permute over more samples and push the switch to higher m. Values
 # are the measured curve crossings (Zen 5 AVX-512: boundary overtakes the split-constant
-# permute at m ≈ 10; AVX2/NEON anchored to the #69/#97 CI + Apple-Silicon data for the
-# narrower blocks). Near the crossover both kernels are within ~15 % of each other, so the
+# permute at m ≈ 10; AVX2/NEON = 3, matching the old run-fill values — on the CI AVX2
+# runner the m ≈ 3.9 rows (GPSL5 @ 40 MHz) lose ~20 % when sent to the permute instead). Near the crossover both kernels are within ~15 % of each other, so the
 # exact values are uncritical — and since both kernels are EXACT and N-independent, the
 # choice affects only speed, never output (the old N-aware short-fill overload is gone:
 # neither kernel has a meaningful setup cost).
 @inline _boundary_min_m(::AVX512)   = 10
-@inline _boundary_min_m(::AVX2)     = 4
+@inline _boundary_min_m(::AVX2)     = 3
 @inline _boundary_min_m(::Neon)     = 3
 @inline _boundary_min_m(::Portable) = 2
 @inline _use_boundary(step_num::Int, step_den::Int, backend::Backend) =
