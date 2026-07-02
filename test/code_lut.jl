@@ -1000,3 +1000,46 @@ end
     # The default-frequency path (code_frequency omitted, derived from the signal) still works.
     @test sum(diff(gen_code(4000, signal, prn, 4MHz)) .!= 0) == 511
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Strided (non-contiguous) Int8 output targets. The pointer/`VecRange`-based boundary and
+# windowed-permute kernels assume unit stride; a strided view (e.g. a row of a matrix) must
+# be routed through the plain indexed fallback instead of corrupting neighbouring memory.
+# Regression test for issue #103 (boundary-fill silently clobbered the untouched matrix row).
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "strided Int8 view targets (issue #103)" begin
+    # 20.46 MHz over GPS L1CA's 1.023 MHz gives m ≈ 20 samples/chip → boundary-fill path.
+    fs = 20.46MHz
+    N = 4000
+    signal = GPSL1CA()
+    ref = gen_code(N, signal, 1, fs)
+
+    @testset "one-shot gen_code! into a matrix row" begin
+        A = zeros(Int8, 2, N)
+        v = view(A, 1, :)                       # strided (stride 2), NOT contiguous
+        gen_code!(v, signal, 1, fs)
+        @test collect(v) == ref                 # the view itself must match the oracle
+        @test all(==(0), @view A[2, :])         # the untouched row must stay all-zero
+    end
+
+    @testset "continuing code_engine fill into a matrix row" begin
+        A = zeros(Int8, 2, N)
+        v = view(A, 1, :)
+        eng = code_engine(signal, 1, fs)
+        st = code_state(eng)
+        gen_code!(v, eng, st)
+        @test collect(v) == ref
+        @test all(==(0), @view A[2, :])
+
+        # chunked continuation into successive strided sub-views must also stay exact
+        B = zeros(Int8, 2, N)
+        st2 = code_state(eng)
+        pos = 0
+        for chunk in (1000, 1500, 1500)
+            st2 = gen_code!(view(B, 1, (pos + 1):(pos + chunk)), eng, st2)
+            pos += chunk
+        end
+        @test collect(@view B[1, :]) == ref
+        @test all(==(0), @view B[2, :])
+    end
+end

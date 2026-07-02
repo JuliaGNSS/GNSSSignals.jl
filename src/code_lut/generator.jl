@@ -288,7 +288,14 @@ end
 function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngineBoundary{SW,EXTRAS},
                         st::BoundaryState) where {SW,EXTRAS}
     SN = Int64(eng.step_num)
-    _boundary_fill!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), Val(SW), Val(EXTRAS))
+    if _is_dense_target(out)
+        _boundary_fill!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), Val(SW), Val(EXTRAS))
+    else
+        # Strided / non-contiguous target: `_boundary_fill!`'s pointer stores would corrupt
+        # neighbouring memory (issue #103), so fill via the plain indexed per-sample DDA walk
+        # (`_boundary_scalar_tail!` — byte-identical to the boundary kernel, just slower).
+        _boundary_scalar_tail!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), 0)
+    end
     # advance the state by exactly length(out) samples, arithmetically (exact)
     tot = Int64(st.r) + Int64(length(out)) * SN
     BoundaryState(Int(mod(Int64(st.c) + (tot >> _B), eng.L)), _RemT(tot & Int64(_STEP_DEN - 1)))
