@@ -110,21 +110,25 @@ include("code_lut/generator.jl")
     # depot, Docker/CI) where issuing `vpermb` SIGILLs (#104). So inside that branch we consult
     # the RUNTIME-detected feature set (`RUNTIME_FEATURES`, populated in `__init__`) and demote
     # AVX512 -> AVX2/Portable when the running CPU lacks VBMI. The AVX2-only precompile branch
-    # likewise re-checks avx2 at runtime. The fast path for genuinely-capable CPUs is preserved.
+    # likewise re-checks avx2 at runtime, demoting AVX2 -> Portable on a non-AVX2 CPU (#126). The
+    # fast path for genuinely-capable CPUs is preserved.
     @static if HOST_FEATURES.avx512vbmi
         # Precompiled on a VBMI host → the AVX-512 path IS compiled. This is the only branch
-        # that can OVER-claim (#104): the pkgimage may load on a non-VBMI CPU where `vpermb`
-        # SIGILLs. Consult the RUNTIME features and demote AVX512 -> AVX2/Portable when the live
-        # CPU lacks VBMI. Costs one Ref load per call (off the hot path); AVX-512 hosts are rare.
-        default_backend() =
-            RUNTIME_FEATURES[].avx512vbmi ? AVX512() :
-            RUNTIME_FEATURES[].avx2       ? AVX2()   : Portable()
+        # that can OVER-claim VBMI (#104): the pkgimage may load on a non-VBMI CPU where `vpermb`
+        # SIGILLs. Delegate to `_select_backend` (the unit-tested selection policy) applied to the
+        # RUNTIME features so the shipping path can't drift from the tested helper (#129); it
+        # demotes AVX512 -> AVX2/Portable when the live CPU lacks VBMI. Costs one Ref load per
+        # call (off the hot path); AVX-512 hosts are rare.
+        default_backend() = _select_backend(RUNTIME_FEATURES[])
     elseif HOST_FEATURES.avx2
-        # Precompiled without AVX-512: the AVX-512 path is dead code (never compiled — its
-        # `<64 x i8>` vpermb cannot be legalised on a non-AVX-512 target). AVX-512 VBMI is the
-        # only feature #104 concerns, and there is nothing here that could pick it, so we
-        # const-fold to AVX2 exactly as before — no Ref read, preserving the common fast path.
-        default_backend() = AVX2()
+        # Precompiled without AVX-512: the AVX-512 `vpermb` path is dead code (never compiled —
+        # its `<64 x i8>` op cannot be legalised on a non-AVX-512 target), so this branch must
+        # never return AVX512(). But AVX2 itself can OVER-claim exactly like #104, one tier down:
+        # with JULIA_CPU_TARGET=generic the native code loads on a CPU without AVX2, where the
+        # AVX2 `_pshufb` (an llvmcall forcing +avx2) SIGILLs (#126). So re-check the RUNTIME
+        # feature set and demote AVX2 -> Portable when the live CPU lacks AVX2. One Ref load per
+        # call; choose only between AVX2/Portable (the AVX-512 path is not compiled here).
+        default_backend() = RUNTIME_FEATURES[].avx2 ? AVX2() : Portable()
     else
         default_backend() = Portable()
     end
