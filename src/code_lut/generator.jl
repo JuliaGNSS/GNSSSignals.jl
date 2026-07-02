@@ -144,15 +144,10 @@ end
 # final sub-window tail, so the scalar cost is bounded (< 64 iterations) and off the hot path.
 @inline function _advance_scalar_512(rel::Vec{64,Int8}, rem::Vec{64,_RemT}, base::Int,
                                      m::Int, step_num::Int, step_den::Int, modulus::_RemT, L::Int)
-    frac1 = _RemT(step_num % step_den); whole1 = step_num ÷ step_den
+    frac1 = _RemT(step_num % step_den); whole1 = step_num ÷ step_den   # whole1 ∈ {0,1} < L
     r = rem; rl = rel; b = base
     @inbounds for _ in 1:m
-        r2 = r + frac1
-        carry = r2 >= modulus
-        r = vifelse(carry, r2 - modulus, r2)
-        h = Int(carry[1])
-        rl = rl + vifelse(carry, one(Vec{64,Int8}), zero(Vec{64,Int8})) - Int8(h)
-        b = _wrapL(b + whole1 + h, L)   # whole1 ∈ {0,1} < L ⇒ sum < 2L
+        rl, r, b = _advance_window_512(rl, r, b, frac1, whole1, modulus, L)
     end
     (rl, r, b)
 end
@@ -198,15 +193,11 @@ end
     CodeStatePhase{W,T}(phase, rem)
 end
 
-@inline function _advance_window_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, whole_W::T,
-                                       frac_W::_RemT, modulus::_RemT, Lc::T) where {W,T}
-    rem2 = rem + frac_W
-    carry = rem2 >= modulus
-    rem2 = vifelse(carry, rem2 - modulus, rem2)
-    phase2 = vifelse(carry, phase + whole_W + one(T), phase + whole_W)
-    phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
-    (phase2, rem2)
-end
+# One W-window phase advance = the canonical `_advance_phase` (iterate.jl) with the per-window
+# deltas (whole_W / frac_W); kept as a named wrapper for the fill loop's call site.
+@inline _advance_window_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, whole_W::T,
+                              frac_W::_RemT, modulus::_RemT, Lc::T) where {W,T} =
+    _advance_phase(phase, rem, frac_W, whole_W, modulus, Lc)
 
 function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
     p = eng.prepared; whole_W = eng.whole_W; frac_W = eng.frac_W; modulus = eng.modulus; Lc = eng.code_length
@@ -235,11 +226,7 @@ end
     frac1 = _RemT(step_num % step_den); whole1 = T(step_num ÷ step_den)
     ph = phase; r = rem
     @inbounds for _ in 1:m
-        r2 = r + frac1
-        carry = r2 >= modulus
-        r = vifelse(carry, r2 - modulus, r2)
-        ph = vifelse(carry, ph + whole1 + one(T), ph + whole1)
-        ph = vifelse(ph >= Lc, ph - Lc, ph)
+        ph, r = _advance_phase(ph, r, frac1, whole1, modulus, Lc)
     end
     (ph, r)
 end

@@ -628,6 +628,51 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Characterization test for the unified fixed-point arithmetic (issue #110): the windowed DDA
+# carry-advance (`_advance_phase` / `_advance_window_512` and the scalar-tail loops that now
+# call them) and the secondary-code period-walk (`_apply_secondary!` one-shot vs
+# `_apply_secondary_continue!`). Real secondary-code signals are filled at MODERATE
+# oversampling (fs = fc·P·osr with 1 < osr < 2) so every backend takes the windowed permute
+# regime — NOT the high-oversampling boundary fast path, whose DDA is separate exact
+# arithmetic. Reference = the one-shot full-length `gen_code!`; a chunked continuation whose
+# chunk sizes straddle both SIMD-window and secondary-period boundaries must reproduce it
+# byte-for-byte, cross-validating the one-shot and continuing copies of each unified routine.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "unified DDA + secondary period-walk (issue #110 characterization)" begin
+    sigs = [GPSL5I(), GPSL5Q(), GalileoE5aI(), GalileoE1C()]   # all carry a non-baked secondary
+    for signal in sigs
+        prn = 1
+        P = signal.lut.subchip_factor
+        fc = get_code_frequency(signal)
+        @test length(signal.lut.secondary) > 1                # residual (non-baked) secondary
+        for osr in (1.5, 1.75)                                 # windowed permute regime on every backend
+            fs = Float64(fc) * P * osr
+            N = 40000                                          # spans several secondary periods
+            # one-shot: windowed DDA + one-shot `_apply_secondary!` (the reference).
+            oneshot = Vector{Int8}(undef, N)
+            gen_code!(oneshot, signal, prn, fs, fc)
+            # a single warm fill (absolute offset 0) must match the one-shot exactly.
+            eng = code_engine(signal, prn, fs, fc)
+            warm = Vector{Int8}(undef, N)
+            gen_code!(warm, eng, code_state(eng))
+            @test warm == oneshot
+            # chunked continuation (offset > 0): a scalar-tail DDA advance runs at every chunk
+            # edge and `_apply_secondary_continue!` places the sign flips across call
+            # boundaries — the concatenation must equal the one big generation.
+            st = code_state(eng); got = Int8[]
+            for chunk in Iterators.cycle((1, 64, 999, 7, 16384, 63, 4096))
+                remaining = N - length(got)
+                remaining == 0 && break
+                buf = Vector{Int8}(undef, min(chunk, remaining))
+                st = gen_code!(buf, eng, st)
+                append!(got, buf)
+            end
+            @test got == oneshot
+        end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # End-to-end fractional-phase parity against the fixed-point scalar oracle (`_ref_rem0`),
 # which IS the definition of correct embedded-LUT output (the LUT was validated byte-for-sign
 # against the original generator in prior PRs). At fractional `start_phase` /

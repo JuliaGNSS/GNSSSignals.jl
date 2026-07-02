@@ -481,32 +481,10 @@ end
 @inline function _apply_secondary_continue!(out::AbstractVector{<:Integer}, eng::CodeFillEngine, n0::Int)
     sec = eng.secondary
     length(sec) <= 1 && return out
-    Ls = length(sec); per = eng.period_subchips
-    sn = eng.step_num; sd = eng.step_den
-    N = length(out); ps = eng.phase_sub; r0 = eng.rem0
-    # Absolute sample n (0-based) maps to sub-chip floor((n·sn + rem0)/sd) + ps; period p spans
-    # sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with sub-chip ≥ p·per,
-    # i.e. n ≥ cld(T·sd − rem0, sn) (T·sd > rem0 whenever T ≥ 1, since rem0 < sd). Omitting rem0
-    # would misplace the sign flip by a sample at a period edge for a fractional start phase.
-    # The first emitted sample is absolute n0, so window index = n - n0.
-    sub0 = (n0 * sn + r0) ÷ sd + ps
-    p = fld(sub0, per)              # period index of the first emitted sample
-    @inbounds while true
-        T0 = p * per - ps
-        n_start = T0 <= 0 ? 0 : cld(T0 * sd - r0, sn) # absolute first sample of period p
-        n_start - n0 >= N && break
-        T1 = (p + 1) * per - ps
-        n_end = min(T1 <= 0 ? 0 : cld(T1 * sd - r0, sn), n0 + N)  # absolute end (exclusive)
-        if sec[mod(p, Ls) + 1] == -1
-            lo = max(n_start, n0) - n0 + 1            # 1-based into out
-            hi = n_end - n0                            # 1-based inclusive
-            @simd for n in lo:hi
-                out[n] = -out[n]
-            end
-        end
-        p += 1
-    end
-    out
+    # Same period-walk as the one-shot fill, generalised by the absolute sample offset `n0`
+    # (see `CodeLUT._apply_secondary!`); n0 = 0 reproduces the one-shot version exactly.
+    CodeLUT._apply_secondary!(out, sec, eng.period_subchips, eng.step_num, eng.step_den,
+                              eng.phase_sub, eng.rem0, n0)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
