@@ -283,6 +283,15 @@ sub-sample resolution: the phase is split into an integer sub-chip offset plus a
 start_index_shift = 0` gives phase `0` exactly; negative `start_index_shift` is handled
 correctly. Any non-baked secondary (e.g. GPS L5I's NH10) is applied per primary period.
 
+# Rate quantization
+The chips-per-sample rate itself is quantized to the DDA's fixed `2^-30` sub-chip grid, so
+within a fill the phase drifts from the exact requested rate by at most `N · 2^-31`
+sub-chips over `N` samples. This is negligible for closed-loop tracking (≈ 1e-4 chips over
+a 200k-sample epoch, and every call re-anchors to the exact float `start_phase`), but a
+second-scale constant-rate fill (simulation / open-loop snapshot) accrues ~0.01–0.02 chips
+per second at 50 MHz. Split constant-rate fills longer than ~1e7 samples into segments and
+re-anchor each segment via `start_phase`; see the usage docs for an example.
+
 # Requirements
 `sampling_frequency ≥ code_frequency · subchip_factor` (else an error is raised). The embedded
 `SignalLUT` is always present (signals whose modulation the LUT can't bake fail to construct),
@@ -407,7 +416,13 @@ block-to-block continuation (tracking). Non-baked secondaries (e.g. GPS L5I's NH
 supported. For a one-shot fill the [`gen_code!`](@ref)`(out, signal, prn, …)` method is simpler.
 
 Same oversampling requirement and fractional sub-chip phase support as the one-shot
-[`gen_code!`](@ref). `backend` defaults to the host's best SIMD backend; pass a weaker one
+[`gen_code!`](@ref) — including its rate quantization: the engine locks the rate to the
+DDA's `2^-30` sub-chip grid at construction and never re-anchors to the requested float
+rate, so the phase drifts by at most `N · 2^-31` sub-chips over the `N` samples generated
+since the engine's `start_phase` anchor. Closed-loop tracking is unaffected (the engine is
+rebuilt — re-anchoring the phase — on every Doppler update); for open-loop constant-rate
+streaming, rebuild the engine with a freshly computed `start_phase` about every 1e7
+samples. `backend` defaults to the host's best SIMD backend; pass a weaker one
 (e.g. `CodeLUT.AVX2()`/`CodeLUT.Portable()`) to force it — handy for testing the non-default
 paths on a given CPU. Forcing a backend the CPU does not support is invalid.
 """
@@ -467,6 +482,10 @@ this is the hot path), and **return** the state advanced by exactly `length(samp
 Concatenating the outputs of consecutive calls — threading the returned state — equals one big
 generation. Any non-baked secondary (e.g. GPS L5I's NH10) is applied per primary period across
 call boundaries via the state's absolute sample offset. Int8 output only.
+
+Because the engine's rate is fixed on the DDA's `2^-30` sub-chip grid, the phase drift bound
+of `N · 2^-31` sub-chips (see [`code_engine`](@ref)) applies to the *total* `N` samples
+generated since the engine's phase anchor, not per call.
 """
 function gen_code!(sampled_code::AbstractVector{Int8}, eng::CodeFillEngine, st::CodeFillState)
     N = length(sampled_code)
@@ -515,8 +534,9 @@ Build a loop-invariant, value-based code engine over PRN `prn` of `signal` (read
 `signal.lut`) for a `K`-way interleaved fused loop. Pair with `K` states `code_state(eng, k)`
 (`k = 0..K-1`, `W` samples apart) and drive each with [`code_lookup`](@ref) /
 [`code_advance`](@ref); nothing is materialised or heap-allocated. The code-side counterpart
-to SinCosLUT's `carrier_engine`. Same oversampling requirement and fractional sub-chip phase
-support as [`gen_code!`](@ref); a non-baked secondary (e.g. GPS L5I's NH10) or
+to SinCosLUT's `carrier_engine`. Same oversampling requirement, fractional sub-chip phase
+support, and `2^-30` rate quantization (drift ≤ `N · 2^-31` sub-chips over `N` samples) as
+[`gen_code!`](@ref); a non-baked secondary (e.g. GPS L5I's NH10) or
 `sampling_frequency < code_frequency·subchip_factor` raises an error (use the array-filling
 [`gen_code!`](@ref) / continuing [`code_engine`](@ref) without `Val(K)` instead).
 """
