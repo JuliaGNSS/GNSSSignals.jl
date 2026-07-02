@@ -162,25 +162,36 @@ end
 # match the baked-table lookup, or the sign flip lands on the wrong sample at a period edge).
 function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub,
                            rem0::_RemT = _RemT(0))
-    Ls = length(mc.secondary); per = mc.period_subchips
     sn, sd = _fixed_point_step(code_frequency * mc.subchip_factor / sampling_frequency)
-    phase_sub = Int(phase_sub); r0 = Int(rem0)
-    N = length(out)
-    # sample n (0-based) maps to sub-chip floor((n·sn + rem0)/sd) + phase_sub; period p spans
-    # sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with that sub-chip
+    _apply_secondary!(out, mc.secondary, mc.period_subchips, sn, sd, Int(phase_sub), Int(rem0), 0)
+end
+
+# Period-walk core: multiply each whole primary period covered by `out` by its secondary chip,
+# where `out`'s first sample is absolute sample `n0`. `per` = sub-chips per primary period,
+# `sn/sd` the fixed-point sub-chip step, `phase_sub` the integer sub-chip start offset (θ_int),
+# `r0` the fractional sub-chip residual. `n0 = 0` is the one-shot fill; a positive `n0`
+# continues an ongoing fill (see `_apply_secondary_continue!`).
+function _apply_secondary!(out, secondary::AbstractVector, per::Int, sn::Int, sd::Int,
+                           phase_sub::Int, r0::Int, n0::Int)
+    Ls = length(secondary); N = length(out)
+    # absolute sample n (0-based) maps to sub-chip floor((n·sn + rem0)/sd) + phase_sub; period p
+    # spans sub-chips [p·per, (p+1)·per). First sample of period p: smallest n with that sub-chip
     # ≥ p·per, i.e. n ≥ cld(T·sd − rem0, sn) (T·sd > rem0 whenever T ≥ 1, since rem0 < sd).
-    # Start at the period sample 0 falls in (A(0) = phase_sub) — NOT 0: a negative
-    # start_index_shift puts sample 0 in a negative period, and start_phase ≥ one code period
+    # Start at the period the first emitted sample (absolute n0) falls in — NOT period 0: a
+    # negative start_index_shift puts n0 in a negative period, and start_phase ≥ one code period
     # in a period ≥ 1; starting at 0 would apply the wrong secondary chip to the leading samples.
-    p = fld(phase_sub, per)
+    sub0 = (n0 * sn + r0) ÷ sd + phase_sub
+    p = fld(sub0, per)
     @inbounds while true
         T = p * per - phase_sub
-        s_p = T <= 0 ? 0 : cld(T * sd - r0, sn)
-        s_p >= N && break
+        n_start = T <= 0 ? 0 : cld(T * sd - r0, sn)     # absolute first sample of period p
+        n_start - n0 >= N && break
         Tn = (p + 1) * per - phase_sub
-        s_next = min(Tn <= 0 ? 0 : cld(Tn * sd - r0, sn), N)
-        if mc.secondary[mod(p, Ls) + 1] == -1
-            @simd for n in (s_p + 1):s_next
+        n_end = min(Tn <= 0 ? 0 : cld(Tn * sd - r0, sn), n0 + N)  # absolute end (exclusive)
+        if secondary[mod(p, Ls) + 1] == -1
+            lo = max(n_start, n0) - n0 + 1              # 1-based into out
+            hi = n_end - n0                             # 1-based inclusive
+            @simd for n in lo:hi
                 out[n] = -out[n]
             end
         end

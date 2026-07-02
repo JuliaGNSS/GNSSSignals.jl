@@ -152,15 +152,9 @@ end
 # One DDA micro-advance (frac = rem0, whole = 0) for the phase-form state. Adds the fractional
 # sub-chip start offset to every lane's running remainder, carrying ≤1 chip. Used to seed a
 # fractional start phase at setup; the steady-state advance is unchanged.
-@inline function _seed_micro_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, rem0::_RemT,
-                                   modulus::_RemT, Lc::T) where {W,T}
-    rem2 = rem + rem0
-    carry = rem2 >= modulus
-    rem3 = vifelse(carry, rem2 - modulus, rem2)
-    phase2 = vifelse(carry, phase + one(T), phase)
-    phase2 = vifelse(phase2 >= Lc, phase2 - Lc, phase2)
-    (phase2, rem3)
-end
+@inline _seed_micro_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, rem0::_RemT,
+                          modulus::_RemT, Lc::T) where {W,T} =
+    _advance_phase(phase, rem, rem0, zero(T), modulus, Lc)   # whole = 0: pure fractional seed
 
 # One windowed lookup: phase (chip indices mod L for W consecutive samples) -> W chips.
 # base = lane-0 chip; relative index of every lane is in 0..W-1 (≤ 63) because we
