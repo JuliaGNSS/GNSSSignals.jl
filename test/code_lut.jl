@@ -525,6 +525,32 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Issue #107: engine construction must be ZERO-COPY. `_modulated_code_view` passes the padded
+# LUT column as a unit-stride `SubArray{Int8}` view; a concrete `padded::Vector{Int8}` field
+# would implicitly `convert`/copy the whole column on every build (~750 KB for GPSL2CL). The
+# `padded` field of FillEngine512 / FillEngineBoundary / CodeEngine512 must be parametric
+# (`V<:AbstractVector{Int8}`, like PreparedCode) so the view is stored without conversion.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "engine construction is zero-copy (issue #107)" begin
+    sig = GPSL2CL(); prn = 1                    # 767250-chip code → ~750 KB padded column
+    fc = get_code_frequency(sig)
+    coltot = size(sig.lut.padded, 1)            # bytes copied if the field is concrete
+    # Barriers so the built engine type is concrete at the @allocated site.
+    build_fill(s, p, fsx, fcx) = code_engine(s, p, fsx, fcx)
+    build_val(s, p, fsx, fcx)  = code_engine(s, p, fsx, fcx, Val(1))
+    fs_mod  = fc * 4.9                           # ~4.9 samples/chip → FillEngine512 / CodeEngine512
+    fs_high = fc * 12                            # ≥10 samples/chip → FillEngineBoundary
+    # A zero-copy build allocates only the small transient view/engine (a few KB); the concrete
+    # field copies the whole column. Assert well under a full-column copy.
+    bound = 64 * 1024
+    @test bound < coltot                         # the copy really is much larger than the bound
+    build_fill(sig, prn, fs_mod, fc); build_fill(sig, prn, fs_high, fc); build_val(sig, prn, fs_mod, fc)
+    @test (@allocated build_fill(sig, prn, fs_mod,  fc)) < bound   # FillEngine512
+    @test (@allocated build_fill(sig, prn, fs_high, fc)) < bound   # FillEngineBoundary
+    @test (@allocated build_val(sig, prn, fs_mod,   fc)) < bound   # CodeEngine512
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Galileo E1B CBOC support in the LUT path. The subcarrier's two sqrt-power amplitudes are
 # baked as an Int8 *integer approximation* (default (19,6) ≈ (√(10/11), √(1/11)), ratio √10);
 # the permute/run-fill backends carry the resulting multi-level Int8 values verbatim, so the
