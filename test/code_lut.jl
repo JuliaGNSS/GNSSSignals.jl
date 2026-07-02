@@ -735,6 +735,7 @@ end
         for m in (1, 2, 6)
             @test GNSSSignals._codelut_modulation(BOCcos(m, 1)) == CL.BOCcos(m)
         end
+        @test CL.BOCcos() == CL.BOCcos(1)                # zero-arg defaults to m == 1
         @test_throws ErrorException GNSSSignals._codelut_modulation(BOCcos(2, 2))
     end
 
