@@ -847,6 +847,78 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Issue #131: the oversampling guard (`fs ≥ fc·P`) and the fractional-phase split preamble are
+# shared by all THREE public LUT entry points — the one-shot `gen_code!(out, signal, prn, …)`,
+# the continuing `code_engine(signal, prn, fs, fc)`, and the fused `code_engine(…, Val(K))`.
+# This pins that they anchor phase identically: across a rate + fractional `start_phase` /
+# `start_index_shift` sweep the three must produce BYTE-IDENTICAL output, and the guard must
+# fire at exactly the same `fs < fc·P` condition on all three (a shared setup helper must not
+# let the guard or the phase-split convention drift between the paths). Baked-secondary signals
+# only, so the `Val(K)` engine (no residual-secondary support) is exercised too.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "entry-point preamble equivalence (issue #131 characterization)" begin
+    # Materialise the fused `Val(1)` value engine's fill by concatenating its W-wide lookups.
+    function collect_val(eng, N)
+        W = code_width(eng)
+        out = Vector{Int8}(undef, N); st = code_state(eng); i = 1
+        while i + W - 1 <= N
+            v = code_lookup(eng, st)
+            for j in 1:W
+                out[i + j - 1] = v[j]
+            end
+            i += W; st = code_advance(eng, st)
+        end
+        out
+    end
+
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1) — all baked
+    for signal in sigs
+        prn = 1
+        fc = get_code_frequency(signal)
+        P = signal.lut.subchip_factor
+        for fs in (fc * P, fc * P * 2.5)                 # boundary (fs == fc·P) and permute regime
+            for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
+                # size N a multiple of the fused engine's SIMD width W so `collect_val` fills exactly.
+                eng_val = code_engine(signal, prn, fs, fc, Val(1); start_phase = sp, start_index_shift = sis)
+                W = code_width(eng_val)
+                N = 40 * W
+
+                oneshot = Vector{Int8}(undef, N)
+                gen_code!(oneshot, signal, prn, fs, fc, sp, sis)
+
+                eng = code_engine(signal, prn, fs, fc; start_phase = sp, start_index_shift = sis)
+                cont = Vector{Int8}(undef, N)
+                gen_code!(cont, eng, code_state(eng))
+
+                val = collect_val(eng_val, N)
+
+                @test cont == oneshot                    # continuing engine == one-shot
+                @test val == oneshot                     # fused Val(K) engine == one-shot
+            end
+        end
+    end
+
+    # The `fs < fc·P` oversampling guard must fire at the SAME condition on all three entry
+    # points: fine at exactly fc·P, an error for any fs below it.
+    @testset "shared oversampling guard fires identically" begin
+        signal = GPSL1C_D(); prn = 1                     # BOC(1,1) → P = 2, so fc·P > fc
+        fc = get_code_frequency(signal)
+        P = signal.lut.subchip_factor
+        @test P > 1
+        ok  = fc * P                                     # exactly at the threshold — allowed
+        bad = fc * P * 0.5                               # below fc·P — must error everywhere
+        # At the threshold none of the three throw.
+        @test gen_code!(Vector{Int8}(undef, 64), signal, prn, ok, fc) isa AbstractVector
+        @test code_engine(signal, prn, ok, fc) isa GNSSSignals.CodeFillEngine
+        @test code_engine(signal, prn, ok, fc, Val(1)) !== nothing
+        # Below the threshold all three raise (the shared guard condition).
+        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, bad, fc)
+        @test_throws ErrorException code_engine(signal, prn, bad, fc)
+        @test_throws ErrorException code_engine(signal, prn, bad, fc, Val(1))
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Cosine-phased BOC support in the LUT path. A cosine BOC(m,1) is the sine BOC(m,1) sub-carrier
 # shifted by a quarter cycle (`GNSSSignals.get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin, φ+¼)`),
 # so its constant segments straddle the sine sub-chip grid. Baking it at `P = 4m` quarter-sub-chips
