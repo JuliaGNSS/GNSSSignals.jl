@@ -61,8 +61,11 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ---- AVX-512 engine + state (incremental rel / scalar base) ----
-struct CodeEngine512
-    padded::Vector{Int8}
+# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode` above) so a zero-copy
+# column view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a
+# non-parametric `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+struct CodeEngine512{V<:AbstractVector{Int8}}
+    padded::V
     step_num::Int
     step_den::Int
     phase_offset::Int

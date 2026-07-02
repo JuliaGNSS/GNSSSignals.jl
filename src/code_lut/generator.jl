@@ -41,8 +41,11 @@ end
 # interleaved streams (W apart) used for throughput are spawned from the carried stream-0 at
 # the start of each fill. After a fill of M samples the returned state is stream-0 at absolute
 # offset M, so the next call resumes seamlessly.
-struct FillEngine512
-    padded::Vector{Int8}
+# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode`) so a zero-copy column
+# view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a non-parametric
+# `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+struct FillEngine512{V<:AbstractVector{Int8}}
+    padded::V
     step_num::Int
     step_den::Int
     L::Int
@@ -246,13 +249,21 @@ struct BoundaryState
     r::_RemT                  # fractional chip phase (< 2^_B)
 end
 
-struct FillEngineBoundary{SW,EXTRAS}
-    padded::Vector{Int8}
+# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode`) so a zero-copy column
+# view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a non-parametric
+# `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+struct FillEngineBoundary{SW,EXTRAS,V<:AbstractVector{Int8}}
+    padded::V
     L::Int
     step_num::Int
     c0::Int             # initial table chip index (for fill_state)
     r0::_RemT           # initial fractional chip phase (for fill_state)
 end
+# Infer `V` from `padded` so the `SW`/`EXTRAS`-only call sites below stay unchanged (Julia only
+# auto-generates the all-params and no-params constructors, not this partially-applied one).
+FillEngineBoundary{SW,EXTRAS}(padded::AbstractVector{Int8}, L::Int, step_num::Int, c0::Int,
+                              r0::_RemT) where {SW,EXTRAS} =
+    FillEngineBoundary{SW,EXTRAS,typeof(padded)}(padded, L, step_num, c0, r0)
 
 function FillEngineBoundary(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
                             rem0::_RemT = _RemT(0))
