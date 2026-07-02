@@ -276,18 +276,17 @@ function FillEngineBoundary(table::CodeTable, step_num::Int, step_den::Int, phas
     c0 = Int(mod(Int64(rem0) >> _B + phase_offset, table.length))
     r0 = _RemT(Int64(rem0) & Int64(step_den - 1))
     m = _STEP_DEN ÷ step_num
-    if m <= 6
-        FillEngineBoundary{8,false}(table.padded, table.length, step_num, c0, r0)
-    elseif m <= 14
-        FillEngineBoundary{16,false}(table.padded, table.length, step_num, c0, r0)
-    elseif m <= 30
-        FillEngineBoundary{32,false}(table.padded, table.length, step_num, c0, r0)
-    elseif m <= 62
-        FillEngineBoundary{64,false}(table.padded, table.length, step_num, c0, r0)
-    else
-        FillEngineBoundary{64,true}(table.padded, table.length, step_num, c0, r0)
+    # Same rung → (store width, EXTRAS) ladder as `_boundary_dispatch!`, shared via the one
+    # `_with_boundary_width` helper (issue #130) so the two sites can never silently desync.
+    # `_build_boundary` recovers `SW`/`EXTRAS` by dispatch so the stored `Val`s stay concrete.
+    _with_boundary_width(m) do sw, extras
+        _build_boundary(sw, extras, table.padded, table.length, step_num, c0, r0)
     end
 end
+
+@inline _build_boundary(::Val{SW}, ::Val{EXTRAS}, padded, L::Int, step_num::Int, c0::Int,
+                        r0::_RemT) where {SW,EXTRAS} =
+    FillEngineBoundary{SW,EXTRAS}(padded, L, step_num, c0, r0)
 
 @inline fill_state(eng::FillEngineBoundary) = BoundaryState(eng.c0, eng.r0)
 

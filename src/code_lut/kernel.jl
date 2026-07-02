@@ -565,18 +565,34 @@ end
 # SW = 8 rung matters on store-bandwidth-limited cores (CI runners): at m ≈ 5 a 16-wide
 # store is 3.3× write amplification vs 8-wide's 1.6× (measured 1.4–1.6× on the ubuntu
 # benchmark's GPSL1CA @ 5 MHz row).
+#
+# The rung → (store width, EXTRAS) mapping lives here in one place and is shared by both
+# selection sites (this dispatch and the `FillEngineBoundary` constructor in generator.jl,
+# issue #130). Because the choice never affects output, retuning it at only one site would
+# silently desync one-shot `gen_code!` from the continuing `code_engine` for the same rate —
+# uncatchable by output tests. CPS style (`f` fed the `Val`s) rather than a plain
+# `m -> (Val, Val)` return: five distinct `Val` pairs would form a 5-way union, past Julia's
+# union-splitting limit of 4, forcing dynamic dispatch in `_boundary_dispatch!`. As a
+# `@inline`d continuation `f` is inlined into each branch, so the `Val`s stay compile-time
+# constants — the dispatch stays type-stable and the constructor still stores a concrete `Val`.
+@inline function _with_boundary_width(f::F, m::Int) where {F}
+    if m <= 6
+        f(Val(8), Val(false))
+    elseif m <= 14
+        f(Val(16), Val(false))
+    elseif m <= 30
+        f(Val(32), Val(false))
+    elseif m <= 62
+        f(Val(64), Val(false))
+    else
+        f(Val(64), Val(true))
+    end
+end
+
 @inline function _boundary_dispatch!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64)
     m = _STEP_DEN ÷ Int(SN)
-    if m <= 6
-        _boundary_fill!(out, padded, L, SN, c0, r0, Val(8), Val(false))
-    elseif m <= 14
-        _boundary_fill!(out, padded, L, SN, c0, r0, Val(16), Val(false))
-    elseif m <= 30
-        _boundary_fill!(out, padded, L, SN, c0, r0, Val(32), Val(false))
-    elseif m <= 62
-        _boundary_fill!(out, padded, L, SN, c0, r0, Val(64), Val(false))
-    else
-        _boundary_fill!(out, padded, L, SN, c0, r0, Val(64), Val(true))
+    _with_boundary_width(m) do sw, extras
+        _boundary_fill!(out, padded, L, SN, c0, r0, sw, extras)
     end
     nothing
 end
