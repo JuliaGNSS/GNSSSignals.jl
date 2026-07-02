@@ -535,6 +535,41 @@ const _BACKENDS = (CL.Portable(),
             @test Int(ep.whole_W) == Int(div(Int64(W) * sn2, Int64(sd2)) % L)
             @test ep.frac_W       == mod(Int64(W) * sn2, Int64(sd2))
         end
+        # Value-engine `_make_engine` per-stride delta widening (issue #125): the residual
+        # gap of #108. `_make_engine` bakes the K·W stride deltas as `div/mod(stride·sn, sd)`;
+        # with sn up to 2^_B the product `stride·sn` overflows Int32 on 32-bit Julia and must be
+        # done in Int64 (exactly as generator.jl / the fill engines). Pure construction-time
+        # arithmetic, so the stored deltas are host-independent and must equal the Int64 reference.
+        let sn2 = 1 << 29, sd2 = 2^30    # cps = 0.5 ⇒ sn = 2^29
+            table = CL.CodeTable(ones(Int8, 10230)); L = table.length
+            r0 = CL._RemT(0)
+            # AVX-512 path (W = 64): stride = 64, stride·sn = 2^35 overflows Int32.
+            let stride = 64
+                @test Int32(stride) * Int32(sn2) == 0                    # stride·sn wraps to 0 in Int32…
+                @test Int32(stride) * Int32(sn2) != Int64(stride) * Int64(sn2)
+                e = CL._make_engine(table, sn2, sd2, 0, r0, Val(1), CL.AVX512(), Val(64))
+                @test e.whole_stride == Int(div(Int64(stride) * sn2, Int64(sd2)) % L)
+                @test e.frac_stride  == mod(Int64(stride) * sn2, Int64(sd2))
+                @test e.whole_stride == 32 && e.whole_stride != 0        # pre-fix Int32 gave 0 → engine never advanced
+            end
+            # Phase path, the #125-headline case — AVX2 (W = 32), K = 1: stride = 32,
+            # stride·sn = 2^34 wraps to 0 in Int32 ⇒ frac_stride = whole_stride = 0 (dead engine).
+            let stride = 32
+                @test Int32(stride) * Int32(sn2) == 0
+                ep = CL._make_engine(table, sn2, sd2, 0, r0, Val(1), CL.AVX2(), Val(32))
+                @test Int(ep.whole_stride) == Int(div(Int64(stride) * sn2, Int64(sd2)) % L)
+                @test ep.frac_stride       == mod(Int64(stride) * sn2, Int64(sd2))
+                @test Int(ep.whole_stride) == 16
+            end
+            # Phase path with K > 1 driving the overflow (Portable ⇒ W = 1, stride = K):
+            # 4·sn = 2^31 overflows Int32; the widened product is still exact.
+            let stride = 4    # K = 4, W = 1
+                @test Int32(stride) * Int32(sn2) < 0                     # overflows Int32 to a negative index
+                ep = CL._make_engine(table, sn2, sd2, 0, r0, Val(4), CL.Portable(), Val(1))
+                @test Int(ep.whole_stride) == Int(div(Int64(stride) * sn2, Int64(sd2)) % L)
+                @test ep.frac_stride       == mod(Int64(stride) * sn2, Int64(sd2))
+            end
+        end
     end
 end
 
