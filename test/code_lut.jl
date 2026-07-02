@@ -718,6 +718,30 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CBOC Int8 amplitudes are DERIVED from the modulation's own `boc1_power` (issue #112),
+# not hardcoded to E1's (19, 6). The default 10/11 split must still bake to (19, 6); a
+# non-10/11 split must bake amplitudes whose ratio tracks √(boc1_power) : √(1-boc1_power),
+# NOT the fixed (19, 6). `cboc_amplitudes` stays an explicit override.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "CBOC amplitudes derived from boc1_power (#112)" begin
+    # `_codelut_modulation(m::CBOC)` (no override) derives the Int8 pair from `m.boc1_power`.
+    amps(m) = let c = GNSSSignals._codelut_modulation(m)
+        (Int(c.a1), abs(Int(c.a2)))
+    end
+    # (a) the E1 default (10/11) still reproduces the historical (19, 6)
+    @test amps(GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(6, 1), 10 / 11)) == (19, 6)
+    # (b) a 50/50 split must NOT be (19, 6): its ratio → √0.5 / √0.5 = 1
+    a1, a2 = amps(GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(6, 1), 0.5))
+    @test (a1, a2) != (19, 6)
+    @test a1 / a2 ≈ sqrt(0.5) / sqrt(1 - 0.5) rtol = 0.05
+    @test a1 + a2 <= typemax(Int8)                      # within the Int8 table budget
+    # explicit `cboc_amplitudes` still overrides the derived pair
+    ovr = GNSSSignals._codelut_modulation(
+        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(6, 1), 0.5), (19, 6))
+    @test (Int(ovr.a1), Int(ovr.a2)) == (19, 6)
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # End-to-end fractional-phase parity against the fixed-point scalar oracle (`_ref_rem0`),
 # which IS the definition of correct embedded-LUT output (the LUT was validated byte-for-sign
 # against the original generator in prior PRs). At fractional `start_phase` /
