@@ -129,7 +129,9 @@ end
 # Phase type `T` is Int16 for tables that fit (fast), Int32 for longer ones (the AVX2
 # path can't use the scalar-base rel trick — it regressed — so it widens the phase vector
 # instead). AVX-512 uses the rel/scalar-base path (`_init_rel`) and ignores this.
-@inline _phase_type(L) = L <= typemax(Int16) ? Int16 : Int32
+# `_advance_phase` forms `phase + whole (+1)` in T BEFORE the `≥ Lc` wrap, so T must hold
+# up to `2L-1` (phase ≤ L-1, whole_stride ≤ L-1) — hence Int16 only up to L = 16384.
+@inline _phase_type(L) = 2L - 1 <= typemax(Int16) ? Int16 : Int32
 # Fixed-point init: chip index = `p >> _B`, remainder = `p & (step_den-1)`, p = step_num·sample.
 # AVX2 has no 64-bit SIMD multiply and `p` (< 2^37 at _B=30) overflows Int32, so SPLIT
 # `step_num = hi·2^H + lo` (H = _B÷2 = 15): the partial products `hi·s` and `lo·s` both fit

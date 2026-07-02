@@ -136,6 +136,15 @@ end
 function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, backend, ::Val{W}) where {K,W}
     backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
     stride = K * W; L = table.length; T = _phase_type(L)
+    # `code_state(eng, stream)` seeds the phase engine at first sample `stream·W` (stream =
+    # 0..K-1), so the largest per-lane initial chip index is `K·W - 1`. `_init_state`'s
+    # single-conditional-subtract reduction only holds when that index is `< L`; beyond it
+    # the phase under-reduces and `_window_lookup` reads past the code. AVX-512 (its own
+    # builder above) carries an Int base reduced by `_wrapL` and is immune. (Off the hot path:
+    # this runs once per engine build.)
+    K * W ≤ L || throw(ArgumentError(
+        "code_engine(…, Val(K)): K·W = $(K * W) exceeds code length L = $L (W = $W lanes for " *
+        "$(backend_name(backend))); code_state(eng, K-1) would seed a chip index ≥ L. Use K ≤ $(L ÷ W)."))
     prepared = prepare_code(table; backend = backend)
     CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, rem0, _RemT(sd),
         _RemT(mod(stride * sn, sd)), T(div(stride * sn, sd) % L), L)

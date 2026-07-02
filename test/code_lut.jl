@@ -408,6 +408,60 @@ const _BACKENDS = (CL.Portable(),
         @test CL._check_windowed_length(CL.CodeTable(ones(Int8, 8)), CL.Neon())
     end
 
+    # ── unvalidated K in code_engine(…, Val(K)) (issue #128) ──────────────────────────────
+    # `code_state(eng, stream)` seeds the phase engine's per-stream DDA at first sample
+    # `stream·W`. `_init_state`'s else-branch reduces the initial chip index with a single
+    # conditional subtract (`idx < 2L`), assuming that index is `< L` — true for the fill
+    # callers (`start_sample < 4W`) but NOT for `code_state`, which passes an unbounded
+    # `stream·W`. Once `stream·W ≥ L` (needs `K·W > L`) the index under-reduces and
+    # `_window_lookup` reads past the code, silently returning wrong / out-of-bounds chips.
+    # AVX-512 is immune (`CodeState512` carries an Int base reduced by `_wrapL`).
+    @testset "issue #128: K·W ≤ L validated in code_engine(…, Val(K))" begin
+        L = 1023
+        chips = rand(MersenneTwister(128), Int8[-1, 1], L); ct = CL.CodeTable(chips)
+        # cps = 1 (sn = sd) is the worst case: chip index = sample index, so lane j of stream
+        # k sits at chip k·W + j — the tight case the `K·W ≤ L` bound exists to guard.
+        refchip(n) = chips[mod(n + (L - 1), L) + 1]     # phase offset L-1, cps = 1
+        # Validation happens at engine construction, before any SIMD lookup, so the K·W > L
+        # rejection is checked on every phase backend (safe to *build* a NEON engine on x86);
+        # the correctness half calls `code_lookup`, so it runs only on host-runnable backends.
+        for be in (CL.Portable(), CL.AVX2(), CL.Neon())
+            W = _width(be)
+            # K·W > L: rejected at construction with a descriptive error (was: silent
+            # wrong / OOB chips from `code_state`/`code_lookup`).
+            Kbad = (L ÷ W) + 1
+            @test Kbad * W > L
+            @test_throws ArgumentError CL.code_engine(ct, _SD, _SD, Val(Kbad); phase = L - 1, backend = be)
+        end
+        # K·W ≤ L: builds, and every stream matches the per-lane fixed-point reference.
+        for be in _BACKENDS
+            be isa CL.AVX512 && continue    # immune / different engine; large K stays valid below
+            W = _width(be)
+            Kok = L ÷ W
+            eng = CL.code_engine(ct, _SD, _SD, Val(Kok); phase = L - 1, backend = be)
+            for stream in (0, Kok - 1)
+                v = CL.code_lookup(eng, CL.code_state(eng, stream))
+                @test [v[j] for j in 1:W] == [refchip(stream * W + (j - 1)) for j in 1:W]
+            end
+        end
+        # AVX-512 (W=64) is immune (Int base + `_wrapL`) and must NOT be rejected for large K.
+        if _hasfeat(:avx512vbmi)
+            @test CL.code_engine(ct, _SD, _SD, Val(64); backend = CL.AVX512()) isa CL.CodeEngine512
+        end
+    end
+
+    # ── Int16 phase-lane headroom (issue #128) ────────────────────────────────────────────
+    # `_advance_phase` adds `phase + whole (+1)` in the lane type T BEFORE the `≥ Lc` wrap, so
+    # T must hold up to `2L-1` (phase ≤ L-1, whole_stride ≤ L-1). Int16 tops out at 32767, so
+    # the widest Int16-safe length is L = 16384 (2·16384-1 = 32767); L ≥ 16385 needs Int32.
+    @testset "issue #128: _phase_type reserves Int16 headroom for _advance_phase" begin
+        @test CL._phase_type(16384) == Int16
+        @test CL._phase_type(16385) == Int32
+        @test CL._phase_type(typemax(Int16)) == Int32
+        # Largest Int16-classed built-in primary (GPS L1C data, L = 20460) now widens to Int32.
+        @test CL._phase_type(20460) == Int32
+    end
+
     # ── secondary-code period-walk overflow (issues #102 / #108) ──────────────────────────
     # `_apply_secondary!` walks whole primary periods, negating the samples of periods whose
     # residual (non-baked) secondary chip is −1. It used to compute the seed `n0·sn` and the
