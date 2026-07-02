@@ -718,6 +718,70 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Cosine-phased BOC support in the LUT path. A cosine BOC(m,1) is the sine BOC(m,1) sub-carrier
+# shifted by a quarter cycle (`GNSSSignals.get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin, φ+¼)`),
+# so its constant segments straddle the sine sub-chip grid. Baking it at `P = 4m` quarter-sub-chips
+# per chip aligns every segment boundary to the grid, and each sub-chip carries the fixed ±1
+# cosine sign. The float reference is the package's own `GNSSSignals.get_subcarrier_code(BOCcos(m,1), φ)` — the
+# `get_code` BOC path (primary × subcarrier, n == 1, no secondary) sampled at the sub-chip rate.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "cosine-phased BOC (LUT quarter-sub-chip bake)" begin
+    rng = MersenneTwister(7)
+    Lp = 64
+    primary = rand(rng, Int8[-1, 1], Lp)
+    codes = reshape(Int16.(primary), Lp, 1)             # single-PRN code matrix for build_signal_lut
+
+    @testset "_codelut_modulation maps BOCcos(m,1); n != 1 errors" begin
+        for m in (1, 2, 6)
+            @test GNSSSignals._codelut_modulation(BOCcos(m, 1)) == CL.BOCcos(m)
+        end
+        @test_throws ErrorException GNSSSignals._codelut_modulation(BOCcos(2, 2))
+    end
+
+    @testset "baked table = P = 4m quarter-sub-chips, signs match float get_subcarrier_code" for m in (1, 2, 3, 6)
+        P = 4 * m
+        mc = CL.code_replica(primary, CL.BOCcos(m); max_bake = typemax(Int16))
+        @test mc.subchip_factor == P
+        @test length(mc.table) == Lp * P
+        # Float truth: sub-chip k of primary chip c carries primary[c] × cosine subcarrier at the
+        # sub-chip midpoint phase (c + (k+0.5)/P); this is exactly the get_code BOC value there.
+        ref = Int8[Int8(primary[c + 1] *
+                        GNSSSignals.get_subcarrier_code(BOCcos(m, 1), c + (k + 0.5) / P))
+                   for c in 0:Lp-1 for k in 0:P-1]
+        @test mc.table.chips == ref
+    end
+
+    @testset "build_signal_lut bakes BOCcos (no longer throws); column == code_replica" for m in (1, 2, 6)
+        P = 4 * m
+        lut = GNSSSignals.build_signal_lut(BOCcos(m, 1), codes, NoSecondaryCode())
+        @test lut.subchip_factor == P
+        @test lut.table_length == Lp * P
+        mc = CL.code_replica(primary, CL.BOCcos(m); max_bake = typemax(Int16))
+        @test lut.padded[1:lut.table_length, 1] == mc.table.chips
+    end
+
+    @testset "resampled output matches float get_code (BOC path) sampled at fc·P" for m in (1, 2, 3)
+        P = 4 * m
+        mc = CL.code_replica(primary, CL.BOCcos(m); max_bake = typemax(Int16))
+        N = Lp * P                                       # one full code period at fs = fc·P
+        fc = 1.0; fs = fc * P
+        # At fs = fc·P sample n (0-based) is exactly sub-chip n; evaluate the get_code BOC value
+        # (n == 1, no secondary: primary[floor φ] × cosine subcarrier φ) at that sub-chip's
+        # MIDPOINT φ = (n + 0.5)/P. The subcarrier is constant across the sub-chip, so the midpoint
+        # is the get_code value the whole sample represents — and it avoids evaluating exactly on a
+        # sub-chip boundary, where `floor((φ+¼)·2m)` is ill-defined in Float64 (e.g. 7.0 → 6.999…).
+        mid = ((0:N-1) .+ 0.5) .* (fc / fs)
+        ref = Int8[Int8(primary[mod(floor(Int, φ), Lp) + 1] *
+                        GNSSSignals.get_subcarrier_code(BOCcos(m, 1), φ)) for φ in mid]
+        for be in _BACKENDS
+            out = Vector{Int8}(undef, N)
+            CL.generate_code!(out, mc; code_frequency = fc, sampling_frequency = fs, backend = be)
+            @test out == ref
+        end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CBOC Int8 amplitudes are DERIVED from the modulation's own `boc1_power` (issue #112),
 # not hardcoded to E1's (19, 6). The default 10/11 split must still bake to (19, 6); a
 # non-10/11 split must bake amplitudes whose ratio tracks √(boc1_power) : √(1-boc1_power),

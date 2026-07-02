@@ -16,9 +16,11 @@
 # / AVX2 `vpshufb` sliding-window permute over a drift-free integer DDA — or, once the
 # baked table is heavily oversampled (so consecutive samples repeat a chip), an exact
 # boundary fill that splat-stores one chip run per store at the original `gen_code!`'s
-# store-bound speed instead of paying a permute per window. The baked table is Int8: ±1 for BPSK/BOC/TMBOC, or a multi-level
-# integer approximation of the sqrt-power amplitudes for CBOC (Galileo E1B); cosine-BOC is
-# unsupported. Requires sub-chip oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
+# store-bound speed instead of paying a permute per window. The baked table is Int8: ±1 for
+# BPSK/BOC (sine or cosine phased)/TMBOC, or a multi-level integer approximation of the sqrt-power
+# amplitudes for CBOC (Galileo E1B). Cosine BOC(m,1) is baked at 4m quarter-sub-chips (the ¼-cycle
+# shift halves the grid); only code-factor n≠1 BOC is unsupported. Requires sub-chip oversampling
+# (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
@@ -180,10 +182,11 @@ end # module CodeLUT
     (θ_int, rem0)
 end
 
-# Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOC/TMBOC; CBOC bakes a
-# multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the CBOC's own
-# `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit override.
-# Errors on cosine BOC and code-factor n ≠ 1. The `cboc_amplitudes` argument is ignored by
+# Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOCsin/BOCcos/TMBOC; CBOC
+# bakes a multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the
+# CBOC's own `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit
+# override. Cosine BOC(m,1) bakes at 4m quarter-sub-chips; only code-factor n ≠ 1 errors. The
+# `cboc_amplitudes` argument is ignored by
 # every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
 # Used by `build_signal_lut` (eager bake at signal construction).
 _codelut_modulation(m, ::Union{Nothing,Tuple{Integer,Integer}}) = _codelut_modulation(m)
@@ -242,7 +245,8 @@ function _codelut_modulation(m::CBOC,
     CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), a2_signed)
 end
 function _codelut_modulation(m::BOCcos)
-    error("the embedded LUT does not support cosine-phased BOC (Int8/±1 only)")
+    m.n == 1 || error("the embedded LUT supports only code-factor n==1 cosine-phased BOC")
+    CodeLUT.BOCcos(Int(m.m))
 end
 
 """
@@ -261,9 +265,10 @@ short secondaries are BAKED into each column, a long overlay (GPS L1C-P, 1800 ch
 RESIDUAL and stored in `SignalLUT.secondary` (per-PRN for a `PerPRNSecondaryCode`, one shared
 column otherwise) for runtime application.
 
-**Errors** for modulations the LUT can't bake (cosine BOC, code-factor n ≠ 1, …) — these are
-unimplemented for the embedded LUT, so the signal fails to construct rather than silently
-omitting its LUT. `_codelut_modulation` raises the specific error.
+**Errors** for modulations the LUT can't bake (code-factor n ≠ 1, …) — these are unimplemented
+for the embedded LUT, so the signal fails to construct rather than silently omitting its LUT.
+Cosine-phased BOC(m,1) *is* supported (baked at 4m quarter-sub-chips). `_codelut_modulation`
+raises the specific error for the remaining unimplemented cases.
 
 For a `CBOC` modulation, `cboc_amplitudes = nothing` (the default) derives the Int8 amplitude
 pair from the modulation's own `boc1_power` (see `_cboc_int_amplitudes`); the E1 10/11 split
