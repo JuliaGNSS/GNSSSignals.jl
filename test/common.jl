@@ -118,7 +118,7 @@ function _gen_code_scalar_oracle(full, sn::Int, sd::Int, rem0::Int, psub::Int, N
     ref
 end
 
-# Returns (oracle::Vector{Int8}, is_runfill::Bool) for `signal`/`prn` at the given rate/phase.
+# Returns the oracle::Vector{Int8} for `signal`/`prn` at the given rate/phase.
 function _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
     lut = signal.lut
     P = lut.subchip_factor; Lf = lut.table_length; per = lut.period_subchips
@@ -127,22 +127,15 @@ function _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
     fcv = Float64(GNSSSignals._to_hz(fc_u)); fsv = Float64(GNSSSignals._to_hz(fs_u))
     sn, sd = _CL._fixed_point_step((fcv * P) / fsv)
     psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, fcv, fsv, P, sd)
-    ref = _gen_code_scalar_oracle(full, sn, sd, rem0, psub, N, collect(Int8, sec), per)
-    runfill = _CL._use_runfill(sn, sd, _CL.default_backend(), N)
-    (ref, runfill)
+    _gen_code_scalar_oracle(full, sn, sd, rem0, psub, N, collect(Int8, sec), per)
 end
 
-# Assert the embedded gen_code! equals the oracle (byte-exact in permute regime; ≤2-sample
-# boundary tolerance in the run-fill regime).
+# Assert the embedded gen_code! equals the oracle — byte-exact in BOTH regimes (the exact
+# boundary fill removed the old run-fill's ≤2-sample tolerance).
 function _check_gen_code(signal, prn, fs_u, fc_u, sp, sis, N)
     out = Vector{Int8}(undef, N)
     gen_code!(out, signal, prn, fs_u, fc_u, sp, sis)
-    ref, runfill = _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
-    if runfill
-        @test count(!=(0), out .- ref) <= 2
-    else
-        @test out == ref
-    end
+    @test out == _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
     out
 end
 
