@@ -79,12 +79,12 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 # oversampling sweep — gen_code! across oversampling ratios (fs/fc = samples per chip) at a small
 # (4k) and steady-state (64k) buffer. Guards the LUT's ratio-dependent path selection: the windowed
-# permute (flat in the ratio) at low oversampling, switching to a broadcast run-fill once the baked
-# table is oversampled ≳7× (AVX-512) / ≳4× (AVX2). One representative signal (GPS L1 C/A, plain
-# BPSK): its oversampling ratio equals the table-oversampling, so 2× exercises the permute path and
-# 8×/32× the run-fill across the threshold. 17×/24× are non-power-of-two run-fill ratios: their
-# per-chip run length (17/24) is padded to a non-power-of-two store width by `_runfill_pad`, so
-# these rows track the run-fill broadcast-store width tuning (the power-of-two ratios never do).
+# permute (flat in the ratio) at low oversampling, switching to the exact boundary fill once the
+# baked table is oversampled ≳10× (AVX-512) / ≳4× (AVX2). One representative signal (GPS L1 C/A,
+# plain BPSK): its oversampling ratio equals the table-oversampling, so 2× exercises the permute
+# path and 8×–32× the boundary fill around the switch. 17×/24× are non-power-of-two ratios (mixed
+# m/m+1 runs, the magic-reciprocal path); 8×/32× are power-of-two (the shift path) on the SW = 16
+# and SW = 64 store widths.
 # ─────────────────────────────────────────────────────────────────────────────
 let signal = _GPSL1(), fc = 1023e3Hz
     for oversampling in (2, 8, 17, 24, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
