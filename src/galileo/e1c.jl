@@ -17,10 +17,6 @@ E1C differs from [`GalileoE1B`](@ref) in three ways:
 - Its CBOC uses the BOC(6,1) component in *anti-phase* — CBOC(−) — per the
   Galileo OS SIS ICD §2.3.3, where E1-B uses CBOC(+).
 
-The struct caches an element-wise negated primary-code matrix so that
-`gen_code!` can hoist the per-secondary-chip sign multiply out of the inner
-loop (the same trick used for [`GPSL5I`](@ref)).
-
 # Example
 ```julia
 e1c = GalileoE1C()
@@ -182,12 +178,14 @@ BOC(1,1) and BOC(6,1) requiring fs ≥ 2 · 6 · 1.023 MHz to fully sample.
 Many software receivers substitute a pure BOC(1,1) replica because (a) the
 BOC(6,1) component carries only 1/11 of the signal power, so the
 correlation loss is ≈ 0.45 dB, and (b) BOC(1,1) needs only
-fs ≥ 2 · 1.023 MHz, allowing lower sampling rates and Int16 output.
+fs ≥ 2 · 1.023 MHz, allowing lower sampling rates.
 PocketSDR, for example, uses this substitution for E1C by default (see
 `gen_code_E1C` in `sdr_code.c`).
 
-Use this type when you want the lower sampling-rate, Int16-output variant;
-use [`GalileoE1C`](@ref) for the full CBOC spec output (Float32).
+Use this type when you want the lower sampling-rate variant; use
+[`GalileoE1C`](@ref) for the full CBOC spec approximation. Either way
+`gen_code!` emits `Int8` — only the single-chip [`get_code`](@ref)
+accessor returns `Float32` (`get_code_type` is `Int16` here).
 
 Primary code, code length, secondary code (CS25), code frequency, data
 rate, and band are identical to [`GalileoE1C`](@ref); only `get_modulation`

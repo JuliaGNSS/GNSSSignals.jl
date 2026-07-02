@@ -47,9 +47,8 @@ BPSK(10) ([`LOC`](@ref)). The primary code uses the same generator as E5a-I
 the E5a-Q per-SVID register-2 start values `E5A_Q_X2_INIT`. PRNs 1-50 are
 supported.
 
-The struct also caches an element-wise negated primary-code matrix (the trick
-used by [`GPSL5I`](@ref) and [`GPSL1C_P`](@ref)) and stores the CS100 overlay
-matrix, exposed via [`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref).
+The struct stores the CS100 overlay matrix, exposed via
+[`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref).
 
 # Example
 ```julia
