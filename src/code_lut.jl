@@ -121,9 +121,10 @@ end # module CodeLUT
 # all reading the signal's embedded `SignalLUT`. Int8-only output, no scratch Dict, no plan.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Strip Unitful to a plain Float64 Hz value; pass plain numbers through.
+# Strip a Unitful `Frequency` to a plain Float64 Hz value. The public entry points constrain
+# `sampling_frequency`/`code_frequency` to `Frequency`, so a bare number raises a MethodError
+# there rather than being silently misread as Hz (issue #105); no plain-number method here.
 @inline _to_hz(x::Frequency) = Float64(ustrip(u"Hz", x))
-@inline _to_hz(x) = Float64(x)
 
 # Split a real primary-chip start phase into the sub-chip integer offset `θ_int` and the
 # fixed-point fractional sub-chip residual `rem0 ∈ [0, step_den)` the kernels consume.
@@ -308,8 +309,8 @@ function gen_code!(
     sampled_code::AbstractVector{Int8},
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency,
-    code_frequency = get_code_frequency(signal),
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
 )
@@ -429,8 +430,8 @@ paths on a given CPU. Forcing a backend the CPU does not support is invalid.
 function code_engine(
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency,
-    code_frequency = get_code_frequency(signal);
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(signal);
     start_phase = 0.0,
     start_index_shift::Integer = 0,
     backend::CodeLUT.Backend = CodeLUT.default_backend(),
@@ -540,7 +541,7 @@ support, and `2^-30` rate quantization (drift ≤ `N · 2^-31` sub-chips over `N
 `sampling_frequency < code_frequency·subchip_factor` raises an error (use the array-filling
 [`gen_code!`](@ref) / continuing [`code_engine`](@ref) without `Val(K)` instead).
 """
-function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency, code_frequency, ::Val{K};
+function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency::Frequency, code_frequency::Frequency, ::Val{K};
                      start_phase = 0.0, start_index_shift::Integer = 0) where {K}
     mc = _modulated_code_view(signal.lut, Int(prn))
     fc = _to_hz(code_frequency)
@@ -563,5 +564,5 @@ function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequenc
                         phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
 
-code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency, vk::Val; kwargs...) =
+code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency::Frequency, vk::Val; kwargs...) =
     code_engine(signal, prn, sampling_frequency, get_code_frequency(signal), vk; kwargs...)

@@ -100,8 +100,8 @@ function gen_code(
     num_samples::Integer,
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency,
-    code_frequency = get_code_frequency(signal),
+    sampling_frequency::Frequency,
+    code_frequency::Frequency = get_code_frequency(signal),
     start_phase = 0.0,
     start_index::Integer = 0,
 )

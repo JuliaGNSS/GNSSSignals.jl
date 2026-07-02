@@ -411,7 +411,7 @@ end
         P = signal.lut.subchip_factor
         fc = get_code_frequency(signal)
         # A couple of rates, all satisfying fs ≥ fc·P.
-        for fs in (Float64(fc) * P, Float64(fc) * P * 2.5)
+        for fs in (fc * P, fc * P * 2.5)
             eng = code_engine(signal, prn, fs, fc, Val(1))
             W = code_width(eng)
             @test W == Wdef
@@ -458,7 +458,7 @@ end
         signal = GPSL1CA(); prn = 1
         P = signal.lut.subchip_factor
         fc = get_code_frequency(signal)
-        fs = Float64(fc) * P
+        fs = fc * P
         eng = code_engine(signal, prn, fs, fc, Val(1))
         # Drive the value-based loop inside a barrier so the engine type is concrete at
         # the @allocated site — both lookup and the renew-by-value advance must be 0-alloc.
@@ -482,13 +482,13 @@ end
         # Non-baked secondary (GPS L5I NH10) → error at engine construction.
         l5i = GPSL5I()
         fc5 = get_code_frequency(l5i)
-        @test_throws ErrorException code_engine(l5i, 1, Float64(fc5) * l5i.lut.subchip_factor, fc5, Val(1))
+        @test_throws ErrorException code_engine(l5i, 1, fc5 * l5i.lut.subchip_factor, fc5, Val(1))
         # fs < fc·subchip_factor → error.
         l1cd = GPSL1C_D()   # BOC(1,1) → subchip_factor 2
         P = l1cd.lut.subchip_factor
         @test P > 1
         fc1c = get_code_frequency(l1cd)
-        @test_throws ErrorException code_engine(l1cd, 1, Float64(fc1c) * P / 2, fc1c, Val(1))
+        @test_throws ErrorException code_engine(l1cd, 1, fc1c * P / 2, fc1c, Val(1))
     end
 
     # End-to-end public adapter at HIGH oversampling, where the engine uses the broadcast
@@ -501,7 +501,7 @@ end
         for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
             prn = 1
             fc = get_code_frequency(signal)
-            fs = Float64(fc) * osr * signal.lut.subchip_factor
+            fs = fc * osr * signal.lut.subchip_factor
             N = 7000
             # one-shot embedded gen_code! (builds + run-fills from phase 0)
             oneshot = Vector{Int8}(undef, N)
@@ -745,7 +745,7 @@ end
         # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
         # indices 4,5,7,9) and require byte-exact agreement with the one-shot gen_code!.
         sig = GPSL5I(); prn = 1
-        fc = get_code_frequency(sig); fs = Float64(fc) * 2
+        fc = get_code_frequency(sig); fs = fc * 2
         N = 230_000                       # > 10 NH10 periods (period = 10230·osr samples)
         oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, sig, prn, fs, fc)
         @test any(==(Int8(-1)), GNSSSignals._signal_lut_secondary(sig.lut, prn))   # negate branch can fire
@@ -789,4 +789,34 @@ end
         end
         @test got == ref
     end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue #105: the public entry points (`gen_code!` / `gen_code` / `code_engine`) must
+# require `Unitful.Frequency` for `sampling_frequency` and `code_frequency`. A bare number
+# used to be silently interpreted as Hz — e.g. `code_frequency = 1.023` (meaning MHz) became
+# 1.023 Hz, passing the fs≥fc·P guard trivially and returning a constant all-ones buffer
+# (0 chip transitions instead of 511). A bare frequency must raise `MethodError` again.
+# ─────────────────────────────────────────────────────────────────────────────
+@testset "issue #105: public API requires Unitful.Frequency" begin
+    signal = GPSL1CA(); prn = 1
+
+    # A bare Real code_frequency must NOT be silently accepted as Hz.
+    @test_throws MethodError gen_code!(zeros(Int8, 4000), signal, prn, 4MHz, 1.023)
+    @test_throws MethodError gen_code(4000, signal, prn, 4MHz, 1.023)
+    @test_throws MethodError code_engine(signal, prn, 4MHz, 1.023)
+    @test_throws MethodError code_engine(signal, prn, 4MHz, 1.023, Val(1))
+    # A bare Real sampling_frequency is likewise rejected.
+    @test_throws MethodError gen_code!(zeros(Int8, 4000), signal, prn, 4e6, 1.023MHz)
+    @test_throws MethodError code_engine(signal, prn, 4e6, 1.023MHz)
+
+    # The correct Unitful call resolves the intended 1.023 MHz rate: 511 chip transitions
+    # over one 1 ms C/A period (vs 0 for the mis-scaled bare-number bug).
+    buf = zeros(Int8, 4000)
+    gen_code!(buf, signal, prn, 4MHz, 1.023MHz)
+    @test sum(diff(buf) .!= 0) == 511
+    @test gen_code(4000, signal, prn, 4MHz, 1.023MHz) == buf
+
+    # The default-frequency path (code_frequency omitted, derived from the signal) still works.
+    @test sum(diff(gen_code(4000, signal, prn, 4MHz)) .!= 0) == 511
 end
