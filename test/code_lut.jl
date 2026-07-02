@@ -1042,4 +1042,15 @@ end
         @test collect(@view B[1, :]) == ref
         @test all(==(0), @view B[2, :])
     end
+
+    @testset "contiguous column view stays on the fast path" begin
+        # A unit-stride column view IS a `FastContiguousSubArray`, so it is a dense target and
+        # must still take the pointer/`VecRange` fast kernels — and produce the exact result.
+        A = zeros(Int8, N, 2)
+        col = view(A, :, 1)
+        @test col isa Base.FastContiguousSubArray
+        gen_code!(col, signal, 1, fs)
+        @test collect(col) == ref
+        @test all(==(0), @view A[:, 2])
+    end
 end
