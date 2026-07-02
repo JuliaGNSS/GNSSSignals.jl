@@ -46,9 +46,28 @@ function _x86_features()
      avx512vbmi = avx512_os && _bit(ecx, 1))
 end
 
-# Detected once at precompile and baked into a const (like VectorizationBase.jl), so
-# default_backend folds to a concrete backend type.
+# Detected once at precompile and baked into a const (like VectorizationBase.jl). Kept only as
+# a seed/hint — it can OVER-claim: if the pkgimage is precompiled on an AVX-512-VBMI host and
+# later loaded on a CPU without VBMI (JULIA_CPU_TARGET=generic, shared/NFS depot, Docker/CI),
+# pkgimage validation checks only cloned code targets, not serialized const data, so this stale
+# const would still say `avx512vbmi = true`. Backend selection therefore consults the RUNTIME
+# feature set below, not this const, so we never emit `vpermb` on a non-VBMI CPU (SIGILL, #104).
 const HOST_FEATURES = _x86_features()
+
+# The CPU features of the machine ACTUALLY running, re-detected once per session in `__init__`
+# (see `default_backend`). Seeded with the precompile-time const so a read before `__init__`
+# (unusual) is still valid; `__init__` overwrites it with a live `cpuid` on the running CPU.
+const RUNTIME_FEATURES = Ref(HOST_FEATURES)
+
+# Re-run CPU-feature detection on the executing machine and store it. Called from `__init__`.
+_refresh_host_features!() = (RUNTIME_FEATURES[] = _x86_features(); nothing)
+
+# Pure backend selection from a CPU-feature set (a plain NamedTuple), split out so it is
+# unit-testable without a live CPU: a non-VBMI set must NEVER yield `AVX512()` (whose `vpermb`
+# would SIGILL), while a VBMI-capable set may (keeping the fast path for capable CPUs). #104.
+_select_backend(features) =
+    features.avx512vbmi ? AVX512() :
+    features.avx2       ? AVX2()   : Portable()
 
 # ---- vpermb: 64-entry Int8 in-register table lookup ----
 # `alwaysinline` so llvmcall emits the bare permute instead of a real call + spill.
