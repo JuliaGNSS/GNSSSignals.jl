@@ -58,9 +58,13 @@ end
 function FillEngine512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
                        rem0::_RemT = _RemT(0))
     L = table.length; W = 64
+    # Widen the W·step_num / 4W·step_num products to Int64: with step_num up to 2^_B = 2^30 these
+    # exceed typemax(Int32) (4·64·2^30 = 2^38), so a native-`Int` product overflows on 32-bit
+    # Julia (issue #108). The core DDA kernels already form these in Int64; match that here.
+    WSN = Int64(W) * Int64(step_num); W4SN = Int64(4W) * Int64(step_num); sdw = Int64(step_den)
     FillEngine512(table.padded, step_num, step_den, L,
-        _RemT(mod(W * step_num, step_den)), div(W * step_num, step_den) % L,
-        _RemT(mod(4W * step_num, step_den)), div(4W * step_num, step_den) % L, _RemT(step_den),
+        _RemT(mod(WSN, sdw)), Int(div(WSN, sdw) % L),
+        _RemT(mod(W4SN, sdw)), Int(div(W4SN, sdw) % L), _RemT(step_den),
         phase_offset, rem0)
 end
 
@@ -183,8 +187,10 @@ end
                                      backend::Backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
     L = table.length
     prepared = prepare_code(table; backend = backend)
+    # Int64 W·step_num (2^_B·W overflows Int32 on 32-bit Julia — issue #108; see FillEngine512).
+    WSN = Int64(W) * Int64(step_num); sdw = Int64(step_den)
     FillEnginePhase{W,T,typeof(prepared)}(prepared, step_num, step_den,
-        T(div(W * step_num, step_den) % L), _RemT(mod(W * step_num, step_den)),
+        T(Int(div(WSN, sdw) % L)), _RemT(mod(WSN, sdw)),
         _RemT(step_den), T(L), phase_offset, rem0)
 end
 

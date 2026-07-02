@@ -180,17 +180,46 @@ function _apply_secondary!(out, secondary::AbstractVector, per::Int, sn::Int, sd
     # Start at the period the first emitted sample (absolute n0) falls in — NOT period 0: a
     # negative start_index_shift puts n0 in a negative period, and start_phase ≥ one code period
     # in a period ≥ 1; starting at 0 would apply the wrong secondary chip to the leading samples.
-    sub0 = (n0 * sn + r0) ÷ sd + phase_sub
-    p = fld(sub0, per)
+    #
+    # OVERFLOW SAFETY (issues #102 / #108). Two products used to overflow here:
+    #   • the seed `n0·sn` overflows Int64 once the absolute sample count n0 exceeds
+    #     typemax(Int64) ÷ sn (≈ 2^34 for GPS L5I at 20.46 MHz — ~14 min of streaming); the
+    #     seed p then wraps hugely negative and the period-walk spins ~10^6+ iterations, so
+    #     gen_code! effectively never returns (#102);
+    #   • the per-period products `T·sd` / `Tn·sd` (with sd = _STEP_DEN = 2^30) overflow native
+    #     `Int` on 32-bit Julia for any real T ≥ 2, so cld(…) turns negative and the negate loop
+    #     writes out-of-bounds (#108).
+    # Fix: (a) form the seed in Int128; (b) re-anchor the effective sub-chip phase modulo the
+    # secondary-code period Q = Ls·per sub-chips, so the running period index p — and hence
+    # every per-period product — stays bounded no matter how long streaming continues; (c) do
+    # all per-period arithmetic in explicit Int64 (never native Int), like the core DDA kernels.
+    # Re-anchoring shifts the effective phase by whole multiples of Q = Ls·per sub-chips, i.e.
+    # p by whole multiples of Ls, so `mod(p, Ls)` (the selected secondary chip) is unchanged and
+    # the output is byte-identical to the exact walk for every fill length and continuation n0.
+    snw = Int64(sn); sdw = Int64(sd); perw = Int64(per)
+    # Fold n0 (and its fractional residual r0) into an effective integer sub-chip phase at local
+    # sample 0: sub(n0+j) = floor((j·sn + R0)/sd) + phase_sub with R0 = n0·sn + r0 (Int128 seed,
+    # the only widening needed — R0 ≥ 0, so its ÷/% are non-negative).
+    R0 = Int128(n0) * snw + Int64(r0)
+    rd = Int64(R0 % sdw)                       # fractional residual at local 0, 0 ≤ rd < sd
+    qd = Int64(R0 ÷ sdw)                       # whole sub-chips absorbed (≤ n0, fits Int64)
+    Q  = Int64(Ls) * perw                      # secondary-code period, in sub-chips
+    phase0 = Int64(phase_sub) + qd             # effective integer sub-chip phase at local 0
+    phase_eff = phase0 - fld(phase0, Q) * Q    # ∈ [0, Q): strips whole multiples of Ls from p
+    # Walk periods in the local frame (first emitted sample = local sample 0, residual rd, phase
+    # phase_eff). p starts in [0, Ls) and only advances over the periods this fill spans, so
+    # p·per and T·sd stay ≤ ~Q·sd ≪ typemax(Int64).
+    sub0 = rd ÷ sdw + phase_eff                # = phase_eff (rd < sd)
+    p = fld(sub0, perw)
     @inbounds while true
-        T = p * per - phase_sub
-        n_start = T <= 0 ? 0 : cld(T * sd - r0, sn)     # absolute first sample of period p
-        n_start - n0 >= N && break
-        Tn = (p + 1) * per - phase_sub
-        n_end = min(Tn <= 0 ? 0 : cld(Tn * sd - r0, sn), n0 + N)  # absolute end (exclusive)
+        T = p * perw - phase_eff
+        n_start = T <= 0 ? Int64(0) : cld(T * sdw - rd, snw)     # local first sample of period p
+        n_start >= N && break
+        Tn = (p + 1) * perw - phase_eff
+        n_end = min(Tn <= 0 ? Int64(0) : cld(Tn * sdw - rd, snw), Int64(N))  # local end (exclusive)
         if secondary[mod(p, Ls) + 1] == -1
-            lo = max(n_start, n0) - n0 + 1              # 1-based into out
-            hi = n_end - n0                             # 1-based inclusive
+            lo = n_start + Int64(1)                    # 1-based into out (n_start ≥ 0 here)
+            hi = n_end                                  # 1-based inclusive
             @simd for n in lo:hi
                 out[n] = -out[n]
             end

@@ -388,6 +388,135 @@ const _BACKENDS = (CL.Portable(),
         @test CL._check_windowed_length(CL.CodeTable(ones(Int8, 8)), CL.AVX2())
         @test CL._check_windowed_length(CL.CodeTable(ones(Int8, 8)), CL.Neon())
     end
+
+    # ── secondary-code period-walk overflow (issues #102 / #108) ──────────────────────────
+    # `_apply_secondary!` walks whole primary periods, negating the samples of periods whose
+    # residual (non-baked) secondary chip is −1. It used to compute the seed `n0·sn` and the
+    # per-period products `T·sd` / `Tn·sd` in native `Int`, which overflows:
+    #   #102 (64-bit): once the absolute sample offset n0 exceeds typemax(Int64) ÷ sn (≈ 2^34
+    #        for GPS L5I at 20.46 MHz — ~14 min of streaming), n0·sn wraps hugely negative, the
+    #        seed period p goes to ≈ −10^6, and the walk spins so long that gen_code! never
+    #        returns (and T·sd overflows too, so even a returned result is wrong).
+    #   #108 (32-bit): with sd = _STEP_DEN = 2^30, `T·sd` overflows Int32 for any real T ≥ 2
+    #        (real T is thousands of sub-chips), so cld(…) turns negative → out-of-bounds writes.
+    # The fix seeds in Int128, re-anchors the phase modulo the secondary period Q = Ls·per so p
+    # stays bounded, and does every per-period product in explicit Int64 (see modulation.jl).
+    @testset "secondary period-walk overflow (#102 / #108)" begin
+        # GPS L5I NH10 residual secondary; primary 10230 chips, P = 1 ⇒ period_subchips = 10230.
+        sec = Int8[1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
+        per = 10230
+        sn = 536870912; sd = 1073741824             # fs = 2·fc·P (20.46 MHz): sn = 2^29, sd = 2^30
+        # BigInt-exact reference for `out` initialised to all +1s (so out[j+1] == the sign applied
+        # to sample j): p and the sub-chip are computed exactly, so no intermediate can overflow.
+        secref(sn, sd, ps, r0, n0, N) =
+            Int8[sec[mod(fld(fld(big(n0 + j) * sn + r0, sd) + ps, per), length(sec)) + 1] for j in 0:N-1]
+
+        # #102 threshold is where n0·sn overflows Int64.
+        @test 2^34 > typemax(Int64) ÷ sn ÷ 2      # sanity: the chosen n0 (≈2^34) is near the wrap
+
+        # (1) Behaviour is unchanged for the ordinary, non-overflowing regime — including
+        # non-zero phase / fractional residual and moderate offsets (byte-identical to the exact
+        # BigInt walk). This pins that the re-anchoring did not perturb normal fills.
+        let N = 800
+            for n0 in (0, 1, 12345, 10_000_000), ps in (0, 7, 20460 + 13), r0 in (0, 555, sd - 1)
+                out = ones(Int8, N)
+                CL._apply_secondary!(out, sec, per, sn, sd, ps, r0, n0)
+                @test out == secref(sn, sd, ps, r0, n0, N)
+            end
+        end
+
+        # (2) #102: at n0 past the Int64-overflow threshold the walk must return PROMPTLY and
+        # match the exact reference. Pre-fix this hangs (never returns); a hung single-threaded
+        # compute loop cannot be interrupted cooperatively, so we run it in a child process with a
+        # wall-clock timeout — a regression fails fast (`:timeout`) instead of hanging CI. The
+        # child checks BOTH the low-level `_apply_secondary!` and the public continuing
+        # `gen_code!(out, eng, st)` path (via a large `CodeFillState.n_abs`).
+        function _run_guarded(script::String, timeout_s::Real)
+            buf = IOBuffer()
+            cmd = `$(Base.julia_cmd()) --startup-file=no --project=$(Base.active_project()) -e $script`
+            proc = run(pipeline(cmd; stdout = buf, stderr = devnull); wait = false)
+            timedout = Ref(false)
+            timer = Timer(timeout_s) do _
+                process_running(proc) && (timedout[] = true; kill(proc))
+            end
+            wait(proc); close(timer)
+            timedout[] ? (:timeout, "") : (:done, String(take!(buf)))
+        end
+        # Wrapped in a function so the child's top-level `for` loops don't hit `-e` soft-scope.
+        script = """
+        using GNSSSignals
+        const CL = GNSSSignals.CodeLUT
+        function main()
+            sec = Int8[1,1,1,1,-1,-1,1,-1,1,-1]; per = 10230; sn = 536870912; sd = 1073741824
+            N = 1000
+            sref(n0) = Int8[sec[mod(fld(fld(big(n0+j)*sn, sd), per), length(sec))+1] for j in 0:N-1]
+            ok = true
+            # low-level period walk, well past the Int64 seed-overflow threshold
+            for n0 in (2^34 + 12345, 5*2^34 + 777, 2^40 + 3)
+                out = ones(Int8, N)
+                CL._apply_secondary!(out, sec, per, sn, sd, 0, 0, n0)
+                ok &= (out == sref(n0))
+            end
+            # public continuing path: a CodeFillState with huge n_abs drives _apply_secondary_continue!
+            eng = code_engine(GPSL5I(), 1, 20.46e6)
+            st0 = code_state(eng)
+            big_n = 2^34 + 100000
+            base = zeros(Int8, N); gen_code!(base, eng, st0)              # secondary applied at offset 0
+            outb = zeros(Int8, N); gen_code!(outb, eng, GNSSSignals.CodeFillState(st0.dda, big_n))
+            ps = eng.phase_sub; r0 = eng.rem0; s = Int.(eng.secondary); L = eng.period_subchips
+            sgn(n0, j) = s[mod(fld(fld(big(n0+j)*sn + r0, sd) + ps, L), length(s)) + 1]
+            # outb[j]==raw[j]*sgn(big_n,j), base[j]==raw[j]*sgn(0,j) ⇒ outb == base*sgn(0)*sgn(big_n)
+            refb = Int8[base[j+1] * sgn(0, j) * sgn(big_n, j) for j in 0:N-1]
+            ok &= (outb == refb)
+            ok &= all(x -> x == 1 || x == -1, outb)                      # in-bounds, valid ±1
+            ok
+        end
+        println(main() ? "OK" : "FAIL")
+        """
+        status, output = _run_guarded(script, 90)
+        @test status == :done                 # returned promptly (a hang regression ⇒ :timeout)
+        @test strip(output) == "OK"            # matches the BigInt-exact reference
+
+        # (3) #108: the products that overflow native `Int` on 32-bit Julia. `T·sd` and the
+        # fill-engine `W·step_num` both exceed typemax(Int32); the fix computes them in Int64.
+        # We can't run 32-bit Julia here, so assert (a) the native-Int32 product IS wrong
+        # (documents the bug) and (b) the widened path yields the exact Int64 result.
+        @test Int32(2) * Int32(sd) != Int64(2) * Int64(sd)           # T·sd overflows Int32 at T≥2
+        @test Int32(2) * Int32(sd) < 0                                # …to a negative index → OOB
+        @test Int32(per) * Int32(sd) != Int64(per) * Int64(sd)       # real per-period T·sd overflows
+        # `_apply_secondary!` (small n0, so #102 re-anchoring is not what's under test) still
+        # matches the exact walk for a signal whose per·sd overflows Int32 — i.e. the per-period
+        # product is done in Int64.
+        let N = 500
+            @test Int64(per) * Int64(sd) > typemax(Int32)
+            for n0 in (0, 250, 9999)
+                out = ones(Int8, N)
+                CL._apply_secondary!(out, sec, per, sn, sd, 0, 0, n0)
+                @test out == secref(sn, sd, 0, 0, n0, N)
+            end
+        end
+        # Fill-engine constructor `W·step_num` widening (issue #108): with step_num up to 2^_B,
+        # 4·64·step_num = 2^38 overflows Int32. FillEngine512 (W = 64) is pure construction-time
+        # arithmetic (host-independent). Its stored per-window / per-stride deltas must equal the
+        # Int64 reference; a native-Int32 W·step_num would be negative/wrong.
+        let sn2 = 2^30 - 12345, sd2 = 2^30
+            table = CL.CodeTable(ones(Int8, 10230)); L = table.length
+            @test Int32(64) * Int32(sn2) < 0                          # W·step_num overflows Int32
+            @test Int32(4 * 64) * Int32(sn2) < 0                      # 4W·step_num overflows Int32
+            e = CL.FillEngine512(table, sn2, sd2, 0)
+            @test e.whole_W      == Int(div(Int64(64)  * sn2, Int64(sd2)) % L)
+            @test e.frac_W       == mod(Int64(64)  * sn2, Int64(sd2))
+            @test e.whole_stride == Int(div(Int64(256) * sn2, Int64(sd2)) % L)
+            @test e.frac_stride  == mod(Int64(256) * sn2, Int64(sd2))
+            # Phase engine (AVX2/NEON/Portable path): its stored deltas match the Int64 reference
+            # for its own window width W (Portable ⇒ W = 1; the W·step_num arithmetic is widened
+            # identically for the W = 16/32 SIMD widths).
+            ep = CL.FillEnginePhase(table, sn2, sd2, 0, CL.Portable(), Val(1))
+            W = typeof(ep).parameters[1]
+            @test Int(ep.whole_W) == Int(div(Int64(W) * sn2, Int64(sd2)) % L)
+            @test ep.frac_W       == mod(Int64(W) * sn2, Int64(sd2))
+        end
+    end
 end
 
 
