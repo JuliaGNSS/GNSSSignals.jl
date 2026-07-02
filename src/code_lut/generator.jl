@@ -9,8 +9,8 @@
 #
 # State is explicit and immutable: a single canonical "stream 0" `(rel, rem, base)` at the
 # current absolute sample offset (AVX-512 rel/scalar-base form, reusing `CodeState512`), or
-# the phase-based equivalent (`CodeStatePhase`) for AVX2/Portable, or `(c, acc, pos)`
-# (`RunFillState`) for the high-oversampling run-fill path. `fill_continue!(out, eng, st)`
+# the phase-based equivalent (`CodeStatePhase`) for AVX2/Portable, or `(c, r)`
+# (`BoundaryState`) for the high-oversampling boundary-fill path. `fill_continue!(out, eng, st)`
 # returns the state advanced by exactly `length(out)`, so the caller threads it — no mutation,
 # no hidden state, and an isbits state means the steady-state fill is allocation-free.
 #
@@ -244,56 +244,59 @@ end
     (ph, r)
 end
 
-# ---- continuing run-fill engine (high-oversampling fast path) ----
-# The continuing counterpart of `_generate_runfill!`: at high oversampling broadcast-fills
-# runs of identical baked chips (store-bandwidth bound) instead of one permute per W samples.
-# Effectively byte-identical to the permute engines (the approximate samples-per-chip DDA in
-# `_runfill_core!` matches the exact `floor(step_num·n/2^_B)` boundaries for any single fill,
-# drifting ≤ a couple of samples only over ~10⁵ continued chips). State carried across fills
-# is `RunFillState(c, acc, pos)`: the table chip index, the chip-start fractional phase `acc`,
-# and `pos` = samples of the current chip already emitted (so a fill may resume mid-run).
-#
-# `NI` (the padded fixed inner-store count) is a *type* parameter so `fill_continue!` calls
-# the `Val{NI}`-specialised kernel statically — a runtime `Val(ni)` would box and allocate
-# every call, breaking the 0-alloc steady-state guarantee. `NI == 0` is the sentinel for the
-# generic (`ni > _RUNFILL_MAX_NI`) kernel, whose runtime count lives in the `ni` field.
-struct RunFillState
+# ---- continuing boundary fill engine (high-oversampling fast path) ----
+# The continuing counterpart of `_generate_boundary!`: at high oversampling splat-fills one
+# chip run per store instead of paying a permute per W samples (see kernel.jl). Because the
+# boundary arithmetic is EXACT, the carried state is just `(c, r)` — the table chip index
+# and the fractional chip phase — and continuation is byte-identical to one big fill for any
+# chunking (the old run-fill's `(c, acc, pos)` approximate-DDA state and its documented
+# multi-fill drift are gone). The store width `SW` / long-run `EXTRAS` flag are type
+# parameters so `fill_continue!` calls the specialised kernel statically (0-alloc); like the
+# old `Val{NI}` they are fixed at construction, but they are a pure store-width choice — any
+# variant is exact for any rate.
+struct BoundaryState
     c::Int                    # current table chip index
-    acc::Int                  # chip-start fractional phase (delta & mask)
-    pos::Int                  # samples of the current chip already emitted
+    r::_RemT                  # fractional chip phase (< 2^_B)
 end
 
-struct FillEngineRunFill{NI}
-    chips::Vector{Int8}
+struct FillEngineBoundary{SW,EXTRAS}
+    padded::Vector{Int8}
     L::Int
-    ff::Int             # samples-per-chip in _RUNFILL_FP fixed point
-    ni::Int             # padded inner count (used by the NI==0 generic path)
+    step_num::Int
     c0::Int             # initial table chip index (for fill_state)
-    acc0::Int           # initial chip-start fractional phase (for fill_state)
-    pos0::Int           # initial in-chip sample offset (for fill_state)
+    r0::_RemT           # initial fractional chip phase (for fill_state)
 end
 
-function FillEngineRunFill(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
-                           rem0::_RemT = _RemT(0))
-    ni = _runfill_ni(step_num)
-    NI = ni <= _RUNFILL_MAX_NI ? ni : 0      # 0 ⇒ generic kernel (runtime `ni`)
-    acc, pos = _runfill_seed(step_num, step_den, rem0)
-    FillEngineRunFill{NI}(table.chips, table.length, _runfill_freqfix(step_num),
-                          ni, mod(phase_offset, table.length), acc, pos)
+function FillEngineBoundary(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
+                            rem0::_RemT = _RemT(0))
+    c0 = Int(mod(Int64(rem0) >> _B + phase_offset, table.length))
+    r0 = _RemT(Int64(rem0) & Int64(step_den - 1))
+    m = _STEP_DEN ÷ step_num
+    if m <= 14
+        FillEngineBoundary{16,false}(table.padded, table.length, step_num, c0, r0)
+    elseif m <= 30
+        FillEngineBoundary{32,false}(table.padded, table.length, step_num, c0, r0)
+    elseif m <= 62
+        FillEngineBoundary{64,false}(table.padded, table.length, step_num, c0, r0)
+    else
+        FillEngineBoundary{64,true}(table.padded, table.length, step_num, c0, r0)
+    end
 end
 
-@inline fill_state(eng::FillEngineRunFill) = RunFillState(eng.c0, eng.acc0, eng.pos0)
+@inline fill_state(eng::FillEngineBoundary) = BoundaryState(eng.c0, eng.r0)
 
-function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngineRunFill{NI}, st::RunFillState) where {NI}
-    c, acc, pos = NI == 0 ?
-        _runfill_seg_generic!(out, eng.chips, eng.L, eng.ff, eng.ni, st.c, st.acc, st.pos) :
-        _runfill_seg!(out, eng.chips, eng.L, eng.ff, st.c, st.acc, st.pos, Val(NI))
-    return RunFillState(c, acc, pos)
+function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngineBoundary{SW,EXTRAS},
+                        st::BoundaryState) where {SW,EXTRAS}
+    SN = Int64(eng.step_num)
+    _boundary_fill!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), Val(SW), Val(EXTRAS))
+    # advance the state by exactly length(out) samples, arithmetically (exact)
+    tot = Int64(st.r) + Int64(length(out)) * SN
+    BoundaryState(Int(mod(Int64(st.c) + (tot >> _B), eng.L)), _RemT(tot & Int64(_STEP_DEN - 1)))
 end
 
 # Union over the backend fill engines (Portable is the W=1 degenerate phase engine: window
 # emit + advance are scalar but correct).
-const FillEngineAny = Union{FillEngine512,FillEnginePhase,FillEngineRunFill}
+const FillEngineAny = Union{FillEngine512,FillEnginePhase,FillEngineBoundary}
 
 # ---- factory: build the right backend fill engine from a step ratio + phase ----
 function make_fill_engine(table::CodeTable, step_num::Integer, step_den::Integer;
@@ -306,11 +309,10 @@ function make_fill_engine(table::CodeTable, step_num::Integer, step_den::Integer
     (0 ≤ rem0 < step_den) ||
         throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
     sn = Int(step_num); sd = Int(step_den); ph = Int(phase); r0 = _RemT(rem0)
-    if _use_runfill(sn, sd, backend)
-        # High oversampling: broadcast-fill runs (see `_generate_runfill!`) instead of paying
-        # a permute per window. Same windowed-length requirement as the AVX2/NEON permute.
-        backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
-        FillEngineRunFill(table, sn, sd, ph, r0)
+    if _use_boundary(sn, sd, backend)
+        # High oversampling: splat-fill chip runs (see `_generate_boundary!`) instead of
+        # paying a permute per window. No windowed-length requirement (no in-register window).
+        FillEngineBoundary(table, sn, sd, ph, r0)
     elseif backend isa AVX512
         FillEngine512(table, sn, sd, ph, r0)
     elseif backend isa Union{AVX2,Neon}
