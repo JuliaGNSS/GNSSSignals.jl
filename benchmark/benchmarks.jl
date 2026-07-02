@@ -84,10 +84,12 @@ end
 # plain BPSK): its oversampling ratio equals the table-oversampling, so 2× exercises the permute
 # path and 8×–32× the boundary fill around the switch. 17×/24× are non-power-of-two ratios (mixed
 # m/m+1 runs, the magic-reciprocal path); 8×/32× are power-of-two (the shift path) on the SW = 16
-# and SW = 64 store widths.
+# and SW = 64 store widths. 64×/128× cover runs longer than the widest store (the EXTRAS strided
+# interior stores) — the region where the old run-fill fell off its `Val` ladder into the slow
+# generic kernel.
 # ─────────────────────────────────────────────────────────────────────────────
 let signal = _GPSL1(), fc = 1023e3Hz
-    for oversampling in (2, 8, 17, 24, 32), (slabel, n) in (("4k", 4096), ("64k", 65536))
+    for oversampling in (2, 8, 17, 24, 32, 64, 128), (slabel, n) in (("4k", 4096), ("64k", 65536))
         fs = oversampling * fc
         out = _buf(signal, n)
         # evals = 10 (average out per-call scheduling jitter — the 4k fills run in a few
