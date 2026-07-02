@@ -181,11 +181,12 @@ end # module CodeLUT
 end
 
 # Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOC/TMBOC; CBOC bakes a
-# multi-level Int8 integer approximation of its sqrt-power amplitudes (`cboc_amplitudes`).
+# multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the CBOC's own
+# `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit override.
 # Errors on cosine BOC and code-factor n ≠ 1. The `cboc_amplitudes` argument is ignored by
 # every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
 # Used by `build_signal_lut` (eager bake at signal construction).
-_codelut_modulation(m, ::Tuple{Integer,Integer}) = _codelut_modulation(m)
+_codelut_modulation(m, ::Union{Nothing,Tuple{Integer,Integer}}) = _codelut_modulation(m)
 function _codelut_modulation(m::LOC)
     CodeLUT.LOC()
 end
@@ -198,10 +199,38 @@ function _codelut_modulation(m::TMBOC)
         error("the embedded LUT supports only TMBOC with BOC(1,1) base and code-factor n==1")
     CodeLUT.TMBOC(Int(m.boc2.m), collect(Bool, m.pattern))
 end
-function _codelut_modulation(m::CBOC, cboc_amplitudes::Tuple{Integer,Integer})
+# Best integer amplitude pair (a1, a2) for baking a CBOC subcarrier: the continued-fraction
+# convergent of the target amplitude ratio √(boc1_power) : √(1-boc1_power) whose sum stays within
+# the Int8 table budget a1 + a2 ≤ 127. Convergents are the canonical best rational approximations,
+# so the E1 default (boc1_power = 10/11, ratio √10) yields (19, 6) — the historical hardcoded pair.
+function _cboc_int_amplitudes(boc1_power::Real)
+    ratio = sqrt(boc1_power / (1 - boc1_power))          # target a1 : a2
+    h2, h1 = 0, 1                                         # convergent numerators   (h_{-2}, h_{-1})
+    k2, k1 = 1, 0                                         # convergent denominators (k_{-2}, k_{-1})
+    x = float(ratio)
+    best = (1, 1)
+    for _ in 1:64                                         # depth cap; the budget breaks far sooner
+        a = floor(Int, x)
+        h0 = a * h1 + h2
+        k0 = a * k1 + k2
+        h0 + k0 <= typemax(Int8) || break
+        (h0 >= 1 && k0 >= 1) && (best = (h0, k0))
+        h2, h1 = h1, h0
+        k2, k1 = k1, k0
+        frac = x - a
+        frac > 1e-9 || break                             # exhausted the expansion
+        x = 1 / frac
+    end
+    best
+end
+
+function _codelut_modulation(m::CBOC,
+                             cboc_amplitudes::Union{Nothing,Tuple{Integer,Integer}} = nothing)
     (m.boc1.n == 1 && m.boc2.n == 1) ||
         error("the embedded LUT supports only code-factor n==1 CBOC")
-    a1, a2 = cboc_amplitudes
+    # Derive the Int8 amplitude pair from the modulation's own `boc1_power` unless the caller
+    # supplies an explicit `cboc_amplitudes` override.
+    a1, a2 = cboc_amplitudes === nothing ? _cboc_int_amplitudes(m.boc1_power) : cboc_amplitudes
     (a1 > 0 && a2 > 0) ||
         error("cboc_amplitudes must be positive integers; got $cboc_amplitudes")
     Int(a1) + Int(a2) <= typemax(Int8) ||
@@ -217,7 +246,7 @@ function _codelut_modulation(m::BOCcos)
 end
 
 """
-    build_signal_lut(modulation, codes, sec::SecondaryCode; cboc_amplitudes = (19, 6))
+    build_signal_lut(modulation, codes, sec::SecondaryCode; cboc_amplitudes = nothing)
         -> SignalLUT
 
 Bake every PRN's fully-modulated replica into one `SignalLUT` matrix, eagerly at signal
@@ -235,9 +264,13 @@ column otherwise) for runtime application.
 **Errors** for modulations the LUT can't bake (cosine BOC, code-factor n ≠ 1, …) — these are
 unimplemented for the embedded LUT, so the signal fails to construct rather than silently
 omitting its LUT. `_codelut_modulation` raises the specific error.
+
+For a `CBOC` modulation, `cboc_amplitudes = nothing` (the default) derives the Int8 amplitude
+pair from the modulation's own `boc1_power` (see `_cboc_int_amplitudes`); the E1 10/11 split
+yields `(19, 6)`. Pass an explicit `(a1, a2)` tuple to override.
 """
 function build_signal_lut(modulation, codes::AbstractMatrix, sec::SecondaryCode;
-                          cboc_amplitudes::Tuple{Integer,Integer} = (19, 6))
+                          cboc_amplitudes::Union{Nothing,Tuple{Integer,Integer}} = nothing)
     clmod = _codelut_modulation(modulation, cboc_amplitudes)   # throws on unimplemented modulation
     num_prns = size(codes, 2)
     num_prns >= 1 ||
