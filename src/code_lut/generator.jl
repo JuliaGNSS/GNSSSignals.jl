@@ -88,6 +88,10 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngine512, st::
     padded = eng.padded; L = eng.L
     frac_W = eng.frac_W; whole_W = eng.whole_W; modulus = eng.modulus
     fstr = eng.frac_stride; wstr = eng.whole_stride
+    # Strided / non-contiguous target: the `out[VecRange]` stores below are only defined for a
+    # contiguous target (SIMD.jl), so a strided `SubArray` throws. Mirror the boundary engine's
+    # guard (#103) and walk it with the plain indexed per-sample DDA instead (issue #124).
+    _is_dense_target(out) || return _fill_continue_scalar_512!(out, eng, st)
     # Spawn the four interleaved streams (W apart) from the carried stream-0.
     rel1 = st.rel; rem1 = st.rem; b1 = st.base
     rel2, rem2, b2 = _advance_window_512(rel1, rem1, b1, frac_W, whole_W, modulus, L)
@@ -134,6 +138,22 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngine512, st::
     end
     # stream-0 is now at absolute offset num (after both the bulk and leftover advances).
     return CodeState512(rel1, rem1, b1)
+end
+
+# Non-dense fallback for `fill_continue!` (strided / non-contiguous `out`): a plain indexed
+# per-sample DDA walk over the carried stream-0 state, byte-identical to the SIMD path (just
+# slower). The stream-0 `rel[1]` is invariantly 0 (the base lane), so the current chip index is
+# just `base`; advancing every lane by one sample keeps that invariant and returns the state
+# advanced by exactly `length(out)` (issue #124).
+@inline function _fill_continue_scalar_512!(out, eng::FillEngine512, st::CodeState512)
+    padded = eng.padded; L = eng.L; modulus = eng.modulus
+    frac1 = _RemT(eng.step_num % eng.step_den); whole1 = eng.step_num ÷ eng.step_den
+    rel = st.rel; rem = st.rem; base = st.base
+    @inbounds for j in eachindex(out)
+        out[j] = padded[base + 1]
+        rel, rem, base = _advance_window_512(rel, rem, base, frac1, whole1, modulus, L)
+    end
+    return CodeState512(rel, rem, base)
 end
 
 # Advance one stream by nwin full W-windows + ntail (< W) scalar samples.
@@ -211,6 +231,11 @@ end
 function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
     p = eng.prepared; whole_W = eng.whole_W; frac_W = eng.frac_W; modulus = eng.modulus; Lc = eng.code_length
     phase = st.phase; rem = st.rem
+    # Strided / non-contiguous target: the `out[VecRange]` stores below are only defined for a
+    # contiguous target (SIMD.jl), so a strided `SubArray` throws — even at W = 1 (Portable's
+    # `VecRange{1}`). Mirror the boundary engine's guard (#103) and walk it with the plain
+    # indexed per-sample DDA instead (issue #124).
+    _is_dense_target(out) || return _fill_continue_scalar_phase!(out, eng, st)
     num = length(out)
     nwin = num ÷ W; ntail = num - nwin * W
     pos = 0
@@ -226,6 +251,22 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T
         end
         phase, rem = _advance_scalar_phase(phase, rem, ntail, eng.step_num, eng.step_den, modulus, Lc)
         pos += ntail
+    end
+    return CodeStatePhase{W,T}(phase, rem)
+end
+
+# Non-dense fallback for the phase-engine `fill_continue!` (strided / non-contiguous `out`): a
+# plain indexed per-sample DDA walk. Lane 0 of the carried phase is the current sample's chip
+# index, and advancing every lane by one sample keeps that invariant, so `padded[phase[1]+1]`
+# reproduces the windowed lookup byte-for-byte (just slower) and the returned state is advanced
+# by exactly `length(out)` (issue #124).
+@inline function _fill_continue_scalar_phase!(out, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
+    padded = eng.prepared.padded; modulus = eng.modulus; Lc = eng.code_length
+    frac1 = _RemT(eng.step_num % eng.step_den); whole1 = T(eng.step_num ÷ eng.step_den)
+    phase = st.phase; rem = st.rem
+    @inbounds for j in eachindex(out)
+        out[j] = padded[Int(phase[1]) + 1]
+        phase, rem = _advance_phase(phase, rem, frac1, whole1, modulus, Lc)
     end
     return CodeStatePhase{W,T}(phase, rem)
 end
