@@ -186,6 +186,28 @@ end # module CodeLUT
     (θ_int, rem0)
 end
 
+# Shared entry-point preamble for the three public LUT resample paths — the one-shot
+# `_gen_code_lut_core!`, the continuing `code_engine`, and the fused `code_engine(…, Val(K))`.
+# Applies the `fs ≥ fc·P` oversampling guard, then splits the real primary-chip `start_phase` /
+# `start_index_shift` into the integer sub-chip offset `phase_sub` (θ_int) and the fixed-point
+# fractional residual `rem0` the kernels consume at 2^-30-sub-chip precision (see
+# `_subchip_phase_split`). Unifying it keeps the guard condition and the phase-split convention
+# from drifting between the paths — a divergence would make gen_code! and code_engine anchor
+# phase differently and break their byte-for-byte equivalence (#131). `what` names the calling
+# entry in the guard error and `hint` is an optional trailing redirect; the `fs < fc·P`
+# condition itself is identical everywhere. (`_STEP_DEN` is the DDA denominator every path's
+# `_fixed_point_step` also returns, so the split matches the resampled stream's grid.)
+@inline function _lut_resample_setup(
+    mc::CodeLUT.ModulatedCode, fs::Float64, fc::Float64, start_phase, start_index_shift::Integer;
+    what::AbstractString, hint::AbstractString = "",
+)
+    P = mc.subchip_factor
+    fs < fc * P && error(
+        "$what needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz)$hint.",
+    )
+    _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, CodeLUT._STEP_DEN)
+end
+
 # Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOCsin/BOCcos/TMBOC; CBOC
 # bakes a multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the
 # CBOC's own `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit
@@ -409,14 +431,7 @@ end
     start_phase,
     start_index_shift::Integer,
 )
-    P = mc.subchip_factor
-    fs < fc * P && error(
-        "gen_code! needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz).",
-    )
-    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
-    # fractional residual `rem0` at 2^-30-sub-chip precision (see `_subchip_phase_split`).
-    sd = CodeLUT._STEP_DEN
-    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
+    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift; what = "gen_code!")
     # Parameterless default_backend() const-folds to the host's concrete backend on non-AVX-512
     # builds; on an AVX-512 build it is a small Union{AVX512,AVX2,Portable} (a runtime Ref read
     # for the #104 demotion) union-split at the barrier below. The table-aware overload would
@@ -515,25 +530,20 @@ function code_engine(
     mc = _modulated_code_view(signal.lut, Int(prn))
     fc = _to_hz(code_frequency)
     fs = _to_hz(sampling_frequency)
-    P = mc.subchip_factor
-    fs < fc * P && error(
-        "code_engine needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! with the signal directly.",
-    )
+    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift;
+        what = "code_engine", hint = "; use gen_code! with the signal directly")
     # `backend` defaults to the parameterless `default_backend()` — const-folded on non-AVX-512
     # builds, else a small `Union{AVX512,AVX2,Portable}` (a runtime Ref read for the #104
     # demotion) union-split at the `_wrap_code_fill_engine` barrier; the table-aware overload's
     # length guard is dead code for GNSS codes and would additionally box the engine. It is
     # exposed so tests can force a *weaker* backend than the host (e.g. AVX2/Portable on an
     # AVX-512 runner) — forcing a backend the CPU lacks would SIGILL.
-    # Resample the baked sub-chip table at fc·P. Split the real primary-chip start phase into
-    # an integer sub-chip offset `phase_sub` (θ_int) and a fractional residual `rem0`.
-    cps = (fc * P) / fs
-    sn, sd = CodeLUT._fixed_point_step(cps)   # ← fixed-point step (one multiply + round)
-    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
+    # Resample the baked sub-chip table at fc·P (fixed-point step: one multiply + round).
+    sn, sd = CodeLUT._fixed_point_step((fc * mc.subchip_factor) / fs)
     engine = CodeLUT.make_fill_engine(mc.table, sn, sd; phase = phase_sub, rem0 = rem0, backend = backend)
     # `mc.secondary` is a view into `signal.lut.secondary`; materialise it as an owning Vector
     # so the engine does not alias the (otherwise read-only) embedded matrix.
-    return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, P, sn, sd, phase_sub, Int(rem0))
+    return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, mc.subchip_factor, sn, sd, phase_sub, Int(rem0))
 end
 
 # Function barrier. `make_fill_engine` returns a small Union over the phase type (Int16 vs
@@ -623,21 +633,15 @@ function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequenc
     mc = _modulated_code_view(signal.lut, Int(prn))
     fc = _to_hz(code_frequency)
     fs = _to_hz(sampling_frequency)
-    P = mc.subchip_factor
-    fs < fc * P && error(
-        "code_engine(…, Val(K)) needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz); use gen_code! / code_engine without Val(K).",
-    )
+    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift;
+        what = "code_engine(…, Val(K))", hint = "; use gen_code! / code_engine without Val(K)")
     any(!=(Int8(1)), mc.secondary) && error(
         "code_engine(…, Val(K)) does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / code_engine without Val(K).",
     )
-    # Split the real primary-chip start phase into an integer sub-chip offset (θ_int) and a
-    # fractional residual `rem0` (see `_subchip_phase_split`).
-    sd = CodeLUT._STEP_DEN
-    phase_sub, rem0 = _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, sd)
     # Resample the baked sub-chip table at fc·P. Parameterless default_backend() const-folds on
     # non-AVX-512 builds, else returns a small Union (a runtime Ref read for the #104 demotion)
     # union-split into the inferable per-backend engine; the table-aware overload would box it.
-    CodeLUT.code_engine(mc.table, (fc * P) / fs, Val(K);
+    CodeLUT.code_engine(mc.table, (fc * mc.subchip_factor) / fs, Val(K);
                         phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
 
