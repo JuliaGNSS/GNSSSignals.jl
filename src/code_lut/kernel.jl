@@ -68,6 +68,15 @@ Pass the result to [`generate_code!`](@ref) / [`generate_code`](@ref). Must be �
 """
 chips_per_sample(code_frequency, sampling_frequency) = code_frequency / sampling_frequency
 
+# Pointer/`VecRange`-safe output targets for the fast kernels (boundary fill + windowed
+# permute), which write through `pointer(out)` / SIMD `VecRange` stores assuming UNIT STRIDE.
+# A plain `Vector` and a unit-stride contiguous `SubArray` satisfy that; strided views (e.g. a
+# matrix row) do NOT — routing them to those kernels clobbers neighbouring memory (issue #103),
+# so callers send them through the plain indexed Portable fallback instead.
+@inline _is_dense_target(::Vector) = true
+@inline _is_dense_target(::Base.FastContiguousSubArray) = true
+@inline _is_dense_target(::AbstractVector) = false
+
 # ===== generate_code! =====
 """
     generate_code!(out, table, step_numerator, step_denominator; phase=0, backend=…)
@@ -91,10 +100,17 @@ function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
         throw(ArgumentError("need 0 < step_numerator ≤ step_denominator (must oversample, chips/sample ≤ 1)"))
     (0 ≤ rem0 < step_denominator) ||
         throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
-    if out isa AbstractVector{Int8} && _use_boundary(Int(step_numerator), Int(step_denominator), backend)
-        _generate_boundary!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), _RemT(rem0))
+    sn = Int(step_numerator); sd = Int(step_denominator); ph = Int(phase); r0 = _RemT(rem0)
+    if !_is_dense_target(out)
+        # Strided / non-contiguous target (e.g. a matrix row view): the boundary and windowed-
+        # permute kernels write through `pointer(out)` / `VecRange` stores assuming unit stride,
+        # which would corrupt neighbouring memory (issue #103). Walk it with the plain indexed
+        # scalar generator instead — correct for any `AbstractVector`, just slower.
+        _generate!(out, table, sn, sd, ph, Portable(), r0)
+    elseif out isa AbstractVector{Int8} && _use_boundary(sn, sd, backend)
+        _generate_boundary!(out, table, sn, sd, ph, r0)
     else
-        _generate!(out, table, Int(step_numerator), Int(step_denominator), Int(phase), backend, _RemT(rem0))
+        _generate!(out, table, sn, sd, ph, backend, r0)
     end
     out
 end
