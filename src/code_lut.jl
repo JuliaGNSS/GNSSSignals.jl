@@ -14,9 +14,9 @@
 # The LUT resampler bakes the BOC/TMBOC subcarrier (and short secondary codes)
 # into an expanded ±1 Int8 table and resamples it with a single AVX-512 `vpermb`
 # / AVX2 `vpshufb` sliding-window permute over a drift-free integer DDA — or, once the
-# baked table is heavily oversampled (so consecutive samples repeat a chip), a broadcast
-# run-fill that matches the original `gen_code!`'s store-bound speed instead of paying a
-# permute per window. The baked table is Int8: ±1 for BPSK/BOC/TMBOC, or a multi-level
+# baked table is heavily oversampled (so consecutive samples repeat a chip), an exact
+# boundary fill that splat-stores one chip run per store at the original `gen_code!`'s
+# store-bound speed instead of paying a permute per window. The baked table is Int8: ±1 for BPSK/BOC/TMBOC, or a multi-level
 # integer approximation of the sqrt-power amplitudes for CBOC (Galileo E1B); cosine-BOC is
 # unsupported. Requires sub-chip oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ end
 Generate the sampled spreading code for PRN `prn` of `signal` in-place, by resampling PRN
 `prn`'s fully-modulated baked replica from the signal's embedded `SignalLUT`. This is THE code
 generator: it wraps PRN `prn`'s baked column in a zero-copy view-backed table and drives the
-SIMD windowed-permute / run-fill resampler.
+SIMD windowed-permute / boundary-fill resampler.
 
 # Output
 `sampled_code` must be `Vector{Int8}` (or any `AbstractVector{Int8}`). Non-CBOC signals are
@@ -388,7 +388,7 @@ sign flips across call boundaries). Seed it with [`code_state`](@ref)`(eng)` and
 value returned by [`gen_code!`](@ref)`(out, eng, st)` into the next call.
 """
 struct CodeFillState{St}
-    dda::St          # backend DDA state (CodeState512 / CodeStatePhase / RunFillState)
+    dda::St          # backend DDA state (CodeState512 / CodeStatePhase / BoundaryState)
     n_abs::Int       # absolute sample offset of the next sample to emit
 end
 

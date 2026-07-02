@@ -171,14 +171,14 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
-    @testset "high-oversampling run-fill path" begin
+    @testset "high-oversampling boundary-fill path" begin
         # At high oversampling `make_fill_engine` / `generate_code!` switch from the windowed
-        # permute to a broadcast run-fill (`_runfill_*`). Its approximate samples-per-chip DDA
-        # matches the exact `floor(step_num·n/2^_B)` fixed-point reference for any single fill
-        # (the rounding drift only reaches ≤1 sample after ~10⁶ chips — see the drift test
-        # below), so here it must be byte-identical. Sweep `m = samples/chip` across the
-        # `Val`-specialised ladder AND the `m > 64` generic kernel, with non-power-of-two
-        # rates (`m`/`m+1` mixed runs), several phases/lengths, and chunked continuation.
+        # permute to the boundary fill (`_boundary_*`), whose exact magic-reciprocal chip
+        # boundaries are byte-identical to the `floor(step_num·n/2^_B)` fixed-point reference
+        # for ANY fill length or continuation chunking. Sweep `m = samples/chip` across the
+        # store-width ladder (SW = 16/32/64) AND the `m > 62` long-run EXTRAS variant, with
+        # non-power-of-two rates (`m`/`m+1` mixed runs), several phases/lengths, and chunked
+        # continuation.
         rng = MersenneTwister(99)
         for L in (1023, 257, 64)
             chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
@@ -209,12 +209,35 @@ const _BACKENDS = (CL.Portable(),
         end
     end
 
+    @testset "boundary kernel forced: exact vs oracle across every regime" begin
+        # Drive `_generate_boundary!` DIRECTLY (bypassing the `_use_boundary` gate) so every
+        # store-width branch (SW = 16/32/64, EXTRAS), the power-of-two shift path and the
+        # magic-reciprocal path, code wraps, wind-down clamping and the < SW scalar tail are
+        # all exercised — even at rates the dispatcher would send to the permute kernels.
+        # The kernel is exact for ANY rate, so the gate can never change the output.
+        rng = MersenneTwister(4242)
+        for L in (64, 127, 1023, 10230, 767250)
+            chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
+            for cps in (0.95, 0.51, 0.5, 1 / 3, 0.25, 0.126, 0.125, 1 / 12.3, 0.0625,
+                        1 / 17, 0.02, 1 / 64, 1 / 64.7, 1 / 65, 1 / 128, 1 / 1023, 1 / 5000),
+                n in (1, 15, 16, 17, 63, 64, 65, 200, 4096, 12345),
+                phase in (0, L - 1), rem0 in (0, 1, _SD ÷ 3, _SD - 1)
+
+                sn = _step_num(cps)
+                out = Vector{Int8}(undef, n)
+                CL._generate_boundary!(out, ct, sn, _SD, phase, CL._RemT(rem0))
+                @test out == _ref_rem0(chips, sn, rem0, phase, n)
+            end
+        end
+    end
+
     @testset "fractional sub-chip start phase (rem0) — all backends == shifted reference" begin
         # A fixed-point fractional sub-chip offset `rem0 ∈ [0, 2^_B)` seeds the DDA's running
         # remainder so it tracks the SHIFTED stream `((step_num·n + rem0) >> _B + phase)`. Every
-        # PERMUTE backend must match the shifted reference byte-exactly; the high-oversampling
-        # broadcast RUN-FILL gets its documented ≤2-sample boundary tolerance. rem0 = 0 ⇒ the
-        # original integer-phase output.
+        # backend must match the shifted reference byte-exactly — including the
+        # high-oversampling boundary fill, whose exact reciprocal has no tolerance carve-out
+        # (the old run-fill needed ≤2 samples of slack here). rem0 = 0 ⇒ the original
+        # integer-phase output.
         rng = MersenneTwister(123)
         for L in (1023, 257, 64)
             chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
@@ -228,11 +251,7 @@ const _BACKENDS = (CL.Portable(),
                         for be in _BACKENDS
                             out = Vector{Int8}(undef, n)
                             CL.generate_code!(out, ct, sn, _SD; phase = phase, rem0 = rem0, backend = be)
-                            if CL._use_runfill(sn, _SD, be, n)
-                                @test count(!=(0), out .- ref) <= 2   # run-fill boundary tolerance
-                            else
-                                @test out == ref                      # permute: byte-exact
-                            end
+                            @test out == ref                          # byte-exact in BOTH regimes
                         end
                     end
                 end
@@ -260,47 +279,35 @@ const _BACKENDS = (CL.Portable(),
                         for m in (777, 1, 1024, 64, n - 777 - 1 - 1024 - 64)
                             buf = Vector{Int8}(undef, m); st = CL.fill_continue!(buf, eng, st); append!(got, buf)
                         end
-                        if CL._use_runfill(sn, _SD, be)
-                            @test count(!=(0), got .- ref) <= 4   # accumulated run-fill drift
-                        else
-                            @test got == ref
+                        @test got == ref                      # exact in BOTH regimes
+                        # value-based engine (always permute-based, any rate)
+                        eng = CL.code_engine(ct, sn, _SD, Val(1); phase = phase, rem0 = rem0, backend = be)
+                        W = CL.code_width(eng); col = Int8[]; st = CL.code_state(eng)
+                        for _ in 1:(n ÷ W)
+                            v = CL.code_lookup(eng, st)
+                            for j in 1:W; push!(col, v[j]); end
+                            st = CL.code_advance(eng, st)
                         end
-                        # value-based engine (permute backends only — run-fill has no engine)
-                        if !CL._use_runfill(sn, _SD, be)
-                            eng = CL.code_engine(ct, sn, _SD, Val(1); phase = phase, rem0 = rem0, backend = be)
-                            W = CL.code_width(eng); col = Int8[]; st = CL.code_state(eng)
-                            for _ in 1:(n ÷ W)
-                                v = CL.code_lookup(eng, st)
-                                for j in 1:W; push!(col, v[j]); end
-                                st = CL.code_advance(eng, st)
-                            end
-                            @test col == ref[1:length(col)]
-                        end
+                        @test col == ref[1:length(col)]
                     end
                 end
             end
         end
     end
 
-    @testset "run-fill long-sequence drift + >MAXFILL segmentation" begin
+    @testset "boundary-fill long fills are exact (no drift, no segmentation cap)" begin
+        # The old run-fill's rounded reciprocal drifted ~1–2 samples per ~10⁵ chips and needed
+        # a per-call accumulator cap (`_RUNFILL_MAXFILL`). The boundary fill's magic-reciprocal
+        # boundaries are exact for any dividend a code period can produce, so a multi-million-
+        # sample fill is byte-identical to the floor reference with no segmentation at all.
         chips = rand(MersenneTwister(7), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
-        # Drift bound: over a long single fill (millions of chips) the approximate DDA may
-        # differ from the exact floor reference, but only by a couple of samples at boundaries.
-        for cps in (1 / 8, 0.0613)            # exact and fractional run-fill rates
-            sn = _step_num(cps); n = 3_000_000
+        for cps in (1 / 8, 0.0613, 1 / 16)    # pow2 (shift path) and fractional (magic path)
+            sn = _step_num(cps); n = 5_000_000
             ref = _ref(chips, sn, 0, n)
             out = Vector{Int8}(undef, n)
-            CL.generate_code!(out, ct, cps; backend = CL.Portable())
-            @test count(!=(0), out .- ref) <= 4      # ≤ a few sub-chip-boundary shifts
+            CL.generate_code!(out, ct, sn, _SD; backend = CL.Portable())
+            @test out == ref
         end
-        # Buffers longer than `_RUNFILL_MAXFILL` exercise the internal segmentation loop (which
-        # caps the per-call accumulator). The segmented output must still track the floor
-        # reference to within the same small drift bound.
-        n = CL._RUNFILL_MAXFILL + 12345; sn = _step_num(1 / 16)
-        @test n > CL._RUNFILL_MAXFILL                       # segmentation actually triggered
-        out = Vector{Int8}(undef, n)
-        CL.generate_code!(out, ct, sn, CL._STEP_DEN; backend = CL.Portable())
-        @test count(!=(0), out .- _ref(chips, sn, 0, n)) <= 4
     end
 
     @testset "modulation (BOC / TMBOC / secondary)" begin
@@ -717,21 +724,24 @@ end
         @test θ2 == 3 && 0 <= r2 < sd
     end
 
-    @testset "high-oversampling generic run-fill (ni>64): generic kernel + segmentation" begin
+    @testset "very high oversampling (m > 62): EXTRAS strided interior stores" begin
+        # Runs longer than the widest splat store (SW = 64) take the `EXTRAS` variant, which
+        # adds SW-strided stores inside each run. Exact, incl. size-1 continuation chunks that
+        # land on/inside run interiors.
         chips = rand(MersenneTwister(21), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
+        for cps in (1 / 100, 1 / 64.7, 1 / 128, 1 / 5000)
+            sn = _step_num(cps)
+            n = 300_000
+            out = Vector{Int8}(undef, n)
+            CL.generate_code!(out, ct, sn, _SD; backend = CL.Portable())
+            @test out == _ref(chips, sn, 0, n)
+        end
         sn = _step_num(1 / 100)
-        @test CL._runfill_ni(sn) > CL._RUNFILL_MAX_NI     # generic (above the Val ladder)
-        # (a) > _RUNFILL_MAXFILL drives the generic segmentation loop
-        n = CL._RUNFILL_MAXFILL + 12_345
-        out = Vector{Int8}(undef, n)
-        CL.generate_code!(out, ct, sn, _SD; backend = CL.Portable())
-        @test count(!=(0), out .- _ref(chips, sn, 0, n)) <= 4
-        # (b) size-1 continuation lands on chip boundaries → the generic-core boundary return
         eng = CL.make_fill_engine(ct, sn, _SD; backend = CL.Portable()); st = CL.fill_state(eng)
         m = 600; ref = _ref(chips, sn, 0, m); got = Int8[]
         for _ in 1:m
             b = Vector{Int8}(undef, 1); st = CL.fill_continue!(b, eng, st); append!(got, b)
         end
-        @test count(!=(0), got .- ref) <= 4
+        @test got == ref
     end
 end
