@@ -435,25 +435,23 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                         i += 1
                     end
                 else
-                    # unrolled 4×: four INDEPENDENT multiply-highs per iteration
-                    d = (Int64(1) << _B) - r0
-                    while i + 3 <= nlim
-                        j1 = pos + _boundary_ceildiv(d, lg, magic)
-                        j2 = pos + _boundary_ceildiv(d + (Int64(1) << _B), lg, magic)
-                        j3 = pos + _boundary_ceildiv(d + (Int64(2) << _B), lg, magic)
-                        j4 = pos + _boundary_ceildiv(d + (Int64(3) << _B), lg, magic)
-                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 1)), po + j1, nothing)
-                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 2)), po + j2, nothing)
-                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 3)), po + j3, nothing)
-                        vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 4)), po + j4, nothing)
-                        jn = j4
-                        d += Int64(4) << _B
-                        i += 4
-                    end
+                    # ACCUMULATED 128-bit product: P_i = (d_i−1)·magic advances by the
+                    # constant 2^_B·magic, kept as a manual (hi, lo) pair so it lowers to
+                    # add/adc (LLVM's Int128 lowering is worse) — the boundary is
+                    # hi >> lg, so each chip costs one add/adc + shift instead of a
+                    # multiply-high (bit-identical to `_boundary_ceildiv`; measured
+                    # ~1.15–1.2× over the mulx form on Zen 5).
+                    Clo = (magic << _B) % UInt64
+                    Chi = (magic >>> (64 - _B)) % UInt64
+                    P = widemul((((Int64(1) << _B) - r0 - 1)) % UInt64, magic)
+                    lo = P % UInt64
+                    hi = (P >> 64) % UInt64
+                    pos1 = pos + 1
                     while i <= nlim
-                        jn = pos + _boundary_ceildiv(d, lg, magic)
+                        jn = pos1 + Int((hi >>> (lg & 31)) % Int64)
                         vstore(Vec{SW,Int8}(unsafe_load(pp, c0 + i + 1)), po + jn, nothing)
-                        d += Int64(1) << _B
+                        lo, c = Base.add_with_overflow(lo, Clo)
+                        hi = hi + Chi + c
                         i += 1
                     end
                 end
