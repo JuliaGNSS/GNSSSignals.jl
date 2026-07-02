@@ -463,7 +463,7 @@ const _BACKENDS = (CL.Portable(),
         end
         # Wrapped in a function so the child's top-level `for` loops don't hit `-e` soft-scope.
         script = """
-        using GNSSSignals
+        using GNSSSignals, Unitful
         const CL = GNSSSignals.CodeLUT
         function main()
             sec = Int8[1,1,1,1,-1,-1,1,-1,1,-1]; per = 10230; sn = 536870912; sd = 1073741824
@@ -477,7 +477,7 @@ const _BACKENDS = (CL.Portable(),
                 ok &= (out == sref(n0))
             end
             # public continuing path: a CodeFillState with huge n_abs drives _apply_secondary_continue!
-            eng = code_engine(GPSL5I(), 1, 20.46e6)
+            eng = code_engine(GPSL5I(), 1, 20.46e6u"Hz")
             st0 = code_state(eng)
             big_n = 2^34 + 100000
             base = zeros(Int8, N); gen_code!(base, eng, st0)              # secondary applied at offset 0
