@@ -519,12 +519,17 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
 end
 
 # Store width: smallest power of two ≥ m+2 (a run is m or m+1 samples, +1 slack so one
-# store always covers a run), clamped to [16, 64]. Beyond m = 62 the `EXTRAS` variant adds
+# store always covers a run), clamped to [8, 64]. Beyond m = 62 the `EXTRAS` variant adds
 # the strided interior stores. Purely a store-width choice — every variant is exact for
-# every rate, so this ladder (unlike the old `Val{NI}` one) cannot change the output.
+# every rate, so this ladder (unlike the old `Val{NI}` one) cannot change the output. The
+# SW = 8 rung matters on store-bandwidth-limited cores (CI runners): at m ≈ 5 a 16-wide
+# store is 3.3× write amplification vs 8-wide's 1.6× (measured 1.4–1.6× on the ubuntu
+# benchmark's GPSL1CA @ 5 MHz row).
 @inline function _boundary_dispatch!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64)
     m = _STEP_DEN ÷ Int(SN)
-    if m <= 14
+    if m <= 6
+        _boundary_fill!(out, padded, L, SN, c0, r0, Val(8), Val(false))
+    elseif m <= 14
         _boundary_fill!(out, padded, L, SN, c0, r0, Val(16), Val(false))
     elseif m <= 30
         _boundary_fill!(out, padded, L, SN, c0, r0, Val(32), Val(false))
