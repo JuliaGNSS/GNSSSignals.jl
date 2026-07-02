@@ -55,6 +55,43 @@ sampling_frequency = 4MHz
 sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, get_code_frequency(gpsl1ca), start_phase)
 ```
 
+### Long Constant-Rate Fills (Rate Quantization)
+
+The resampler's fixed-point DDA quantizes the chips-per-sample rate to a `2^-30` sub-chip
+grid, so within a single constant-rate fill the code phase drifts from the exact requested
+rate by at most `N · 2^-31` sub-chips over `N` samples.
+
+**Closed-loop tracking is unaffected**: integrations are short (the bound is ≈ 1e-4 chips
+for a 200k-sample epoch), and the phase is re-anchored to the exact float `start_phase` on
+every `gen_code!` call and every `code_engine` rebuild (e.g. each Doppler update).
+
+For **open-loop, second-scale constant-rate fills** (simulation, snapshot processing) the
+drift reaches ~0.01–0.02 chips per second at 50 MHz, because the continuing engine never
+re-anchors to the requested float rate. Split such fills into segments of at most ~1e7
+samples (bound ≈ 0.005 sub-chips per segment) and re-anchor each segment with an
+exactly-computed `start_phase`:
+
+```julia
+using GNSSSignals
+using Unitful: Hz, MHz, upreferred
+
+gpsl1ca = GPSL1CA()
+prn = 1
+sampling_frequency = 50MHz
+code_frequency = get_code_frequency(gpsl1ca)
+chips_per_sample = upreferred(code_frequency / sampling_frequency)  # plain Float64
+
+segment_length = 10^7
+buffer = zeros(Int8, segment_length)
+for k in 0:9  # 10 segments = 2 s at 50 MHz
+    # Re-anchor each segment at the exact float phase instead of letting the
+    # quantized DDA rate run across segment boundaries.
+    start_phase = mod(k * segment_length * chips_per_sample, get_code_length(gpsl1ca))
+    gen_code!(buffer, gpsl1ca, prn, sampling_frequency, code_frequency, start_phase)
+    # process buffer...
+end
+```
+
 ## Working with Different GNSS Signals
 
 ### GPS L1 C/A
