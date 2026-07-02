@@ -1210,23 +1210,54 @@ end
             # __init__ populated the runtime feature Ref with the CPU actually executing.
             @test CL.RUNTIME_FEATURES[] == CL._x86_features()
 
-            # The AVX-512 path is compiled/selectable ONLY when this build was precompiled on a
-            # VBMI host (the `@static` gate on HOST_FEATURES — otherwise its <64 x i8> `vpermb`
-            # can't be legalised and even compiling it aborts LLVM). That is also the only build
-            # that can over-claim, so the runtime demotion (#104) lives there and is exercised on
-            # the AVX-512 SDE CI job. On a non-VBMI build the guarantee is stronger and static:
-            # AVX-512 is const-folded away, so gen_code! can never emit `vpermb`.
+            # Which `@static` branch of `default_backend()` was COMPILED depends on this build's
+            # precompile host (the `@static if HOST_FEATURES.*` gate). We can't recompile here, so
+            # each branch's runtime re-check (#104/#126) is exercised by pointing the runtime Ref
+            # at simulated feature sets — `default_backend()` reads `RUNTIME_FEATURES[]` live, so
+            # this drives the exact shipping selection as a pure function of a feature value.
             if CL.HOST_FEATURES.avx512vbmi
-                @test CL.default_backend() === CL._select_backend(CL.RUNTIME_FEATURES[])
-                # Simulate a VBMI-baked pkgimage loaded on a non-VBMI CPU by pointing the runtime
-                # Ref at a non-VBMI feature set: selection must demote rather than emit `vpermb`.
+                # #129: the shipping AVX-512 branch IS `_select_backend(RUNTIME_FEATURES[])` — no
+                # hand-inlined feature→backend ternary that could drift from the tested helper.
+                # Assert the two agree across EVERY simulated feature set, so any future policy
+                # change in `_select_backend` is automatically reflected in the shipping path.
                 saved = CL.RUNTIME_FEATURES[]
                 try
+                    for feats in ((avx2 = false, avx512vbmi = false),
+                                  (avx2 = true,  avx512vbmi = false),
+                                  (avx2 = true,  avx512vbmi = true))
+                        CL.RUNTIME_FEATURES[] = feats
+                        @test CL.default_backend() === CL._select_backend(feats)
+                    end
+                    # Explicit #104 demotions: a VBMI-baked pkgimage loaded on a lesser CPU must
+                    # demote rather than emit `vpermb`.
                     CL.RUNTIME_FEATURES[] = (avx2 = true, avx512vbmi = false)
                     @test !(CL.default_backend() isa CL.AVX512)
                     @test CL.default_backend() isa CL.AVX2
                     CL.RUNTIME_FEATURES[] = (avx2 = false, avx512vbmi = false)
                     @test CL.default_backend() isa CL.Portable
+                finally
+                    CL.RUNTIME_FEATURES[] = saved
+                end
+            elseif CL.HOST_FEATURES.avx2
+                # #126: the AVX2-only precompile branch must RE-CHECK avx2 at runtime, mirroring
+                # the AVX-512 branch's #104 demotion one tier down. With JULIA_CPU_TARGET=generic
+                # an AVX2-baked pkgimage can load on a CPU without AVX2, where the AVX2 `_pshufb`
+                # (an llvmcall forcing +avx2) SIGILLs; selection must demote AVX2 -> Portable.
+                # (Before the fix this branch const-folded to `AVX2()`, ignoring the runtime Ref —
+                # so the avx2=false case below returned AVX2() and FAILED.)
+                saved = CL.RUNTIME_FEATURES[]
+                try
+                    CL.RUNTIME_FEATURES[] = (avx2 = false, avx512vbmi = false)
+                    @test CL.default_backend() isa CL.Portable
+                    @test !(CL.default_backend() isa CL.AVX2)
+                    CL.RUNTIME_FEATURES[] = (avx2 = true, avx512vbmi = false)
+                    @test CL.default_backend() isa CL.AVX2
+                    # The AVX-512 path is NOT compiled on an AVX2-only build, so even a
+                    # VBMI-capable runtime must select AVX2 here — never AVX512() (its `vpermb`
+                    # would SIGILL on code that was never legalised for this target).
+                    CL.RUNTIME_FEATURES[] = (avx2 = true, avx512vbmi = true)
+                    @test CL.default_backend() isa CL.AVX2
+                    @test !(CL.default_backend() isa CL.AVX512)
                 finally
                     CL.RUNTIME_FEATURES[] = saved
                 end
