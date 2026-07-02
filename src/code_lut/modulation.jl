@@ -9,6 +9,8 @@
 #
 #   LOC (BPSK):   P = 1,  sub-chip sign = +1
 #   BOC(m,1) sin: P = 2m, sub-chip k sign = iseven(k) ? +1 : -1
+#   BOC(m,1) cos: P = 4m, sub-chip k sign = iseven((k+m)÷2) ? +1 : -1 (sine shifted a ¼ cycle;
+#                 the shift straddles the sine grid, so quarter-sub-chips align every boundary)
 #   TMBOC(m2):    P = 2·m2, BOC(1,1) at most chip positions, BOC(m2,1) at `pattern`
 #                 positions (the high-rate component sets the resolution)
 #   CBOC(m1,m2):  P = 2·lcm(m1,m2), sub-chip value = a1·BOC(m1,1) ± a2·BOC(m2,1) — a multi-
@@ -33,6 +35,10 @@ struct BOC <: Modulation                        # sine-phased BOC(m, 1)
     m::Int
 end
 BOC() = BOC(1)
+struct BOCcos <: Modulation                      # cosine-phased BOC(m, 1)
+    m::Int
+end
+BOCcos() = BOCcos(1)
 struct TMBOC <: Modulation                      # BOC(1,1) + BOC(m2,1) at `pattern` positions
     m2::Int
     pattern::Vector{Bool}                       # pattern[(pos mod end)+1] == true → use BOC(m2,1)
@@ -49,6 +55,7 @@ end
 
 subchip_factor(::LOC)   = 1
 subchip_factor(b::BOC)  = 2 * b.m
+subchip_factor(b::BOCcos) = 4 * b.m            # quarter-sub-chips: the ¼-cycle cosine shift halves the grid
 subchip_factor(t::TMBOC) = 2 * t.m2
 subchip_factor(c::CBOC) = 2 * lcm(c.m1, c.m2)
 
@@ -56,6 +63,11 @@ subchip_factor(c::CBOC) = 2 * lcm(c.m1, c.m2)
 # ±1 for BPSK/BOC/TMBOC; a multi-level integer for CBOC (see below).
 @inline _sc_sign(::LOC, k, pos, P)  = Int8(1)
 @inline _sc_sign(b::BOC, k, pos, P) = iseven(k) ? Int8(1) : Int8(-1)
+# Cosine BOC(m,1) at P = 4m: the sub-carrier is the sine BOC shifted by a quarter cycle
+# (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin, φ+¼)`). At the sub-chip
+# midpoint φ = pos + (k+½)/(4m), `floor((φ+¼)·2m)` reduces to `pos·2m + (k+m)÷2`; `pos·2m` is
+# even, so the sign is position-independent: `iseven((k+m)÷2)`. Matches the float spec exactly.
+@inline _sc_sign(b::BOCcos, k, pos, P) = iseven((k + b.m) ÷ 2) ? Int8(1) : Int8(-1)
 @inline function _sc_sign(t::TMBOC, k, pos, P)
     if @inbounds t.pattern[mod(pos, length(t.pattern)) + 1]   # BOC(m2,1): flips every sub-chip
         iseven(k) ? Int8(1) : Int8(-1)
@@ -97,8 +109,8 @@ Base.length(mc::ModulatedCode) = length(mc.table)
     code_replica(primary_chips, modulation; secondary=Int8[1], max_bake=typemax(Int16))
 
 Build a [`ModulatedCode`](@ref) from a primary ±1 `primary_chips` vector and a
-`modulation` (`LOC()`, `BOC(m)`, `TMBOC(m2, pattern)`, or `CBOC(m1, m2, a1, a2)`). The
-table is ±1 for the first three; for `CBOC` it holds the multi-level integer composite
+`modulation` (`LOC()`, `BOC(m)`, `BOCcos(m)`, `TMBOC(m2, pattern)`, or `CBOC(m1, m2, a1, a2)`).
+The table is ±1 for all but `CBOC`; for `CBOC` it holds the multi-level integer composite
 `a1·BOC(m1,1) ± a2·BOC(m2,1)` (still Int8, so all backends resample it unchanged).
 `secondary` is a ±1 overlay
 that multiplies whole primary periods; it is baked into the table when
