@@ -272,7 +272,9 @@ function FillEngineBoundary(table::CodeTable, step_num::Int, step_den::Int, phas
     c0 = Int(mod(Int64(rem0) >> _B + phase_offset, table.length))
     r0 = _RemT(Int64(rem0) & Int64(step_den - 1))
     m = _STEP_DEN ÷ step_num
-    if m <= 14
+    if m <= 6
+        FillEngineBoundary{8,false}(table.padded, table.length, step_num, c0, r0)
+    elseif m <= 14
         FillEngineBoundary{16,false}(table.padded, table.length, step_num, c0, r0)
     elseif m <= 30
         FillEngineBoundary{32,false}(table.padded, table.length, step_num, c0, r0)
