@@ -33,7 +33,7 @@ julia> get_band(GPSL1CA())
 L1()
 ```
 """
-@inline get_band(::GPSL1CA) = L1()
+@inline get_band(::Type{<:GPSL1CA}) = L1()
 
 """
 $(SIGNATURES)
@@ -77,7 +77,7 @@ julia> get_code_length(GPSL1CA())
 1023
 ```
 """
-@inline function get_code_length(::GPSL1CA)
+@inline function get_code_length(::Type{<:GPSL1CA})
     1023
 end
 
@@ -115,7 +115,7 @@ julia> get_code_frequency(GPSL1CA())
 1023000 Hz
 ```
 """
-@inline function get_code_frequency(::GPSL1CA)
+@inline function get_code_frequency(::Type{<:GPSL1CA})
     1_023_000Hz
 end
 
@@ -133,6 +133,6 @@ julia> get_data_frequency(GPSL1CA())
 50 Hz
 ```
 """
-@inline function get_data_frequency(::GPSL1CA)
+@inline function get_data_frequency(::Type{<:GPSL1CA})
     50Hz
 end

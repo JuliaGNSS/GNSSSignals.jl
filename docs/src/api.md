@@ -29,6 +29,17 @@ GNSSSignals.L5
 GNSSSignals.get_band
 ```
 
+## Time Systems
+
+```@docs
+GNSSSignals.TimeSystem
+GNSSSignals.GPST
+GNSSSignals.GST
+GNSSSignals.get_time_system
+GNSSSignals.get_system_start_time
+GNSSSignals.get_tai_offset
+```
+
 ## Secondary Codes
 
 ```@docs

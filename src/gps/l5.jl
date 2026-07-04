@@ -244,8 +244,8 @@ julia> get_band(GPSL5I())
 L5()
 ```
 """
-@inline get_band(::GPSL5I) = L5()
-@inline get_band(::GPSL5Q) = L5()
+@inline get_band(::Type{<:GPSL5I}) = L5()
+@inline get_band(::Type{<:GPSL5Q}) = L5()
 
 """
 $(SIGNATURES)
@@ -272,8 +272,8 @@ julia> get_code_length(GPSL5I())
 10230
 ```
 """
-@inline get_code_length(::GPSL5I) = 10230
-@inline get_code_length(::GPSL5Q) = 10230
+@inline get_code_length(::Type{<:GPSL5I}) = 10230
+@inline get_code_length(::Type{<:GPSL5Q}) = 10230
 
 """
 $(SIGNATURES)
@@ -286,8 +286,8 @@ julia> get_code_frequency(GPSL5I())
 10230000 Hz
 ```
 """
-@inline get_code_frequency(::GPSL5I) = 10_230_000Hz
-@inline get_code_frequency(::GPSL5Q) = 10_230_000Hz
+@inline get_code_frequency(::Type{<:GPSL5I}) = 10_230_000Hz
+@inline get_code_frequency(::Type{<:GPSL5Q}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
@@ -308,7 +308,7 @@ julia> get_data_frequency(GPSL5I())
 100 Hz
 ```
 """
-@inline get_data_frequency(::GPSL5I) = 100Hz
+@inline get_data_frequency(::Type{<:GPSL5I}) = 100Hz
 
 """
 $(SIGNATURES)
@@ -326,7 +326,7 @@ julia> get_data_frequency(GPSL5Q())
 0 Hz
 ```
 """
-@inline get_data_frequency(::GPSL5Q) = 0Hz
+@inline get_data_frequency(::Type{<:GPSL5Q}) = 0Hz
 
 """
 $(SIGNATURES)

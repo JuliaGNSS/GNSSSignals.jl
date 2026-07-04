@@ -54,6 +54,12 @@ to such platforms.
 """
 widen_codes_to_storage(codes::AbstractMatrix) = Int16.(codes)
 
+# Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
+# these forward an instance to its type.
+@inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
+@inline get_code_frequency(s::AbstractGNSSSignal) = get_code_frequency(typeof(s))
+@inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
+
 # NOTE: the legacy fixed-point `gen_code!` and its `sample_code!` / `dispatch_sample_code_worker!`
 # / `sample_code_worker!` / `sample_code_worker_generic!` / `sample_code_tail!` /
 # `_pad_inner_iterations` machinery (plus the `SAMPLE_CODE_INNER_THRESHOLD` / `HAS_AVX512`

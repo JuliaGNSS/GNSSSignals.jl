@@ -36,7 +36,7 @@ julia> get_band(GalileoE1B())
 L1()
 ```
 """
-@inline get_band(::GalileoE1B) = L1()
+@inline get_band(::Type{<:GalileoE1B}) = L1()
 
 """
 $(SIGNATURES)
@@ -87,7 +87,7 @@ julia> get_code_length(GalileoE1B())
 4092
 ```
 """
-@inline function get_code_length(::GalileoE1B)
+@inline function get_code_length(::Type{<:GalileoE1B})
     4092
 end
 
@@ -126,7 +126,7 @@ julia> get_code_frequency(GalileoE1B())
 1023000 Hz
 ```
 """
-@inline function get_code_frequency(::GalileoE1B)
+@inline function get_code_frequency(::Type{<:GalileoE1B})
     1023_000Hz
 end
 
@@ -144,7 +144,7 @@ julia> get_data_frequency(GalileoE1B())
 250 Hz
 ```
 """
-@inline function get_data_frequency(::GalileoE1B)
+@inline function get_data_frequency(::Type{<:GalileoE1B})
     250Hz
 end
 
@@ -186,7 +186,7 @@ end
 get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
 @inline get_modulation(::GalileoE1B_BOC11) = BOCsin(1, 1)
 
-@inline get_band(::GalileoE1B_BOC11) = L1()
+@inline get_band(::Type{<:GalileoE1B_BOC11}) = L1()
 get_signal_name(::GalileoE1B_BOC11) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B_BOC11()
@@ -195,7 +195,7 @@ function GalileoE1B_BOC11()
     GalileoE1B_BOC11(codes, lut)
 end
 
-@inline get_code_length(::GalileoE1B_BOC11) = 4092
+@inline get_code_length(::Type{<:GalileoE1B_BOC11}) = 4092
 @inline get_secondary_code(::GalileoE1B_BOC11) = NoSecondaryCode()
-@inline get_code_frequency(::GalileoE1B_BOC11) = 1023_000Hz
-@inline get_data_frequency(::GalileoE1B_BOC11) = 250Hz
+@inline get_code_frequency(::Type{<:GalileoE1B_BOC11}) = 1023_000Hz
+@inline get_data_frequency(::Type{<:GalileoE1B_BOC11}) = 250Hz

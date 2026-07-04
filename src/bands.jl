@@ -60,13 +60,20 @@ $(SIGNATURES)
 Get the center (carrier) frequency of a signal.
 
 Dispatches through the signal's band ([`get_band`](@ref)), so all signals on
-the same band return the same value by construction.
+the same band return the same value by construction. Works on either a signal
+instance or its type — `get_center_frequency(GPSL1CA)` avoids constructing a
+signal just to read the carrier.
 
 ```julia-repl
 julia> get_center_frequency(GPSL1CA())
 1575420000 Hz
+
+julia> get_center_frequency(GPSL1CA)
+1575420000 Hz
 ```
 """
+@inline get_center_frequency(::Type{S}) where {S<:AbstractGNSSSignal} =
+    get_center_frequency(get_band(S))
 @inline get_center_frequency(s::AbstractGNSSSignal) = get_center_frequency(get_band(s))
 
 """
@@ -74,6 +81,10 @@ $(SIGNATURES)
 
 Get the [`Band`](@ref) a signal is transmitted on.
 
-Concrete signal types define one method each, e.g. `get_band(::GPSL1CA) = L1()`.
+Concrete signal types define one method each on the type, e.g.
+`get_band(::Type{<:GPSL1CA}) = L1()`, so the band is available without
+constructing a signal. The instance method forwards to the type.
 """
 function get_band end
+
+@inline get_band(s::AbstractGNSSSignal) = get_band(typeof(s))
