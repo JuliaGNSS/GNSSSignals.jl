@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.0.0...v3.1.0) (2026-07-04)
+
+
+### Features
+
+* expose signal constants at the type level + TimeSystem abstraction ([d9813a2](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/d9813a20bd55dcb29f019fc8e5f103c634a6d2d3))
+
 # [3.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v2.6.0...v3.0.0) (2026-07-02)
 
 
