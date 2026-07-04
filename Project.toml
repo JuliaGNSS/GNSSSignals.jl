@@ -4,6 +4,7 @@ version = "3.0.0"
 authors = ["Soeren Schoenbrod <soeren.schoenbrod@nav.rwth-aachen.de>", "Michael Niestroj <michael.niestroj@nav.rwth-aachen.de"]
 
 [deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 FixedPointNumbers = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
@@ -12,6 +13,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
 Aqua = "0.8"
+Dates = "1"
 DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
 FixedPointNumbers = "0.8, 0.9"
 SIMD = "3"

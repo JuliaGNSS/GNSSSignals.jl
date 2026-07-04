@@ -1,10 +1,11 @@
 module GNSSSignals
 
+using Dates: DateTime
 using DocStringExtensions
 using FixedPointNumbers
 using SIMD: Vec, vload, vstore, vifelse, shufflevector
 using Statistics
-using Unitful: Frequency, Hz, upreferred, ustrip, @u_str
+using Unitful: Frequency, Hz, s, upreferred, ustrip, @u_str
 
 import Base.show
 
@@ -47,6 +48,12 @@ export AbstractGNSSSignal,
     get_code_spectrum,
     get_band,
     get_signal_name,
+    TimeSystem,
+    GPST,
+    GST,
+    get_time_system,
+    get_system_start_time,
+    get_tai_offset,
     min_bits_for_code_length,
     get_modulation,
     get_secondary_code,
@@ -148,6 +155,7 @@ include("gps/l2c.jl")
 include("galileo/e1b.jl")
 include("galileo/e1c.jl")
 include("galileo/e5a.jl")
+include("time_systems.jl")
 include("common.jl")
 include("code_lut.jl")
 end

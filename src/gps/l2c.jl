@@ -146,8 +146,8 @@ julia> get_band(GPSL2CM())
 L2()
 ```
 """
-@inline get_band(::GPSL2CM) = L2()
-@inline get_band(::GPSL2CL) = L2()
+@inline get_band(::Type{<:GPSL2CM}) = L2()
+@inline get_band(::Type{<:GPSL2CL}) = L2()
 
 """
 $(SIGNATURES)
@@ -174,7 +174,7 @@ julia> get_code_length(GPSL2CM())
 10230
 ```
 """
-@inline get_code_length(::GPSL2CM) = GPS_L2CM_CODE_LENGTH
+@inline get_code_length(::Type{<:GPSL2CM}) = GPS_L2CM_CODE_LENGTH
 
 """
 $(SIGNATURES)
@@ -187,7 +187,7 @@ julia> get_code_length(GPSL2CL())
 767250
 ```
 """
-@inline get_code_length(::GPSL2CL) = GPS_L2CL_CODE_LENGTH
+@inline get_code_length(::Type{<:GPSL2CL}) = GPS_L2CL_CODE_LENGTH
 
 """
 $(SIGNATURES)
@@ -226,8 +226,8 @@ julia> get_code_frequency(GPSL2CM())
 511500 Hz
 ```
 """
-@inline get_code_frequency(::GPSL2CM) = GPS_L2C_CODE_FREQUENCY
-@inline get_code_frequency(::GPSL2CL) = GPS_L2C_CODE_FREQUENCY
+@inline get_code_frequency(::Type{<:GPSL2CM}) = GPS_L2C_CODE_FREQUENCY
+@inline get_code_frequency(::Type{<:GPSL2CL}) = GPS_L2C_CODE_FREQUENCY
 
 """
 $(SIGNATURES)
@@ -242,7 +242,7 @@ broadcast symbol rate, matching the convention used across this package (see
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::GPSL2CM) = 50Hz
+@inline get_data_frequency(::Type{<:GPSL2CM}) = 50Hz
 
 """
 $(SIGNATURES)
@@ -254,4 +254,4 @@ The L2 CL-code is a dataless pilot, so its data frequency is 0 Hz.
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::GPSL2CL) = 0Hz
+@inline get_data_frequency(::Type{<:GPSL2CL}) = 0Hz

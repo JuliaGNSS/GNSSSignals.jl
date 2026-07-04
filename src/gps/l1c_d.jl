@@ -35,7 +35,7 @@ $(SIGNATURES)
 
 Get the band the signal is transmitted on.
 """
-@inline get_band(::GPSL1C_D) = L1()
+@inline get_band(::Type{<:GPSL1C_D}) = L1()
 
 """
 $(SIGNATURES)
@@ -62,7 +62,7 @@ Get the primary code length for GPS L1C-D.
 # Returns
 - `Int`: 10230 chips
 """
-@inline get_code_length(::GPSL1C_D) = L1C_PRIMARY_LENGTH
+@inline get_code_length(::Type{<:GPSL1C_D}) = L1C_PRIMARY_LENGTH
 
 """
 $(SIGNATURES)
@@ -82,7 +82,7 @@ Get the code chipping rate for GPS L1C-D.
 # Returns
 - `Frequency`: 1.023 MHz
 """
-@inline get_code_frequency(::GPSL1C_D) = 1_023_000Hz
+@inline get_code_frequency(::Type{<:GPSL1C_D}) = 1_023_000Hz
 
 """
 $(SIGNATURES)
@@ -99,4 +99,4 @@ post-FEC channel symbol rate, not the pre-FEC information rate.
 # Returns
 - `Frequency`: 100 Hz
 """
-@inline get_data_frequency(::GPSL1C_D) = 100Hz
+@inline get_data_frequency(::Type{<:GPSL1C_D}) = 100Hz

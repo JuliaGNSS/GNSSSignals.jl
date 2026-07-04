@@ -251,8 +251,8 @@ julia> get_band(GalileoE5aI())
 L5()
 ```
 """
-@inline get_band(::GalileoE5aI) = L5()
-@inline get_band(::GalileoE5aQ) = L5()
+@inline get_band(::Type{<:GalileoE5aI}) = L5()
+@inline get_band(::Type{<:GalileoE5aQ}) = L5()
 
 """
 $(SIGNATURES)
@@ -273,16 +273,16 @@ $(SIGNATURES)
 
 Get the code length for Galileo E5a (10230 chips, both components).
 """
-@inline get_code_length(::GalileoE5aI) = 10230
-@inline get_code_length(::GalileoE5aQ) = 10230
+@inline get_code_length(::Type{<:GalileoE5aI}) = 10230
+@inline get_code_length(::Type{<:GalileoE5aQ}) = 10230
 
 """
 $(SIGNATURES)
 
 Get the code chipping rate for Galileo E5a (10.23 MHz, both components).
 """
-@inline get_code_frequency(::GalileoE5aI) = 10_230_000Hz
-@inline get_code_frequency(::GalileoE5aQ) = 10_230_000Hz
+@inline get_code_frequency(::Type{<:GalileoE5aI}) = 10_230_000Hz
+@inline get_code_frequency(::Type{<:GalileoE5aQ}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
@@ -295,7 +295,7 @@ symbols/s rate (25 bps with rate-1/2 convolutional coding).
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::GalileoE5aI) = 50Hz
+@inline get_data_frequency(::Type{<:GalileoE5aI}) = 50Hz
 
 """
 $(SIGNATURES)
@@ -307,7 +307,7 @@ The E5a-Q component is a dataless pilot.
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::GalileoE5aQ) = 0Hz
+@inline get_data_frequency(::Type{<:GalileoE5aQ}) = 0Hz
 
 """
 $(SIGNATURES)
