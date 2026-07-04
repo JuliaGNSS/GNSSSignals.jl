@@ -1,5 +1,5 @@
 """
-    GPSL1C_P{C, M} <: AbstractGNSSSignal{C}
+    GPSL1C_P{C, M} <: AbstractGPSSignal{C}
 
 GPS L1C pilot signal (the dataless component of L1C, carrying 75% of
 the L1C power per IS-GPS-800G; broadcast by Block III/IIIF satellites).
@@ -21,7 +21,7 @@ get_secondary_code_length(gpsl1c_p)  # 1800
 get_band(gpsl1c_p)                   # L1()
 ```
 """
-struct GPSL1C_P{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL1C_P{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     overlay_codes::M    # 1800 × 63 Int8 ±1 matrix, exposed via PerPRNSecondaryCode
     lut::SignalLUT      # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`

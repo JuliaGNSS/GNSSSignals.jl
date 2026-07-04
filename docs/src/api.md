@@ -4,6 +4,8 @@
 
 ```@docs
 GNSSSignals.AbstractGNSSSignal
+GNSSSignals.AbstractGPSSignal
+GNSSSignals.AbstractGalileoSignal
 GNSSSignals.GPSL1CA
 GNSSSignals.GPSL1C_D
 GNSSSignals.GPSL1C_P

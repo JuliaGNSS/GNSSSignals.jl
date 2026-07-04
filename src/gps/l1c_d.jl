@@ -1,5 +1,5 @@
 """
-    GPSL1C_D{C} <: AbstractGNSSSignal{C}
+    GPSL1C_D{C} <: AbstractGPSSignal{C}
 
 GPS L1C data signal (the data-carrying component of L1C, broadcast by
 Block III/IIIF satellites alongside the legacy L1 C/A).
@@ -22,7 +22,7 @@ get_band(gpsl1c_d)          # L1()
 PRNs 1-63 are supported; PRNs 64-210 (IS-GPS-800G Table 6.3-1) are not
 implemented in this package.
 """
-struct GPSL1C_D{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL1C_D{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end

@@ -1,5 +1,5 @@
 """
-    GPSL5I{C} <: AbstractGNSSSignal{C}
+    GPSL5I{C} <: AbstractGPSSignal{C}
 
 GPS L5-I signal (the in-phase, data-carrying component of GPS L5).
 
@@ -15,13 +15,13 @@ get_secondary_code_length(gpsl5i)  # 10
 get_band(gpsl5i)                   # L5()
 ```
 """
-struct GPSL5I{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL5I{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
-    GPSL5Q{C} <: AbstractGNSSSignal{C}
+    GPSL5Q{C} <: AbstractGPSSignal{C}
 
 GPS L5-Q signal (the quadrature, dataless pilot component of GPS L5).
 
@@ -44,7 +44,7 @@ get_data_frequency(gpsl5q)         # 0 Hz
 get_band(gpsl5q)                   # L5()
 ```
 """
-struct GPSL5Q{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL5Q{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end

@@ -96,9 +96,11 @@ $(SIGNATURES)
 
 Get the [`TimeSystem`](@ref) a signal's measurements are referenced to.
 
-Concrete signal types define one method each on the type, e.g.
-`get_time_system(::Type{<:GPSL1CA}) = GPST()`, so the time system is available
-without constructing a signal. The instance method forwards to the type.
+The time system is a per-constellation fact, so it is defined once per
+constellation on the signal supertype, e.g.
+`get_time_system(::Type{<:AbstractGPSSignal}) = GPST()`; every concrete GPS
+signal inherits it through subtype dispatch. Available on the type (without
+constructing a signal); the instance method forwards to the type.
 
 # Examples
 ```julia-repl
@@ -113,24 +115,12 @@ function get_time_system end
 
 @inline get_time_system(s::AbstractGNSSSignal) = get_time_system(typeof(s))
 
-# Signal → time system. This is the only genuinely per-signal fact here (like
-# the per-signal `get_band`); the epoch and TAI offset are properties of the
-# time system, defined once above.
-# GPS signals: GPS Time.
-@inline get_time_system(::Type{<:GPSL1CA}) = GPST()
-@inline get_time_system(::Type{<:GPSL1C_D}) = GPST()
-@inline get_time_system(::Type{<:GPSL1C_P}) = GPST()
-@inline get_time_system(::Type{<:GPSL2CM}) = GPST()
-@inline get_time_system(::Type{<:GPSL2CL}) = GPST()
-@inline get_time_system(::Type{<:GPSL5I}) = GPST()
-@inline get_time_system(::Type{<:GPSL5Q}) = GPST()
-# Galileo signals: Galileo System Time.
-@inline get_time_system(::Type{<:GalileoE1B}) = GST()
-@inline get_time_system(::Type{<:GalileoE1B_BOC11}) = GST()
-@inline get_time_system(::Type{<:GalileoE1C}) = GST()
-@inline get_time_system(::Type{<:GalileoE1C_BOC11}) = GST()
-@inline get_time_system(::Type{<:GalileoE5aI}) = GST()
-@inline get_time_system(::Type{<:GalileoE5aQ}) = GST()
+# Signal → time system. This is a per-constellation fact, so it is stated once
+# per constellation through the signal supertype (unlike the genuinely
+# per-signal `get_band`); the epoch and TAI offset are properties of the time
+# system, defined once above.
+@inline get_time_system(::Type{<:AbstractGPSSignal}) = GPST()         # GPS Time
+@inline get_time_system(::Type{<:AbstractGalileoSignal}) = GST()      # Galileo System Time
 
 # Signal-level access forwards through the time system — same dual entry (type
 # or instance) as `get_center_frequency` through `get_band`.

@@ -1,5 +1,5 @@
 """
-    GalileoE1C{C} <: AbstractGNSSSignal{C}
+    GalileoE1C{C} <: AbstractGalileoSignal{C}
 
 Galileo E1C signal (the pilot, dataless component of Galileo E1 OS).
 
@@ -25,7 +25,7 @@ get_secondary_code_length(e1c)  # 25
 get_band(e1c)                   # L1()
 ```
 """
-struct GalileoE1C{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE1C{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
@@ -168,7 +168,7 @@ julia> get_data_frequency(GalileoE1C())
 end
 
 """
-    GalileoE1C_BOC11{C} <: AbstractGNSSSignal{C}
+    GalileoE1C_BOC11{C} <: AbstractGalileoSignal{C}
 
 BOC(1,1) approximation of Galileo E1C (the pilot component of Galileo E1
 OS).
@@ -198,7 +198,7 @@ get_modulation(e1c)    # BOCsin(1, 1)
 get_code_length(e1c)   # 4092
 ```
 """
-struct GalileoE1C_BOC11{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE1C_BOC11{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end

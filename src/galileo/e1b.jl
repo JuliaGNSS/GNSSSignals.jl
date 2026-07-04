@@ -1,5 +1,5 @@
 """
-    GalileoE1B{C} <: AbstractGNSSSignal{C}
+    GalileoE1B{C} <: AbstractGalileoSignal{C}
 
 Galileo E1B signal (the data-carrying component of Galileo E1 OS).
 
@@ -14,7 +14,7 @@ get_code_length(e1b)   # 4092
 get_band(e1b)          # L1()
 ```
 """
-struct GalileoE1B{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE1B{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
@@ -149,7 +149,7 @@ julia> get_data_frequency(GalileoE1B())
 end
 
 """
-    GalileoE1B_BOC11{C} <: AbstractGNSSSignal{C}
+    GalileoE1B_BOC11{C} <: AbstractGalileoSignal{C}
 
 BOC(1,1) approximation of Galileo E1B (the data-carrying component of
 Galileo E1 OS).
@@ -178,7 +178,7 @@ get_modulation(e1b)    # BOCsin(1, 1)
 get_code_length(e1b)   # 4092
 ```
 """
-struct GalileoE1B_BOC11{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE1B_BOC11{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end

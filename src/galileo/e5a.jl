@@ -1,5 +1,5 @@
 """
-    GalileoE5aI{C} <: AbstractGNSSSignal{C}
+    GalileoE5aI{C} <: AbstractGalileoSignal{C}
 
 Galileo E5a-I signal (the in-phase, data-carrying component of Galileo E5a).
 
@@ -26,13 +26,13 @@ get_secondary_code_length(e5a_i)  # 20
 get_band(e5a_i)                   # L5()
 ```
 """
-struct GalileoE5aI{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE5aI{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
-    GalileoE5aQ{C, M} <: AbstractGNSSSignal{C}
+    GalileoE5aQ{C, M} <: AbstractGalileoSignal{C}
 
 Galileo E5a-Q signal (the quadrature, dataless pilot component of Galileo E5a).
 
@@ -58,7 +58,7 @@ get_secondary_code_length(e5a_q)  # 100
 get_data_frequency(e5a_q)         # 0 Hz
 ```
 """
-struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSignal{C}
     codes::C
     secondary_codes::M    # 100 × 50 Int8 ±1 matrix, exposed via PerPRNSecondaryCode
     lut::SignalLUT        # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`

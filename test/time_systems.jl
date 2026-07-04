@@ -9,7 +9,20 @@ import Unitful: s
     @test GPST <: TimeSystem
     @test GST <: TimeSystem
 
-    # Signal → time system (the only per-signal fact).
+    # Every signal belongs to its constellation supertype; both supertypes are
+    # signal subtypes. This is what lets `get_time_system` be stated once per
+    # constellation.
+    @test AbstractGPSSignal <: AbstractGNSSSignal
+    @test AbstractGalileoSignal <: AbstractGNSSSignal
+    for S in gps_signals
+        @test S <: AbstractGPSSignal
+    end
+    for S in galileo_signals
+        @test S <: AbstractGalileoSignal
+    end
+
+    # Signal → time system (a per-constellation fact, dispatched via the
+    # constellation supertype).
     for S in gps_signals
         @test @inferred(get_time_system(S)) === GPST()
     end

@@ -1,5 +1,5 @@
 """
-    GPSL2CM{C} <: AbstractGNSSSignal{C}
+    GPSL2CM{C} <: AbstractGPSSignal{C}
 
 GPS L2 CM signal (the moderate-length, data-carrying component of the GPS L2
 civil signal L2C).
@@ -30,13 +30,13 @@ get_code_frequency(gpsl2cm)   # 511500 Hz
 get_band(gpsl2cm)             # L2()
 ```
 """
-struct GPSL2CM{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL2CM{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
 """
-    GPSL2CL{C} <: AbstractGNSSSignal{C}
+    GPSL2CL{C} <: AbstractGPSSignal{C}
 
 GPS L2 CL signal (the long, dataless pilot component of the GPS L2 civil
 signal L2C).
@@ -64,7 +64,7 @@ get_data_frequency(gpsl2cl)   # 0 Hz
 get_band(gpsl2cl)             # L2()
 ```
 """
-struct GPSL2CL{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL2CL{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end

@@ -10,6 +10,8 @@ using Unitful: Frequency, Hz, s, upreferred, ustrip, @u_str
 import Base.show
 
 export AbstractGNSSSignal,
+    AbstractGPSSignal,
+    AbstractGalileoSignal,
     Band,
     L1,
     L2,
@@ -80,6 +82,33 @@ Signals that share an RF carrier expose the same [`Band`](@ref) via
 between them (e.g. GPS L1 C/A and Galileo E1B both on 1575.42 MHz).
 """
 abstract type AbstractGNSSSignal{C} end
+
+"""
+    AbstractGPSSignal{C} <: AbstractGNSSSignal{C}
+
+Abstract supertype for a signal transmitted by the GPS constellation, e.g.
+[`GPSL1CA`](@ref), [`GPSL5I`](@ref).
+
+Its purpose is to carry the constellation-level facts that every GPS signal
+shares, so they can be stated once instead of per signal. The time system is
+the current example: `get_time_system(::Type{<:AbstractGPSSignal}) = GPST()`
+covers all GPS signals through subtype dispatch. Genuinely per-signal facts
+([`get_band`](@ref), [`get_modulation`](@ref), the chip rates …) stay defined
+on the concrete signal types.
+"""
+abstract type AbstractGPSSignal{C} <: AbstractGNSSSignal{C} end
+
+"""
+    AbstractGalileoSignal{C} <: AbstractGNSSSignal{C}
+
+Abstract supertype for a signal transmitted by the Galileo constellation, e.g.
+[`GalileoE1B`](@ref), [`GalileoE5aI`](@ref).
+
+The Galileo counterpart to [`AbstractGPSSignal`](@ref): it carries the facts
+every Galileo signal shares, e.g. `get_time_system(::Type{<:AbstractGalileoSignal})
+= GST()`.
+"""
+abstract type AbstractGalileoSignal{C} <: AbstractGNSSSignal{C} end
 
 Base.Broadcast.broadcastable(s::AbstractGNSSSignal) = Ref(s)
 
