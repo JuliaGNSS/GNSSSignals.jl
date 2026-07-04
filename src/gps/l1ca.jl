@@ -1,5 +1,5 @@
 """
-    GPSL1CA{C} <: AbstractGNSSSignal{C}
+    GPSL1CA{C} <: AbstractGPSSignal{C}
 
 GPS L1 C/A signal.
 
@@ -14,7 +14,7 @@ get_code_length(gpsl1ca)   # 1023
 get_band(gpsl1ca)          # L1()
 ```
 """
-struct GPSL1CA{C<:AbstractMatrix} <: AbstractGNSSSignal{C}
+struct GPSL1CA{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
