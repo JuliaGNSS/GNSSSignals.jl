@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.3.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.2.0...v3.3.0) (2026-07-05)
+
+
+### Features
+
+* add get_signal_id and get_band_id accessors ([cb5ece7](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/cb5ece79702035e6b32c33837a192e1a237b2175))
+
 # [3.2.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.1.0...v3.2.0) (2026-07-05)
 
 
