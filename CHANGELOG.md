@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.2.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.1.0...v3.2.0) (2026-07-05)
+
+
+### Features
+
+* introduce per-constellation signal supertypes (`AbstractGPSSignal`, `AbstractGalileoSignal`); collapse `get_time_system` to one method per GNSS ([0d4f23f](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/0d4f23f))
+
 # [3.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.0.0...v3.1.0) (2026-07-04)
 
 
