@@ -26,6 +26,17 @@ end
     @test get_signal_name(GalileoE1C()) == "Galileo E1C"
 end
 
+@testset "get_signal_id" begin
+    @test @inferred(get_signal_id(GPSL1CA())) === :GPSL1CA
+    @test @inferred(get_signal_id(GPSL5I())) === :GPSL5I
+    @test @inferred(get_signal_id(GalileoE1B())) === :GalileoE1B
+    @test @inferred(get_signal_id(GalileoE1C())) === :GalileoE1C
+    # Type-level dispatch works without constructing the signal.
+    @test @inferred(get_signal_id(GPSL1CA)) === :GPSL1CA
+    # Finer than the band id: same PRN on two bands → two distinct signal ids.
+    @test get_signal_id(GPSL1CA()) !== get_signal_id(GPSL5I())
+end
+
 @testset "SecondaryCode dispatch" begin
     # L5-I has a SharedSecondaryCode of length 10 (NH10).
     gpsl5i_sec = get_secondary_code(GPSL5I())

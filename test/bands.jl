@@ -14,3 +14,20 @@
     # Inference smoke test: the dispatch chain collapses to a literal.
     @test @inferred(get_center_frequency(GPSL1CA())) == 1_575_420_000Hz
 end
+
+@testset "get_band_id" begin
+    # On the band itself (instance and type).
+    @test @inferred(get_band_id(L1())) === :L1
+    @test @inferred(get_band_id(L5())) === :L5
+    @test @inferred(get_band_id(L1)) === :L1
+
+    # On a signal: id follows the signal's band, so everything on one carrier
+    # shares an id regardless of constellation.
+    @test @inferred(get_band_id(GPSL1CA())) === :L1
+    @test @inferred(get_band_id(GalileoE1B())) === :L1
+    @test @inferred(get_band_id(GPSL5I())) === :L5
+    @test get_band_id(GPSL1CA()) === get_band_id(GalileoE1B()) === get_band_id(L1())
+
+    # Type-level signal dispatch works without constructing the signal.
+    @test @inferred(get_band_id(GPSL1CA)) === :L1
+end

@@ -54,6 +54,34 @@ to such platforms.
 """
 widen_codes_to_storage(codes::AbstractMatrix) = Int16.(codes)
 
+"""
+$(SIGNATURES)
+
+Get the `Symbol` identifier of a GNSS signal — the machine-readable per-signal
+key, e.g. `:GPSL1CA`, `:GalileoE1B`, `:GalileoE5aI`.
+
+This is the finest identity level: the same PRN measured on two bands of one
+constellation (e.g. GPS L1 and L5) has two distinct signal ids.
+
+Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
+to pin a specific symbol (e.g. so an approximation type reports the id of the
+signal it approximates). Works on an instance or a type and folds to a
+compile-time constant.
+
+Distinct from [`get_signal_name`](@ref), which is a human-readable display
+string (`"GPS L1 C/A"`), and coarser than [`get_band_id`](@ref) (`:L1`).
+
+```julia-repl
+julia> get_signal_id(GPSL1CA())
+:GPSL1CA
+
+julia> get_signal_id(GalileoE1B)
+:GalileoE1B
+```
+"""
+@inline get_signal_id(::Type{S}) where {S<:AbstractGNSSSignal} = nameof(S)
+@inline get_signal_id(s::AbstractGNSSSignal) = get_signal_id(typeof(s))
+
 # Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
 # these forward an instance to its type.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))

@@ -88,3 +88,35 @@ constructing a signal. The instance method forwards to the type.
 function get_band end
 
 @inline get_band(s::AbstractGNSSSignal) = get_band(typeof(s))
+
+"""
+$(SIGNATURES)
+
+Get the `Symbol` identifier of a [`Band`](@ref).
+
+This is the machine-readable key for a band (e.g. `:L1`, `:L5`) — the level at
+which signals share a carrier NCO and a receiver shares an inter-frequency bias.
+Because band identity is by RF frequency, every signal on the same carrier maps
+to the same id regardless of constellation: GPS L1 C/A, GPS L1C and Galileo E1
+are all `:L1`.
+
+Defaults to `nameof` of the band type, so a new [`Band`](@ref) gets a sensible
+id for free; override `get_band_id(::Type{MyBand})` if you need a different
+symbol. Works on a band or signal, instance or type, and dispatches to a
+compile-time constant.
+
+Distinct from [`get_signal_id`](@ref) (per-signal, e.g. `:GPSL1CA`) and from
+[`get_center_frequency`](@ref) (the band's numeric carrier frequency).
+
+```julia-repl
+julia> get_band_id(L1())
+:L1
+
+julia> get_band_id(GPSL1CA())
+:L1
+```
+"""
+@inline get_band_id(::Type{B}) where {B<:Band} = nameof(B)
+@inline get_band_id(b::Band) = get_band_id(typeof(b))
+@inline get_band_id(::Type{S}) where {S<:AbstractGNSSSignal} = get_band_id(get_band(S))
+@inline get_band_id(s::AbstractGNSSSignal) = get_band_id(get_band(s))
