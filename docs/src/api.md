@@ -29,6 +29,7 @@ GNSSSignals.L1
 GNSSSignals.L2
 GNSSSignals.L5
 GNSSSignals.get_band
+GNSSSignals.get_band_id
 ```
 
 ## Time Systems
@@ -110,6 +111,7 @@ GNSSSignals.get_data_frequency
 GNSSSignals.get_code_center_frequency_ratio
 GNSSSignals.get_modulation
 GNSSSignals.get_signal_name
+GNSSSignals.get_signal_id
 GNSSSignals.min_bits_for_code_length
 GNSSSignals.get_code_type
 ```
