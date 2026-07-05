@@ -33,6 +33,17 @@ ICD, Issue 2.2, §5.1.2). Used by every Galileo signal.
 struct GST <: TimeSystem end
 
 """
+    BDT <: TimeSystem
+
+BeiDou Time. Epoch `2006-01-01T00:00:00` UTC, `BDT = TAI − 33 s`, no leap
+seconds (BDS-SIS-ICD-B1I-3.0 §5.2 / BDS-SIS-ICD, "BDT is synchronised to UTC
+within 100 ns"). Used by every BeiDou signal. Because its epoch is 26 years
+later than GPS's while both are `TAI − 19 s`/`TAI − 33 s`, `BDT = GPST − 14 s`
+in elapsed time (14 leap seconds accrued between the two epochs).
+"""
+struct BDT <: TimeSystem end
+
+"""
 $(SIGNATURES)
 
 Get the start epoch of a GNSS time scale, as a UTC `DateTime`.
@@ -59,6 +70,7 @@ julia> get_system_start_time(GalileoE1B())
 """
 @inline get_system_start_time(::GPST) = DateTime(1980, 1, 6, 0, 0, 0)
 @inline get_system_start_time(::GST) = DateTime(1999, 8, 21, 23, 59, 47)
+@inline get_system_start_time(::BDT) = DateTime(2006, 1, 1, 0, 0, 0)
 
 """
 $(SIGNATURES)
@@ -74,15 +86,18 @@ equivalently `system_time = TAI − get_tai_offset(time_system)`. Works on a
 [`TimeSystem`](@ref), or on a signal / signal type (which forwards through
 [`get_time_system`](@ref)).
 
-Both currently-modelled time scales — [`GPST`](@ref) and [`GST`](@ref) — are
-defined as `TAI − 19 s`, so this returns `19s` for either. It is defined per
-time system (not as a shared fallback) so a future system with a different
-offset (e.g. BeiDou Time, `TAI − 33 s`) states its own value.
+The two GPS/Galileo time scales — [`GPST`](@ref) and [`GST`](@ref) — are
+defined as `TAI − 19 s`, so this returns `19s` for either; [`BDT`](@ref)
+(BeiDou Time) is `TAI − 33 s`, so it returns `33s`. It is defined per time
+system (not as a shared fallback) so each states its own value.
 
 # Examples
 ```julia-repl
 julia> get_tai_offset(GST())
 19 s
+
+julia> get_tai_offset(BDT())
+33 s
 
 julia> get_tai_offset(GPSL1CA) == get_tai_offset(GalileoE1B)
 true
@@ -90,6 +105,7 @@ true
 """
 @inline get_tai_offset(::GPST) = 19s
 @inline get_tai_offset(::GST) = 19s
+@inline get_tai_offset(::BDT) = 33s
 
 """
 $(SIGNATURES)
@@ -121,6 +137,7 @@ function get_time_system end
 # system, defined once above.
 @inline get_time_system(::Type{<:AbstractGPSSignal}) = GPST()         # GPS Time
 @inline get_time_system(::Type{<:AbstractGalileoSignal}) = GST()      # Galileo System Time
+@inline get_time_system(::Type{<:AbstractBeiDouSignal}) = BDT()       # BeiDou Time
 
 # Signal-level access forwards through the time system — same dual entry (type
 # or instance) as `get_center_frequency` through `get_band`.

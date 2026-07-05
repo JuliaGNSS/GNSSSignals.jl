@@ -31,10 +31,15 @@ end
     @test @inferred(get_signal_id(GPSL5I())) === :GPSL5I
     @test @inferred(get_signal_id(GalileoE1B())) === :GalileoE1B
     @test @inferred(get_signal_id(GalileoE1C())) === :GalileoE1C
+    @test @inferred(get_signal_id(BeiDouB1I())) === :BeiDouB1I
+    @test @inferred(get_signal_id(BeiDouB1C_P())) === :BeiDouB1C_P
+    @test @inferred(get_signal_id(BeiDouB2aI)) === :BeiDouB2aI
     # Type-level dispatch works without constructing the signal.
     @test @inferred(get_signal_id(GPSL1CA)) === :GPSL1CA
     # Finer than the band id: same PRN on two bands → two distinct signal ids.
     @test get_signal_id(GPSL1CA()) !== get_signal_id(GPSL5I())
+    # BeiDou B1C data and pilot share a carrier but are distinct signals.
+    @test get_signal_id(BeiDouB1C_D()) !== get_signal_id(BeiDouB1C_P())
 end
 
 @testset "SecondaryCode dispatch" begin

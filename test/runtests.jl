@@ -44,6 +44,7 @@ if !SIMD_ONLY
     include("galileo/e1b.jl")
     include("galileo/e1c.jl")
     include("galileo/e5a.jl")
+    include("beidou/beidou.jl")
     include("common.jl")
 end
 
