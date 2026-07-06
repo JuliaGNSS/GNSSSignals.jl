@@ -254,6 +254,11 @@ L5()
 @inline get_band(::Type{<:GalileoE5aI}) = L5()
 @inline get_band(::Type{<:GalileoE5aQ}) = L5()
 
+# E5a total −155.25 dBW (Galileo OS SIS ICD v2.2, Table 13), 50/50 I/Q power
+# sharing → −158.26 dBW each. See [`get_min_received_power`](@ref).
+@inline get_min_received_power(::Type{<:GalileoE5aI}) = _dbw_to_watts(-155.25 + 10log10(0.5))
+@inline get_min_received_power(::Type{<:GalileoE5aQ}) = _dbw_to_watts(-155.25 + 10log10(0.5))
+
 """
 $(SIGNATURES)
 

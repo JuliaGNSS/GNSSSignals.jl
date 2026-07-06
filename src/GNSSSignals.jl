@@ -52,6 +52,7 @@ export AbstractGNSSSignal,
     get_band_id,
     get_signal_id,
     get_signal_name,
+    get_min_received_power,
     TimeSystem,
     GPST,
     GST,
@@ -188,5 +189,6 @@ include("galileo/e1c.jl")
 include("galileo/e5a.jl")
 include("time_systems.jl")
 include("common.jl")
+include("power.jl")
 include("code_lut.jl")
 end

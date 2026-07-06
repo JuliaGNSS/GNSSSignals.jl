@@ -39,6 +39,10 @@ Get the band the signal is transmitted on.
 """
 @inline get_band(::Type{<:GPSL1C_P}) = L1()
 
+# L1C-P received power −158.25 dBW (IS-GPS-800J, Table 3.2-1; the pilot
+# component, 75 % of the −157.0 dBW L1C total). See [`get_min_received_power`](@ref).
+@inline get_min_received_power(::Type{<:GPSL1C_P}) = _dbw_to_watts(-158.25)
+
 """
 $(SIGNATURES)
 

@@ -35,6 +35,11 @@ L1()
 """
 @inline get_band(::Type{<:GPSL1CA}) = L1()
 
+# Minimum received power −158.5 dBW (IS-GPS-200N, Table 3-Va). Single
+# fully-modulated component, no pilot, so this is the whole signal power. See
+# [`get_min_received_power`](@ref) for the reference conditions.
+@inline get_min_received_power(::Type{<:GPSL1CA}) = _dbw_to_watts(-158.5)
+
 """
 $(SIGNATURES)
 

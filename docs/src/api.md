@@ -125,6 +125,12 @@ GNSSSignals.get_code_spectrum_BOCsin
 GNSSSignals.get_code_spectrum_BOCcos
 ```
 
+## Received Power
+
+```@docs
+GNSSSignals.get_min_received_power
+```
+
 ## Utility Functions
 
 ```@docs

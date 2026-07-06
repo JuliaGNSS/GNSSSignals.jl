@@ -38,6 +38,10 @@ L1()
 """
 @inline get_band(::Type{<:GalileoE1B}) = L1()
 
+# E1 total −157.25 dBW (Galileo OS SIS ICD v2.2, Table 13), 50/50 E1-B/E1-C
+# power sharing → −160.26 dBW each. See [`get_min_received_power`](@ref).
+@inline get_min_received_power(::Type{<:GalileoE1B}) = _dbw_to_watts(-157.25 + 10log10(0.5))
+
 """
 $(SIGNATURES)
 
@@ -187,6 +191,9 @@ get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
 @inline get_modulation(::GalileoE1B_BOC11) = BOCsin(1, 1)
 
 @inline get_band(::Type{<:GalileoE1B_BOC11}) = L1()
+
+# BOC(1,1) approximation of E1-B: same transmitted power as the real signal.
+@inline get_min_received_power(::Type{<:GalileoE1B_BOC11}) = get_min_received_power(GalileoE1B)
 get_signal_name(::GalileoE1B_BOC11) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B_BOC11()

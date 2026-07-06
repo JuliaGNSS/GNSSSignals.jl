@@ -45,6 +45,7 @@ if !SIMD_ONLY
     include("galileo/e1c.jl")
     include("galileo/e5a.jl")
     include("common.jl")
+    include("power.jl")
 end
 
 include("code_lut.jl")

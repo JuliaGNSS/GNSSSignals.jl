@@ -149,6 +149,13 @@ L2()
 @inline get_band(::Type{<:GPSL2CM}) = L2()
 @inline get_band(::Type{<:GPSL2CL}) = L2()
 
+# L2C total −160.0 dBW (IS-GPS-200N, Table 3-Va, IIR-M/IIF worst case; the ICD
+# gives the combined L2C only). CM and CL are chip-by-chip time-multiplexed, so
+# each carries half the average power: −160.0 + 10·log10(0.5) = −163.0 dBW each.
+# This split is derived, not tabulated. See [`get_min_received_power`](@ref).
+@inline get_min_received_power(::Type{<:GPSL2CM}) = _dbw_to_watts(-160.0 + 10log10(0.5))
+@inline get_min_received_power(::Type{<:GPSL2CL}) = _dbw_to_watts(-160.0 + 10log10(0.5))
+
 """
 $(SIGNATURES)
 

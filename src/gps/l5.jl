@@ -247,6 +247,12 @@ L5()
 @inline get_band(::Type{<:GPSL5I}) = L5()
 @inline get_band(::Type{<:GPSL5Q}) = L5()
 
+# I5 and Q5 each −157.9 dBW (IS-GPS-705J, Table 3-III, Block IIF worst case;
+# GPS III/IIIF is 0.9 dB stronger at −157.0). The ICD lists the components
+# directly (equal-power composite). See [`get_min_received_power`](@ref).
+@inline get_min_received_power(::Type{<:GPSL5I}) = _dbw_to_watts(-157.9)
+@inline get_min_received_power(::Type{<:GPSL5Q}) = _dbw_to_watts(-157.9)
+
 """
 $(SIGNATURES)
 
