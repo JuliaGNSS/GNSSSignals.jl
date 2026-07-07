@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.4.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.3.0...v3.4.0) (2026-07-07)
+
+
+### Features
+
+* **code:** add get_code_amplitude accessor for the code's RMS amplitude ([5dff8e8](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/5dff8e858f7a4c9b1e09042a9eb2c716acbf7124))
+
 # [3.3.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.2.0...v3.3.0) (2026-07-05)
 
 
