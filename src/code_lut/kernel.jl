@@ -272,8 +272,14 @@ function _generate_simd_single!(out, table::CodeTable, step_num, step_den, phase
     L = table.length; padded = table.padded
     SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
     base_lane = Vec{W,Int8}(ntuple(j -> Int8((SN * (j - 1)) >> _B), Val(W)))
-    frac_lane = Vec{W,UInt32}(ntuple(j -> UInt32((SN * (j - 1)) & mask), Val(W)))
-    thr   = Vec{W,UInt32}(sd); one8 = one(Vec{W,Int8}); zero8 = zero(Vec{W,Int8})
+    # Carry test rewritten to drop the per-block vector add. `carry[j] = frac_lane[j] + r ≥ 2^_B`
+    # is algebraically `r > (2^_B-1) - frac_lane[j]`, and `nf_lane = (step_den-1) - frac_lane` is a
+    # compile-time-constant vector, so the hot loop is ONE unsigned compare against `r` (NEON `cmhi`
+    # / AVX-512 `vpcmpud`) instead of a broadcast-add + compare — the per-block vector `add`s vanish
+    # (measured: ~27% on Cortex-A78 NEON W=16 tbl1, ~45% on Zen 5 AVX-512 W=64 vpermb where the
+    # dropped add was four zmm ops). Byte-identical to the add form (verified on both ISAs).
+    nf_lane = Vec{W,UInt32}(ntuple(j -> UInt32(mask - ((SN * (j - 1)) & mask)), Val(W)))
+    one8 = one(Vec{W,Int8}); zero8 = zero(Vec{W,Int8})
     Wstep = Int64(W) * SN
     Wstep_whole = Int(Wstep >> _B) % L             # chips per block (≤ W), reduced mod L
     Wstep_frac  = _RemT(Wstep & mask)
@@ -281,7 +287,7 @@ function _generate_simd_single!(out, table::CodeTable, step_num, step_den, phase
     base = Int(mod(Int64(rem0) >> _B + phase_offset, L))
     num  = length(out); blk = 0
     @inbounds while blk + W <= num
-        rel = base_lane + vifelse(frac_lane + Vec{W,UInt32}(r) >= thr, one8, zero8)
+        rel = base_lane + vifelse(Vec{W,UInt32}(r) > nf_lane, one8, zero8)
         out[VecRange{W}(blk + 1)] = _rel_lookup(backend, padded, rel, base)
         t = r + Wstep_frac
         c = t >= sd ? 1 : 0
@@ -316,8 +322,10 @@ function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_o
     SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
     # 16-lane constants (each half is relative to its own lane 0)
     base16 = Vec{32,Int8}(ntuple(j -> Int8((SN * ((j - 1) % H)) >> _B), Val(32)))
-    frac16 = Vec{32,UInt32}(ntuple(j -> UInt32((SN * ((j - 1) % H)) & mask), Val(32)))
-    thr = Vec{32,UInt32}(sd); one8 = one(Vec{32,Int8}); zero8 = zero(Vec{32,Int8})
+    # `nf16 = (step_den-1) - frac16`: same add-dropping rewrite as `_generate_simd_single!` (the
+    # per-half broadcast `rbroad` is compared directly, `rbroad > nf16`, dropping the vector add).
+    nf16 = Vec{32,UInt32}(ntuple(j -> UInt32(mask - ((SN * ((j - 1) % H)) & mask)), Val(32)))
+    one8 = one(Vec{32,Int8}); zero8 = zero(Vec{32,Int8})
     Hfrac = _RemT((Int64(H) * SN) & mask); Hwhole = Int((Int64(H) * SN) >> _B) % L   # 16-sample step
     Wfrac = _RemT((Int64(W) * SN) & mask); Wwhole = Int((Int64(W) * SN) >> _B) % L   # 32-sample step
     r    = _RemT(Int64(rem0) & mask)
@@ -329,7 +337,7 @@ function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_o
         r16 = _RemT(Int64(th) & mask)
         base_hi = _wrapL(base + Hwhole + ch, L)
         rbroad = vifelse(_AVX2_LOW16, Vec{32,UInt32}(r), Vec{32,UInt32}(r16))
-        rel = base16 + vifelse(frac16 + rbroad >= thr, one8, zero8)
+        rel = base16 + vifelse(rbroad > nf16, one8, zero8)
         out[VecRange{W}(blk + 1)] = _rel_lookup_avx2(padded, rel, base, base_hi)
         t = r + Wfrac; c = t >= sd ? 1 : 0
         r = _RemT(Int64(t) & mask)
@@ -614,14 +622,28 @@ end
 # stores (cost ≈ flat per chip), so it scales with the backend's block width — wider
 # vectors amortise the permute over more samples and push the switch to higher m. Values
 # are the measured curve crossings (Zen 5 AVX-512: boundary overtakes the split-constant
-# permute at m ≈ 10; AVX2/NEON = 3, matching the old run-fill values — on the CI AVX2
-# runner the m ≈ 3.9 rows (GPSL5 @ 40 MHz) lose ~20 % when sent to the permute instead). Near the crossover both kernels are within ~15 % of each other, so the
+# permute at m ≈ 10; AVX2 = 3, matching the old run-fill values — on the CI AVX2
+# runner the m ≈ 3.9 rows (GPSL5 @ 40 MHz) lose ~20 % when sent to the permute instead).
+# NEON is microarchitecture-split (one constant cannot fit both aarch64 families — their
+# permute/boundary curves cross at OPPOSITE points):
+#   • Linux aarch64 (Cortex): = 6. Measured directly on a Cortex-A78 (Jetson Orin) with pinned
+#     clocks — the `cmhi` split-constant permute is a flat ~0.20 ns/sample and the `tbl1` (16-wide)
+#     boundary fill only overtakes it at m ≥ 6; at m = 3..5 the 8-wide splat store's write
+#     amplification keeps boundary at 0.22..0.37 ns/sample, slower than the permute.
+#   • Apple Silicon: = 3. Its boundary fill is much faster (the `umulh` ceil-div is cheap — the
+#     same reason `_BOUNDARY_ACCUM` picks the multiply-high branch there), so boundary already wins
+#     from m ≥ 3. The macOS-14 CI benchmark regressed GPS L1 C/A @ 5 MHz (m=4, −24 %), L2C @ 2.5 MHz
+#     and L5 @ 40 MHz (m=3) when they were forced onto the permute path with `= 6`.
+# `Sys.isapple()` const-folds at precompile; aarch64+macOS ⇒ Apple Silicon, aarch64+Linux ⇒ Cortex
+# (Jetson/Raspberry Pi/Neoverse). Was `= 3` for all NEON (copied untuned from AVX2, which sent the
+# common Cortex GPS L1 C/A / L5 rows to the slower boundary path).
+# Near the crossover both kernels are within ~15 % of each other, so the
 # exact values are uncritical — and since both kernels are EXACT and N-independent, the
 # choice affects only speed, never output (the old N-aware short-fill overload is gone:
 # neither kernel has a meaningful setup cost).
 @inline _boundary_min_m(::AVX512)   = 10
 @inline _boundary_min_m(::AVX2)     = 3
-@inline _boundary_min_m(::Neon)     = 3
+@inline _boundary_min_m(::Neon)     = Sys.isapple() ? 3 : 6
 @inline _boundary_min_m(::Portable) = 2
 @inline _use_boundary(step_num::Int, step_den::Int, backend::Backend) =
     step_den ÷ step_num >= _boundary_min_m(backend)
