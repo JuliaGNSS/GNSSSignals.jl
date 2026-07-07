@@ -621,8 +621,8 @@ end
 # crossover is where one W-lane permute block (cost ≈ flat per block) equals ~W/m boundary
 # stores (cost ≈ flat per chip), so it scales with the backend's block width — wider
 # vectors amortise the permute over more samples and push the switch to higher m. Values
-# are the measured curve crossings (Zen 5 AVX-512: boundary overtakes the split-constant
-# permute at m ≈ 10; AVX2 = 3, matching the old run-fill values — on the CI AVX2
+# are the measured curve crossings (Zen 5 AVX-512: boundary overtakes the `cmhi` split-constant
+# permute at m ≈ 8; AVX2 = 3, matching the old run-fill values — on the CI AVX2
 # runner the m ≈ 3.9 rows (GPSL5 @ 40 MHz) lose ~20 % when sent to the permute instead).
 # NEON is microarchitecture-split (one constant cannot fit both aarch64 families — their
 # permute/boundary curves cross at OPPOSITE points):
@@ -637,11 +637,18 @@ end
 # `Sys.isapple()` const-folds at precompile; aarch64+macOS ⇒ Apple Silicon, aarch64+Linux ⇒ Cortex
 # (Jetson/Raspberry Pi/Neoverse). Was `= 3` for all NEON (copied untuned from AVX2, which sent the
 # common Cortex GPS L1 C/A / L5 rows to the slower boundary path).
+# AVX-512 = 8 (was 10). Re-measured on a Zen 5 after the `cmhi` permute rewrite (~45% faster
+# there): with a clock stabilised near all-core boost (so the ALU-heavy permute and the store-heavy
+# boundary see the same clock — a single-core-boost measurement biases toward the store kernel), the
+# permute is a flat ~0.025 ns/sample and boundary overtakes it at m ≥ 8 (m=8 boundary 0.0199 vs
+# permute 0.0253, ~21% faster; m=9 ~4%). The old `= 10` left m=8..9 on the now-slower permute. 8 is
+# also safe on Intel AVX-512, where zmm-heavy code down-licenses the core clock and pushes the
+# crossover even lower (boundary favoured), so no x86 AVX-512 part wants a threshold above 8.
 # Near the crossover both kernels are within ~15 % of each other, so the
 # exact values are uncritical — and since both kernels are EXACT and N-independent, the
 # choice affects only speed, never output (the old N-aware short-fill overload is gone:
 # neither kernel has a meaningful setup cost).
-@inline _boundary_min_m(::AVX512)   = 10
+@inline _boundary_min_m(::AVX512)   = 8
 @inline _boundary_min_m(::AVX2)     = 3
 @inline _boundary_min_m(::Neon)     = Sys.isapple() ? 3 : 6
 @inline _boundary_min_m(::Portable) = 2
