@@ -6,8 +6,14 @@
 ]
     if get_modulation(signal) isa GNSSSignals.CBOC
         @test get_code_type(signal) == Float32
+        # Multi-level CBOC: amplitude is the RMS of the baked ±13/±25 sub-carrier table,
+        # sqrt(19^2 + 6^2) for E1's (19, 6) split (both E1B and E1C, boc2_sign aside).
+        tbl = Int.(signal.lut.padded[1:signal.lut.table_length, 1])
+        @test get_code_amplitude(signal) ≈ sqrt(sum(abs2, tbl) / length(tbl))
+        @test get_code_amplitude(signal) ≈ sqrt(19.0^2 + 6.0^2)
     else
         @test get_code_type(signal) == Int16
+        @test get_code_amplitude(signal) == 1.0          # ±1 code
     end
     @test get_codes(signal) == signal.codes
 end

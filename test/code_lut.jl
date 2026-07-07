@@ -880,6 +880,22 @@ end
         end
     end
 
+    @testset "get_code_amplitude reflects the baked table (incl. overrides)" begin
+        # The default embedded bake (19, 6): amplitude is the RMS of the ±13/±25 table.
+        tbl = Int.(signal.lut.padded[1:signal.lut.table_length, prn])
+        @test get_code_amplitude(signal) ≈ sqrt(sum(abs2, tbl) / length(tbl))
+        @test get_code_amplitude(signal) ≈ sqrt(19.0^2 + 6.0^2)
+        # An explicit `cboc_amplitudes` override is stored on the LUT — the accessor tracks
+        # it, so a re-derivation from `boc1_power` (which ignores overrides) would be wrong.
+        for (a1, a2) in ((30, 9), (2, 1))
+            lut = GNSSSignals.build_signal_lut(
+                get_modulation(signal), get_codes(signal), NoSecondaryCode();
+                cboc_amplitudes = (a1, a2),
+            )
+            @test lut.code_amplitude ≈ sqrt(Float64(a1)^2 + a2^2)
+        end
+    end
+
     @testset "matches float CBOC (signs exact; correlation tracks the amplitude ratio)" begin
         # At fs = fc·P (integer ratio P) every sample is exactly one sub-chip, so the LUT and
         # the float CBOC align sub-chip-for-sub-chip: the sign pattern is identical for ALL

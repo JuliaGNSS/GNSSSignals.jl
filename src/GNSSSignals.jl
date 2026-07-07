@@ -45,6 +45,7 @@ export AbstractGNSSSignal,
     get_code_frequency,
     get_code,
     get_code_unsafe,
+    get_code_amplitude,
     get_data_frequency,
     get_code_center_frequency_ratio,
     get_code_spectrum,
@@ -137,6 +138,14 @@ struct SignalLUT
     secondary::Matrix{Int8}
     table_length::Int         # L·P (length of one PRN's baked table, i.e. column length minus WINDOW_PAD)
     period_subchips::Int      # sub-chips per primary period (Lp·P), for secondary application
+    # Per-sample RMS amplitude of the baked code, `sqrt(mean(code^2))` over one primary
+    # table. Exactly `1` for ±1 codes (BPSK/BOC/TMBOC); for the multi-level CBOC Int8
+    # approximation it is `sqrt(a1^2 + a2^2)` (≈ 19.92 for E1B's baked (19, 6)) and tracks
+    # any explicit `cboc_amplitudes` override. Modulation-level and PRN-independent (PRNs
+    # differ only in the primary ±1 sign), so one scalar suffices. Read via
+    # `get_code_amplitude`; consumers divide correlation results by it to recover a
+    # modulation-independent (unit-power) scale.
+    code_amplitude::Float64
 end
 
 # Residual secondary column for PRN `prn` (the shared-secondary matrix has one column reused
