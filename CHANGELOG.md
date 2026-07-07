@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.0...v3.4.1) (2026-07-07)
+
+
+### Performance Improvements
+
+* **code:** faster NEON/AVX-512 permute + tune NEON boundary crossover ([8413e92](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/8413e92d4eed9ea527a7c0f13743a2f51b07ec01))
+
 # [3.4.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.3.0...v3.4.0) (2026-07-07)
 
 
