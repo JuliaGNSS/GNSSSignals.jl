@@ -328,8 +328,47 @@ function build_signal_lut(modulation, codes::AbstractMatrix, sec::SecondaryCode;
         @inbounds padded[:, prn] .= mc.table.padded
         residual_perprn && (@inbounds secmat[:, prn] .= mc.secondary)
     end
-    SignalLUT(padded, mc1.subchip_factor, secmat, mc1.table.length, mc1.period_subchips)
+    # Per-sample RMS amplitude of the baked code (see `SignalLUT.code_amplitude`). Computed
+    # once here from PRN 1's table — modulation-level and PRN-independent (all PRNs share the
+    # sub-carrier magnitude pattern; the primary only flips signs). Widen to `Int` before
+    # squaring: `abs2` on `Int8` overflows for CBOC's ±25 (25^2 = 625 wraps).
+    tbl = @view mc1.table.padded[1:mc1.table.length]
+    code_amplitude = sqrt(sum(x -> abs2(Int(x)), tbl) / length(tbl))
+    SignalLUT(
+        padded,
+        mc1.subchip_factor,
+        secmat,
+        mc1.table.length,
+        mc1.period_subchips,
+        code_amplitude,
+    )
 end
+
+"""
+$(SIGNATURES)
+
+Per-sample RMS amplitude of `signal`'s sampled code replica — `sqrt(mean(code^2))`
+over one primary code period.
+
+Returns exactly `1` for every ±1 code (BPSK/BOC/TMBOC). For the multi-level CBOC
+Int8 approximation (Galileo E1B/E1C) it is `sqrt(a1^2 + a2^2)` for the baked integer
+sub-carrier amplitudes `(a1, a2)` — ≈ `19.92` for E1B's default `(19, 6)` — and
+reflects any explicit `cboc_amplitudes` override passed to `build_signal_lut`.
+
+Divide a correlation result by this to recover a modulation-independent (unit-power)
+amplitude scale, matching the sqrt-power convention of the old float codes: without
+it a CBOC prompt is scaled up by the code's integer amplitude relative to a BPSK one.
+
+# Examples
+```julia-repl
+julia> get_code_amplitude(GPSL1CA())
+1.0
+
+julia> get_code_amplitude(GalileoE1B())   # sqrt(19^2 + 6^2)
+19.924858845171276
+```
+"""
+@inline get_code_amplitude(signal::AbstractGNSSSignal) = signal.lut.code_amplitude
 
 # Primary ±1 column for PRN `prn` from the (Int16) code matrix — sign of each stored chip.
 @inline _primary_col(codes::AbstractMatrix, prn::Integer) =

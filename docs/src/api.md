@@ -97,6 +97,7 @@ GNSSSignals.code_width
 GNSSSignals.get_code
 GNSSSignals.get_code_unsafe
 GNSSSignals.get_codes
+GNSSSignals.get_code_amplitude
 ```
 
 ## Signal Properties
