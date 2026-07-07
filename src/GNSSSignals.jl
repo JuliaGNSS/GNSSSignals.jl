@@ -12,10 +12,14 @@ import Base.show
 export AbstractGNSSSignal,
     AbstractGPSSignal,
     AbstractGalileoSignal,
+    AbstractBeiDouSignal,
     Band,
     L1,
     L2,
     L5,
+    B1I,
+    B3I,
+    B2b,
     GPSL1CA,
     GPSL1C_D,
     GPSL1C_P,
@@ -29,6 +33,13 @@ export AbstractGNSSSignal,
     GalileoE1C_BOC11,
     GalileoE5aI,
     GalileoE5aQ,
+    BeiDouB1I,
+    BeiDouB3I,
+    BeiDouB2bI,
+    BeiDouB2aI,
+    BeiDouB2aQ,
+    BeiDouB1C_D,
+    BeiDouB1C_P,
     TMBOC,
     gen_code!,
     gen_code,
@@ -56,6 +67,7 @@ export AbstractGNSSSignal,
     TimeSystem,
     GPST,
     GST,
+    BDT,
     get_time_system,
     get_system_start_time,
     get_tai_offset,
@@ -112,6 +124,18 @@ every Galileo signal shares, e.g. `get_time_system(::Type{<:AbstractGalileoSigna
 = GST()`.
 """
 abstract type AbstractGalileoSignal{C} <: AbstractGNSSSignal{C} end
+
+"""
+    AbstractBeiDouSignal{C} <: AbstractGNSSSignal{C}
+
+Abstract supertype for a signal transmitted by the BeiDou constellation, e.g.
+[`BeiDouB1I`](@ref), [`BeiDouB2aI`](@ref), [`BeiDouB1C_D`](@ref).
+
+The BeiDou counterpart to [`AbstractGPSSignal`](@ref): it carries the facts
+every BeiDou signal shares, e.g. `get_time_system(::Type{<:AbstractBeiDouSignal})
+= BDT()` (BeiDou Time).
+"""
+abstract type AbstractBeiDouSignal{C} <: AbstractGNSSSignal{C} end
 
 Base.Broadcast.broadcastable(s::AbstractGNSSSignal) = Ref(s)
 
@@ -195,6 +219,12 @@ include("gps/l2c.jl")
 include("galileo/e1b.jl")
 include("galileo/e1c.jl")
 include("galileo/e5a.jl")
+include("beidou/codes.jl")
+include("beidou/b1i.jl")
+include("beidou/b3i.jl")
+include("beidou/b2b.jl")
+include("beidou/b2a.jl")
+include("beidou/b1c.jl")
 include("time_systems.jl")
 include("common.jl")
 include("code_lut.jl")

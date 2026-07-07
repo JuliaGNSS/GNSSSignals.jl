@@ -6,6 +6,7 @@
 GNSSSignals.AbstractGNSSSignal
 GNSSSignals.AbstractGPSSignal
 GNSSSignals.AbstractGalileoSignal
+GNSSSignals.AbstractBeiDouSignal
 GNSSSignals.GPSL1CA
 GNSSSignals.GPSL1C_D
 GNSSSignals.GPSL1C_P
@@ -19,6 +20,13 @@ GNSSSignals.GalileoE1C
 GNSSSignals.GalileoE1C_BOC11
 GNSSSignals.GalileoE5aI
 GNSSSignals.GalileoE5aQ
+GNSSSignals.BeiDouB1I
+GNSSSignals.BeiDouB3I
+GNSSSignals.BeiDouB2bI
+GNSSSignals.BeiDouB2aI
+GNSSSignals.BeiDouB2aQ
+GNSSSignals.BeiDouB1C_D
+GNSSSignals.BeiDouB1C_P
 ```
 
 ## Bands
@@ -28,6 +36,9 @@ GNSSSignals.Band
 GNSSSignals.L1
 GNSSSignals.L2
 GNSSSignals.L5
+GNSSSignals.B1I
+GNSSSignals.B3I
+GNSSSignals.B2b
 GNSSSignals.get_band
 GNSSSignals.get_band_id
 ```
@@ -38,6 +49,7 @@ GNSSSignals.get_band_id
 GNSSSignals.TimeSystem
 GNSSSignals.GPST
 GNSSSignals.GST
+GNSSSignals.BDT
 GNSSSignals.get_time_system
 GNSSSignals.get_system_start_time
 GNSSSignals.get_tai_offset

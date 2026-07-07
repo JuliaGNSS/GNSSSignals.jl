@@ -39,6 +39,31 @@ BeiDou B2a.
 struct L5 <: Band end
 
 """
+    B1I <: Band
+
+The 1561.098 MHz GNSS band (the legacy BeiDou B1 frequency). Carries the
+BeiDou B1I signal. Distinct from the [`L1`](@ref) band (1575.42 MHz) that
+carries BeiDou B1C.
+"""
+struct B1I <: Band end
+
+"""
+    B3I <: Band
+
+The 1268.52 MHz GNSS band (the BeiDou B3 frequency). Carries the BeiDou B3I
+signal.
+"""
+struct B3I <: Band end
+
+"""
+    B2b <: Band
+
+The 1207.14 MHz GNSS band (the BeiDou B2b frequency, also the legacy B2I
+frequency). Carries the BeiDou B2b signal.
+"""
+struct B2b <: Band end
+
+"""
 $(SIGNATURES)
 
 Get the center (carrier) frequency of a band.
@@ -53,6 +78,12 @@ julia> get_center_frequency(L1())
 @inline get_center_frequency(::L2) = 1_227_600_000Hz
 
 @inline get_center_frequency(::L5) = 1_176_450_000Hz
+
+@inline get_center_frequency(::B1I) = 1_561_098_000Hz
+
+@inline get_center_frequency(::B3I) = 1_268_520_000Hz
+
+@inline get_center_frequency(::B2b) = 1_207_140_000Hz
 
 """
 $(SIGNATURES)
