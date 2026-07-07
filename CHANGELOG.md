@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.1...v3.4.2) (2026-07-07)
+
+
+### Performance Improvements
+
+* **code:** lower AVX-512 boundary crossover 10 → 8 ([9a575be](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/9a575be9e8edd7a07a4215480d9e644f7655d126))
+
 ## [3.4.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.0...v3.4.1) (2026-07-07)
 
 
