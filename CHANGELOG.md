@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.5.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.3...v3.5.0) (2026-07-08)
+
+
+### Features
+
+* **api:** add get_constellation_id signal accessor ([52acffc](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/52acffc9f897c9b314a91857aea43af9c74d8182))
+
 ## [3.4.3](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.2...v3.4.3) (2026-07-08)
 
 
