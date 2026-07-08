@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.3](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.2...v3.4.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* **ci:** serialize push-triggered Documentation runs to stop gh-pages race ([f3f63d4](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/f3f63d47658e3d1e6415fd5da844f20ff84cbfc1)), closes [#pages](https://github.com/JuliaGNSS/GNSSSignals.jl/issues/pages) [#pages](https://github.com/JuliaGNSS/GNSSSignals.jl/issues/pages)
+
 ## [3.4.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.1...v3.4.2) (2026-07-07)
 
 
