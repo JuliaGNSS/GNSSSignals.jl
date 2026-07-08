@@ -43,6 +43,17 @@ end
     @test get_signal_id(GPSL1CA()) !== get_signal_id(GPSL5I())
 end
 
+@testset "get_constellation_id" begin
+    @test @inferred(get_constellation_id(GPSL1CA())) === :GPS
+    @test @inferred(get_constellation_id(GPSL5I())) === :GPS
+    @test @inferred(get_constellation_id(GalileoE1B())) === :Galileo
+    @test @inferred(get_constellation_id(GalileoE5aI())) === :Galileo
+    # Type-level dispatch works without constructing the signal.
+    @test @inferred(get_constellation_id(GalileoE1B)) === :Galileo
+    # Coarser than the signal id: two bands of one constellation share an id.
+    @test get_constellation_id(GPSL1CA()) === get_constellation_id(GPSL5I())
+end
+
 @testset "SecondaryCode dispatch" begin
     # L5-I has a SharedSecondaryCode of length 10 (NH10).
     gpsl5i_sec = get_secondary_code(GPSL5I())

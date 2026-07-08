@@ -82,6 +82,38 @@ julia> get_signal_id(GalileoE1B)
 @inline get_signal_id(::Type{S}) where {S<:AbstractGNSSSignal} = nameof(S)
 @inline get_signal_id(s::AbstractGNSSSignal) = get_signal_id(typeof(s))
 
+"""
+$(SIGNATURES)
+
+Get the `Symbol` identifier of the GNSS constellation a signal belongs to —
+`:GPS` or `:Galileo`.
+
+This is the coarsest identity level: every signal of one constellation, across
+all bands and PRNs, maps to the same id (GPS L1 C/A, GPS L5I and GPS L1C are all
+`:GPS`). It's the natural key for logging, dictionaries and constellation-level
+branching; for a type-level test prefer `signal isa AbstractGPSSignal`.
+
+Defined once per constellation on the abstract signal type
+(`get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS`), so every concrete
+signal inherits it without constructing a value. Works on an instance or a type
+and folds to a compile-time constant.
+
+Distinct from [`get_time_system`](@ref) (the constellation's reference time
+scale, `GPST()`/`GST()`), and coarser than [`get_band_id`](@ref) (`:L1`) and
+[`get_signal_id`](@ref) (`:GPSL1CA`).
+
+```julia-repl
+julia> get_constellation_id(GPSL1CA())
+:GPS
+
+julia> get_constellation_id(GalileoE1B)
+:Galileo
+```
+"""
+@inline get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS
+@inline get_constellation_id(::Type{<:AbstractGalileoSignal}) = :Galileo
+@inline get_constellation_id(s::AbstractGNSSSignal) = get_constellation_id(typeof(s))
+
 # Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
 # these forward an instance to its type.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
