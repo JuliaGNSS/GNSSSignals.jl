@@ -233,6 +233,12 @@ get_modulation(::Type{<:GPSL5I}) = LOC()
 get_modulation(::Type{<:GPSL5Q}) = LOC()
 @inline get_modulation(::GPSL5Q) = LOC()
 
+# L5I data rides the in-phase carrier (default 0); L5Q pilot is in quadrature.
+# IS-GPS-705 §3.3.1.5: the Q5 carrier LAGS the I5 carrier by 90° (cos(ωt−π/2) = sin(ωt)),
+# so the offset is −π/2. This is the opposite sense to Galileo E5aQ, whose ICD (Eq. 1,
+# I·cos − Q·sin) puts the pilot at +π/2 (leading). Same modulation, opposite ICD convention.
+@inline get_carrier_phase_offset(::Type{<:GPSL5Q}) = -π / 2
+
 """
 $(SIGNATURES)
 

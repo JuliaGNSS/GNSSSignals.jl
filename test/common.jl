@@ -18,6 +18,31 @@
     @test get_codes(signal) == signal.codes
 end
 
+@testset "get_carrier_phase_offset" begin
+    # GPS civil signals ride the QUADRATURE carrier, lagging their band's P(Y)
+    # in-phase reference by 90° → −π/2 (IS-GPS-200N §3.3.1.5.1, IS-GPS-705 §3.3.1.5).
+    @test get_carrier_phase_offset(GPSL1CA()) == -π / 2
+    @test get_carrier_phase_offset(GPSL2CM()) == -π / 2   # nominal; CNAV can command in-phase
+    @test get_carrier_phase_offset(GPSL2CL()) == -π / 2
+    @test get_carrier_phase_offset(GPSL5Q()) == -π / 2
+    # Galileo E5aQ pilot LEADS its E5a-I reference by 90° → +π/2 (OS SIS ICD Eq. 1).
+    @test get_carrier_phase_offset(GalileoE5aQ()) == π / 2
+    # In-phase references and in-phase components default to 0.
+    @test get_carrier_phase_offset(GPSL5I()) == 0.0
+    @test get_carrier_phase_offset(GalileoE5aI()) == 0.0
+    # GPS L1C rides the same P(Y) in-phase carrier (IS-GPS-800J §3.2.1.6.1) → 0,
+    # i.e. 90° off C/A on the same band.
+    @test get_carrier_phase_offset(GPSL1C_D()) == 0.0
+    @test get_carrier_phase_offset(GPSL1C_P()) == 0.0
+    @test get_carrier_phase_offset(GalileoE1B()) == 0.0   # E1B/E1C anti-phase is in the code, not the carrier
+    @test get_carrier_phase_offset(GalileoE1C()) == 0.0
+    # C/A and L1C are physically in quadrature with each other.
+    @test get_carrier_phase_offset(GPSL1C_P()) - get_carrier_phase_offset(GPSL1CA()) == π / 2
+    # Type- and instance-forms agree.
+    @test get_carrier_phase_offset(GPSL5Q) == get_carrier_phase_offset(GPSL5Q())
+    @test get_carrier_phase_offset(GPSL1CA) == get_carrier_phase_offset(GPSL1CA())
+end
+
 @testset "min_bits_for_code_length" begin
     @test min_bits_for_code_length(GPSL1CA()) == 10  # 1023 requires 10 bits
     @test min_bits_for_code_length(GPSL5I()) == 17  # 10230 * 10 = 102300 requires 17 bits

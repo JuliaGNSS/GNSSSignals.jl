@@ -120,6 +120,42 @@ julia> get_constellation_id(GalileoE1B)
 @inline get_code_frequency(s::AbstractGNSSSignal) = get_code_frequency(typeof(s))
 @inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
 
+"""
+$(SIGNATURES)
+
+Carrier phase, in **radians**, of the signal's component relative to its band's
+in-phase (I) carrier reference — the carrier the ICD designates as the "in-phase"
+component of that band (GPS L1/L2: the P(Y) carrier; GPS L5: the I5 carrier;
+Galileo E5a: the E5a-I carrier). Two signals on one band share this reference, so
+their offsets are directly comparable.
+
+Several bands multiplex components in phase quadrature (QPSK), one on the in-phase
+carrier and one on the quadrature carrier. That 90° offset lives purely in the
+carrier — the spreading codes are real-valued — so it is not otherwise recoverable
+from the signal definition. A receiver that tracks such components jointly off one
+shared carrier loop needs this to keep each on its own decision axis (e.g.
+de-rotating the data prompt when the loop is locked to the pilot); without it a
+quadrature component collapses onto the orthogonal axis and never demodulates.
+
+The sign follows each ICD's own convention, so it differs by constellation:
+
+- **GPS** puts the civil components on the *quadrature* carrier, *lagging* the
+  band's P(Y) in-phase reference by 90° → `−π/2`: `GPSL1CA` (IS-GPS-200N §3.3.1.5.1),
+  `GPSL2CM`/`GPSL2CL` (IS-GPS-200N §3.3.1.5.1; nominal — CNAV Type 10 bit 273 can
+  command L2C in-phase, `0.0`), and `GPSL5Q` (IS-GPS-705 §3.3.1.5). `GPSL5I` is the
+  L5 in-phase reference (`0.0`).
+- **GPS L1C** (`GPSL1C_D`, `GPSL1C_P`) rides the *same* P(Y) in-phase carrier
+  (IS-GPS-800J §3.2.1.6.1) → `0.0`; hence L1C sits 90° off C/A on the same band.
+- **Galileo E5aQ** *leads* the E5a-I reference by 90° → `+π/2` (OS SIS ICD Eq. 1,
+  `I·cos − Q·sin`); `GalileoE5aI` is the reference (`0.0`).
+- **Galileo E1B/E1C** are both on the E1 in-phase carrier → `0.0`; their relative
+  180° anti-phase is carried in the CBOC code (`get_modulation`), not the carrier.
+
+Default `0.0` covers every single-component signal and in-phase component above.
+"""
+@inline get_carrier_phase_offset(::Type{<:AbstractGNSSSignal}) = 0.0
+@inline get_carrier_phase_offset(s::AbstractGNSSSignal) = get_carrier_phase_offset(typeof(s))
+
 # NOTE: the legacy fixed-point `gen_code!` and its `sample_code!` / `dispatch_sample_code_worker!`
 # / `sample_code_worker!` / `sample_code_worker_generic!` / `sample_code_tail!` /
 # `_pad_inner_iterations` machinery (plus the `SAMPLE_CODE_INNER_THRESHOLD` / `HAS_AVX512`

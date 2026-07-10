@@ -237,6 +237,9 @@ get_modulation(::Type{<:GalileoE5aI}) = LOC()
 get_modulation(::Type{<:GalileoE5aQ}) = LOC()
 @inline get_modulation(::GalileoE5aQ) = LOC()
 
+# E5aI data rides the in-phase carrier (default 0); E5aQ pilot is in quadrature.
+@inline get_carrier_phase_offset(::Type{<:GalileoE5aQ}) = π / 2
+
 """
 $(SIGNATURES)
 
