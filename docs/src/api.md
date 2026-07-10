@@ -111,6 +111,7 @@ GNSSSignals.get_code_frequency
 GNSSSignals.get_data_frequency
 GNSSSignals.get_code_center_frequency_ratio
 GNSSSignals.get_modulation
+GNSSSignals.get_carrier_phase_offset
 GNSSSignals.get_signal_name
 GNSSSignals.get_signal_id
 GNSSSignals.get_constellation_id
