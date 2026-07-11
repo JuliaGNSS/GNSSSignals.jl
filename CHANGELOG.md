@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.6.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.5.0...v3.6.0) (2026-07-11)
+
+
+### Features
+
+* **api:** add get_carrier_phase_offset signal accessor ([7015483](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/70154832ff1873754eb0885c550e084e1bbb6f4a))
+
 # [3.5.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.4.3...v3.5.0) (2026-07-08)
 
 
