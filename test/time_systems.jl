@@ -1,5 +1,5 @@
 using Dates: DateTime
-import Unitful: s
+import Unitful: s, Time
 
 @testset "Time systems" begin
     gps_signals = (GPSL1CA, GPSL1C_D, GPSL1C_P, GPSL2CM, GPSL2CL, GPSL5I, GPSL5Q)
@@ -61,4 +61,48 @@ import Unitful: s
     @test get_tai_offset(GPSL1CA) == get_tai_offset(GalileoE1B)
     @test get_system_start_time(GPSL1CA) != get_system_start_time(GalileoE1B)
     @test get_time_system(GPSL1CA) !== get_time_system(GalileoE1B)
+end
+
+@testset "get_time_system_id / get_time_system_name" begin
+    # On the time system itself (instance and type).
+    @test @inferred(get_time_system_id(GPST())) === :GPST
+    @test @inferred(get_time_system_id(GST())) === :GST
+    @test @inferred(get_time_system_id(GST)) === :GST
+    @test @inferred(get_time_system_name(GPST())) == "GPS Time"
+    @test @inferred(get_time_system_name(GST())) == "Galileo System Time"
+    @test @inferred(get_time_system_name(GPST)) == "GPS Time"
+
+    # On a signal: forwards through get_time_system, on type or instance.
+    for S in (GPSL1CA, GPSL2CM, GPSL5Q)
+        @test @inferred(get_time_system_id(S)) === :GPST
+        @test @inferred(get_time_system_name(S)) == "GPS Time"
+        @test get_time_system_id(S()) === get_time_system_id(S)
+        @test get_time_system_name(S()) == get_time_system_name(S)
+    end
+    for S in (GalileoE1B, GalileoE1C, GalileoE5aI)
+        @test @inferred(get_time_system_id(S)) === :GST
+        @test @inferred(get_time_system_name(S)) == "Galileo System Time"
+        @test get_time_system_id(S()) === get_time_system_id(S)
+        @test get_time_system_name(S()) == get_time_system_name(S)
+    end
+
+    # Every signal referenced to one scale shares id and name, across bands.
+    @test get_time_system_id(GPSL1CA) === get_time_system_id(GPSL5I)
+    @test get_time_system_id(GPSL1CA) !== get_time_system_id(GalileoE1B)
+    # The name is the ICD's spelled-out one, not the acronym.
+    @test get_time_system_name(GalileoE1B) != String(get_time_system_id(GalileoE1B))
+end
+
+@testset "every time system answers every time-system accessor" begin
+    for T in ALL_TIME_SYSTEMS
+        @test get_time_system_id(T) isa Symbol
+        # Deliberately the one name with no fallback to its id: the ICDs' spelled-out
+        # names bear no relation to the acronyms, so each system states its own and a
+        # new one has to say it here rather than report "BDT" and call it a name.
+        @test get_time_system_name(T) isa String
+        @test get_time_system_name(T) != String(get_time_system_id(T))
+        # The two constants a time scale is fixed by.
+        @test get_system_start_time(T()) isa DateTime
+        @test get_tai_offset(T()) isa Time
+    end
 end

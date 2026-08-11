@@ -131,9 +131,7 @@ end
 # Shared interface (modulation, band, frequencies).
 
 get_modulation(::Type{<:GPSL2CM}) = LOC()
-@inline get_modulation(::GPSL2CM) = LOC()
 get_modulation(::Type{<:GPSL2CL}) = LOC()
-@inline get_modulation(::GPSL2CL) = LOC()
 
 # IS-GPS-200N Table 3-III designates the L2 P(Y) carrier as the band's in-phase (I)
 # reference; the civil L2C component (the CM/CL chip-by-chip multiplex) rides the
@@ -143,33 +141,11 @@ get_modulation(::Type{<:GPSL2CL}) = LOC()
 @inline get_carrier_phase_offset(::Type{<:GPSL2CM}) = -π / 2
 @inline get_carrier_phase_offset(::Type{<:GPSL2CL}) = -π / 2
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-
-# Examples
-```julia-repl
-julia> get_band(GPSL2CM())
-L2()
-```
-"""
 @inline get_band(::Type{<:GPSL2CM}) = L2()
 @inline get_band(::Type{<:GPSL2CL}) = L2()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-
-# Examples
-```julia-repl
-julia> get_signal_name(GPSL2CM())
-"GPS L2CM"
-```
-"""
-get_signal_name(::GPSL2CM) = "GPS L2CM"
-get_signal_name(::GPSL2CL) = "GPS L2CL"
+@inline get_signal_name(::Type{<:GPSL2CM}) = "GPS L2CM"
+@inline get_signal_name(::Type{<:GPSL2CL}) = "GPS L2CL"
 
 """
 $(SIGNATURES)

@@ -2,6 +2,12 @@
     @test @inferred(get_center_frequency(L1())) == 1_575_420_000Hz
     @test @inferred(get_center_frequency(L5())) == 1_176_450_000Hz
 
+    # Band type entry, as get_band_id / get_band_name accept.
+    @test @inferred(get_center_frequency(L1)) == 1_575_420_000Hz
+    @test @inferred(get_center_frequency(L2)) == 1_227_600_000Hz
+    @test @inferred(get_center_frequency(L5)) == 1_176_450_000Hz
+    @test get_center_frequency(L2()) == get_center_frequency(L2)
+
     @test @inferred(get_band(GPSL1CA())) isa L1
     @test @inferred(get_band(GPSL5I())) isa L5
     @test @inferred(get_band(GalileoE1B())) isa L1
@@ -30,4 +36,66 @@ end
 
     # Type-level signal dispatch works without constructing the signal.
     @test @inferred(get_band_id(GPSL1CA)) === :L1
+end
+
+@testset "get_band_name" begin
+    # On the band itself (instance and type).
+    @test @inferred(get_band_name(L1())) == "L1"
+    @test @inferred(get_band_name(L2())) == "L2"
+    @test @inferred(get_band_name(L5())) == "L5"
+    @test @inferred(get_band_name(L1)) == "L1"
+
+    # On a signal: the name follows the signal's band, so it is the RF band's
+    # label, not the constellation's — Galileo E1B reports "L1", not "E1".
+    @test @inferred(get_band_name(GPSL1CA())) == "L1"
+    @test @inferred(get_band_name(GalileoE1B())) == "L1"
+    @test @inferred(get_band_name(GPSL2CM())) == "L2"
+    @test @inferred(get_band_name(GPSL5I())) == "L5"
+    @test get_band_name(GalileoE1B()) == get_band_name(GPSL1CA()) == get_band_name(L1())
+
+    # Type-level signal dispatch works without constructing the signal.
+    @test @inferred(get_band_name(GalileoE5aI)) == "L5"
+
+    # Display counterpart of the id — same granularity, String instead of Symbol.
+    for band in (L1(), L2(), L5())
+        @test get_band_name(band) == String(get_band_id(band))
+    end
+
+    # Every band states its name as a literal rather than taking the derived
+    # fallback: that is what makes the call allocation-free and constant-foldable,
+    # and value equality alone cannot tell the two apart ("L1" == String(:L1)). So
+    # check the method dispatch actually reaches, not just what it returns.
+    derived = which(get_band_name, Tuple{Type{Band}})
+    for B in (L1, L2, L5)
+        @test which(get_band_name, Tuple{Type{B}}) !== derived
+        # Stated, but still exactly String() of the id — the two cannot drift apart.
+        @test get_band_name(B) == String(get_band_id(B))
+    end
+end
+
+# A band declared outside the package: it defines no accessor of its own, so both
+# the id and the name come from the fallbacks.
+struct TestOnlyBand <: Band end
+
+@testset "get_band_name fallback for a new Band" begin
+    @test get_band_id(TestOnlyBand) === :TestOnlyBand
+    @test get_band_name(TestOnlyBand) == "TestOnlyBand"
+    @test get_band_name(TestOnlyBand()) == "TestOnlyBand"
+    @test get_band_name(TestOnlyBand) == String(get_band_id(TestOnlyBand))
+    # It really is the derived fallback doing the work here.
+    @test which(get_band_name, Tuple{Type{TestOnlyBand}}) ===
+          which(get_band_name, Tuple{Type{Band}})
+end
+
+@testset "every band answers every band accessor" begin
+    # `TestOnlyBand` above is deliberately not in ALL_BANDS: the invariant is the
+    # package's to keep.
+    for B in ALL_BANDS
+        @test get_band_id(B) isa Symbol
+        @test get_band_name(B) isa String
+        # The carrier frequency is the one fact a band has to state for itself —
+        # on the band type, the entry get_band_id / get_band_name accept.
+        @test get_center_frequency(B) isa Frequency
+        @test get_center_frequency(B()) == get_center_frequency(B)
+    end
 end

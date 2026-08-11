@@ -20,36 +20,10 @@ struct GalileoE1B{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
 end
 
 get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
-@inline get_modulation(::GalileoE1B) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-
-Galileo E1 shares the L1 carrier frequency (1575.42 MHz), so this returns
-[`L1`](@ref) — band identity is by RF, not by ICD label.
-
-# Examples
-```julia-repl
-julia> get_band(GalileoE1B())
-L1()
-```
-"""
 @inline get_band(::Type{<:GalileoE1B}) = L1()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-
-# Examples
-```julia-repl
-julia> get_signal_name(GalileoE1B())
-"Galileo E1B"
-```
-"""
-get_signal_name(::GalileoE1B) = "Galileo E1B"
+@inline get_signal_name(::Type{<:GalileoE1B}) = "Galileo E1B"
 
 function read_from_documentation(raw_code)
     raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
@@ -184,10 +158,9 @@ struct GalileoE1B_BOC11{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
 end
 
 get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
-@inline get_modulation(::GalileoE1B_BOC11) = BOCsin(1, 1)
 
 @inline get_band(::Type{<:GalileoE1B_BOC11}) = L1()
-get_signal_name(::GalileoE1B_BOC11) = "Galileo E1B (BOC(1,1) approximation)"
+@inline get_signal_name(::Type{<:GalileoE1B_BOC11}) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B_BOC11()
     codes = widen_codes_to_storage(read_galileo_e1b_codes())

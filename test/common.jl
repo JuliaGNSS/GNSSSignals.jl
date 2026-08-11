@@ -55,6 +55,16 @@ end
     @test get_signal_name(GPSL5I()) == "GPS L5-I"
     @test get_signal_name(GalileoE1B()) == "Galileo E1B"
     @test get_signal_name(GalileoE1C()) == "Galileo E1C"
+
+    # Type-level dispatch works without constructing the signal (which would read
+    # the code file from disk); the instance path forwards to it.
+    for S in ALL_SIGNALS
+        @test @inferred(get_signal_name(S)) isa String
+    end
+    @test get_signal_name(GPSL2CL) == "GPS L2CL"
+    @test get_signal_name(GalileoE1B_BOC11) == "Galileo E1B (BOC(1,1) approximation)"
+    @test get_signal_name(GPSL1CA()) == get_signal_name(GPSL1CA)
+    @test get_signal_name(GalileoE5aQ()) == get_signal_name(GalileoE5aQ)
 end
 
 @testset "get_signal_id" begin
@@ -77,6 +87,66 @@ end
     @test @inferred(get_constellation_id(GalileoE1B)) === :Galileo
     # Coarser than the signal id: two bands of one constellation share an id.
     @test get_constellation_id(GPSL1CA()) === get_constellation_id(GPSL5I())
+end
+
+@testset "get_constellation_name" begin
+    @test @inferred(get_constellation_name(GPSL1CA())) == "GPS"
+    @test @inferred(get_constellation_name(GPSL5I())) == "GPS"
+    @test @inferred(get_constellation_name(GalileoE1B())) == "Galileo"
+    @test @inferred(get_constellation_name(GalileoE5aI())) == "Galileo"
+    # Type-level dispatch works without constructing the signal.
+    @test @inferred(get_constellation_name(GalileoE1B)) == "Galileo"
+    # Coarser than the signal name: two bands of one constellation share a name.
+    @test get_constellation_name(GPSL1CA()) == get_constellation_name(GPSL5I())
+    # Display counterpart of the id — same granularity, String instead of Symbol.
+    @test get_constellation_name(GPSL1CA()) == String(get_constellation_id(GPSL1CA()))
+    @test get_constellation_name(GalileoE1B()) == String(get_constellation_id(GalileoE1B()))
+
+    # Every constellation states its name as a literal rather than taking the derived
+    # fallback: that is what makes the call allocation-free and constant-foldable, and
+    # value equality alone cannot tell the two apart ("GPS" == String(:GPS)). So check
+    # the method dispatch actually reaches, not just what it returns.
+    derived = which(get_constellation_name, Tuple{Type{AbstractGNSSSignal}})
+    for S in (GPSL1CA, GPSL5I, GalileoE1B, GalileoE5aQ)
+        @test which(get_constellation_name, Tuple{Type{S}}) !== derived
+        # Stated, but still exactly String() of the id — the two cannot drift apart.
+        @test get_constellation_name(S) == String(get_constellation_id(S))
+    end
+end
+
+# A signal of a constellation declared outside the package: it states only the
+# constellation id, so the name comes from the fallback.
+struct TestOnlySignal <: AbstractGNSSSignal{Matrix{Int16}} end
+GNSSSignals.get_constellation_id(::Type{TestOnlySignal}) = :TestOnlyGNSS
+
+@testset "get_constellation_name fallback for a new constellation" begin
+    @test get_constellation_id(TestOnlySignal) === :TestOnlyGNSS
+    @test get_constellation_name(TestOnlySignal) == "TestOnlyGNSS"
+    @test get_constellation_name(TestOnlySignal()) == "TestOnlyGNSS"
+    @test get_constellation_name(TestOnlySignal) ==
+          String(get_constellation_id(TestOnlySignal))
+    # It really is the derived fallback doing the work here.
+    @test which(get_constellation_name, Tuple{Type{TestOnlySignal}}) ===
+          which(get_constellation_name, Tuple{Type{AbstractGNSSSignal}})
+end
+
+@testset "every signal answers every identity accessor" begin
+    # A signal added later — a new constellation's, say — goes into ALL_SIGNALS
+    # and is held to the whole accessor layer here, so an omission surfaces as a
+    # test failure rather than a MethodError at someone's call site.
+    for S in ALL_SIGNALS
+        @test get_signal_id(S) isa Symbol
+        @test get_signal_name(S) isa String
+        @test get_constellation_id(S) isa Symbol
+        @test get_constellation_name(S) isa String
+        @test get_band(S) isa Band
+        @test get_band_id(S) isa Symbol
+        @test get_band_name(S) isa String
+        @test get_time_system(S) isa TimeSystem
+        @test get_time_system_id(S) isa Symbol
+        @test get_time_system_name(S) isa String
+        @test get_center_frequency(S) isa Frequency
+    end
 end
 
 @testset "SecondaryCode dispatch" begin
@@ -134,6 +204,20 @@ end
     # E1C is CBOC(−): the BOC(6,1) component is in anti-phase.
     @test get_modulation(GalileoE1C).boc2_sign == -1
     @test get_modulation(GalileoE1B).boc2_sign == 1
+
+    # The instance form forwards to the type form, so the modulation the code LUT
+    # is baked from (type form, via build_signal_lut) can never drift from the one
+    # get_code_spectrum reports (instance form).
+    #
+    # Equal values are not enough to pin that: a signal that states its modulation
+    # twice passes as long as the two copies still agree. So also require that the
+    # one generic forwarder is what dispatch actually reaches for every signal — a
+    # per-signal `get_modulation(::MySignal)` would intercept it here.
+    generic_forwarder = which(get_modulation, Tuple{AbstractGNSSSignal})
+    for S in ALL_SIGNALS
+        @test @inferred(get_modulation(S())) === get_modulation(S)
+        @test which(get_modulation, Tuple{S}) === generic_forwarder
+    end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────

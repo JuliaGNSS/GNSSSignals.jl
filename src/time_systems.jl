@@ -131,3 +131,64 @@ function get_time_system end
 @inline get_tai_offset(::Type{S}) where {S<:AbstractGNSSSignal} =
     get_tai_offset(get_time_system(S))
 @inline get_tai_offset(s::AbstractGNSSSignal) = get_tai_offset(get_time_system(s))
+
+"""
+$(SIGNATURES)
+
+Get the `Symbol` identifier of a [`TimeSystem`](@ref) — `:GPST` or `:GST`.
+
+The machine-readable key for a time scale: the level at which signals share a
+receiver clock bias, so every signal referenced to the same scale maps to the
+same id. Its counterpart along the identity axis is [`get_constellation_id`](@ref)
+— currently one-to-one with it, but a distinct fact (a constellation can
+broadcast a scale it does not own).
+
+Defaults to `nameof` of the time system type, so a new [`TimeSystem`](@ref) gets
+a sensible id for free; override `get_time_system_id(::Type{MySystem})` if you
+need a different symbol. Works on a time system or signal, instance or type, and
+folds to a compile-time constant.
+
+```julia-repl
+julia> get_time_system_id(GPST())
+:GPST
+
+julia> get_time_system_id(GalileoE1B)
+:GST
+```
+"""
+@inline get_time_system_id(::Type{T}) where {T<:TimeSystem} = nameof(T)
+@inline get_time_system_id(t::TimeSystem) = get_time_system_id(typeof(t))
+@inline get_time_system_id(::Type{S}) where {S<:AbstractGNSSSignal} =
+    get_time_system_id(get_time_system(S))
+@inline get_time_system_id(s::AbstractGNSSSignal) = get_time_system_id(get_time_system(s))
+
+"""
+$(SIGNATURES)
+
+Get the human-readable name of a [`TimeSystem`](@ref) — `"GPS Time"` or
+`"Galileo System Time"`.
+
+The display counterpart to [`get_time_system_id`](@ref) — same granularity, but
+a `String` meant for log lines and user-facing output rather than a key to branch
+or dictionary on (prefer the `Symbol` id for that).
+
+Stated per time system rather than derived from the id, because the spelled-out
+names are the ICDs' own (`"Galileo System Time"`, Galileo OS SIS ICD §5.1.2) and
+bear no relation to the acronyms. Works on a time system or signal, instance or
+type, and folds to a compile-time constant.
+
+```julia-repl
+julia> get_time_system_name(GST())
+"Galileo System Time"
+
+julia> get_time_system_name(GPSL1CA)
+"GPS Time"
+```
+"""
+@inline get_time_system_name(::Type{GPST}) = "GPS Time"
+@inline get_time_system_name(::Type{GST}) = "Galileo System Time"
+@inline get_time_system_name(t::TimeSystem) = get_time_system_name(typeof(t))
+@inline get_time_system_name(::Type{S}) where {S<:AbstractGNSSSignal} =
+    get_time_system_name(get_time_system(S))
+@inline get_time_system_name(s::AbstractGNSSSignal) =
+    get_time_system_name(get_time_system(s))

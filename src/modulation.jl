@@ -188,6 +188,11 @@ Get the modulation type for a GNSS signal.
 # Returns
 - `Modulation`: The modulation type (`LOC`, `BOCsin`, `BOCcos`, or `CBOC`)
 
+Each concrete signal states its modulation once, on its own type
+(`get_modulation(::Type{<:GPSL1CA}) = LOC()`, in that signal's file) — the form
+the code LUT is baked from; this method forwards an instance to that type, so
+the two can never disagree.
+
 # Examples
 ```julia-repl
 julia> get_modulation(GPSL1CA())
@@ -196,7 +201,7 @@ julia> get_modulation(GalileoE1B())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
-get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
+@inline get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
 
 """
 $(SIGNATURES)

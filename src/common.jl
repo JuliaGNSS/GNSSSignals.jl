@@ -85,6 +85,40 @@ julia> get_signal_id(GalileoE1B)
 """
 $(SIGNATURES)
 
+Get the human-readable name of a GNSS signal, e.g. `"GPS L1 C/A"`,
+`"Galileo E5a-Q"`.
+
+This is the display counterpart to [`get_signal_id`](@ref), at the same (finest)
+identity level: it names one specific transmission, component included. The
+spelling follows the ICD rather than the type name, so it is meant for log lines,
+plot labels and user-facing output — prefer the `Symbol` id when branching or
+keying. The BOC(1,1) approximation types name themselves as such (`"Galileo E1B
+(BOC(1,1) approximation)"`), so a label never silently claims to be the exact
+signal.
+
+Genuinely per signal, so each concrete signal defines one method on its own type
+(`get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"`, in that signal's file),
+mirroring [`get_band`](@ref); the instance method forwards to the type, so the
+name is available without constructing a signal.
+
+Finer than [`get_band_name`](@ref) (`"L1"`) and [`get_constellation_name`](@ref)
+(`"GPS"`).
+
+```julia-repl
+julia> get_signal_name(GPSL1CA())
+"GPS L1 C/A"
+
+julia> get_signal_name(GalileoE5aQ)
+"Galileo E5a-Q"
+```
+"""
+function get_signal_name end
+
+@inline get_signal_name(s::AbstractGNSSSignal) = get_signal_name(typeof(s))
+
+"""
+$(SIGNATURES)
+
 Get the `Symbol` identifier of the GNSS constellation a signal belongs to —
 `:GPS` or `:Galileo`.
 
@@ -113,6 +147,52 @@ julia> get_constellation_id(GalileoE1B)
 @inline get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS
 @inline get_constellation_id(::Type{<:AbstractGalileoSignal}) = :Galileo
 @inline get_constellation_id(s::AbstractGNSSSignal) = get_constellation_id(typeof(s))
+
+"""
+$(SIGNATURES)
+
+Get the human-readable name of the GNSS constellation a signal belongs to —
+`"GPS"` or `"Galileo"`.
+
+The display counterpart to [`get_constellation_id`](@ref) — same granularity
+(every signal of one constellation returns the same string), but a `String`
+meant for log lines and user-facing output rather than a key to branch or
+dictionary on (prefer the `Symbol` id for that; comparing symbols is cheaper
+and the name is free to be respelled).
+
+Stated as a literal once per constellation, on the abstract signal type
+(`get_constellation_name(::Type{<:AbstractGPSSignal}) = "GPS"`) as
+[`get_constellation_id`](@ref) is, so every concrete signal inherits the name
+without constructing a value, the call allocates nothing and it folds to a
+compile-time constant. Each literal still spells exactly what `String` of the id
+yields, and a test pins that, so the two layers cannot drift apart.
+
+A constellation added later needs no method of its own: the
+`String(get_constellation_id(S))` fallback names it for free — at the cost of
+allocating a fresh `String` on every call, for the reason spelled out at
+[`get_band_name`](@ref), whose derived fallback is built the same way. State a
+literal, as the constellations here do, if you are naming one in a hot loop, or
+wherever the display name differs from the id anyway: a future `:NavIC` reading
+`"NavIC (IRNSS)"`.
+
+Works on an instance or a type.
+
+Coarser than [`get_band_name`](@ref) (`"L1"`) and [`get_signal_name`](@ref)
+(`"GPS L1 C/A"`).
+
+```julia-repl
+julia> get_constellation_name(GPSL1CA())
+"GPS"
+
+julia> get_constellation_name(GalileoE1B)
+"Galileo"
+```
+"""
+@inline get_constellation_name(::Type{<:AbstractGPSSignal}) = "GPS"
+@inline get_constellation_name(::Type{<:AbstractGalileoSignal}) = "Galileo"
+@inline get_constellation_name(::Type{S}) where {S<:AbstractGNSSSignal} =
+    String(get_constellation_id(S))
+@inline get_constellation_name(s::AbstractGNSSSignal) = get_constellation_name(typeof(s))
 
 # Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
 # these forward an instance to its type.

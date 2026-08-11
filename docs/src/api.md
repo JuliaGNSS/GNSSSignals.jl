@@ -30,6 +30,7 @@ GNSSSignals.L2
 GNSSSignals.L5
 GNSSSignals.get_band
 GNSSSignals.get_band_id
+GNSSSignals.get_band_name
 ```
 
 ## Time Systems
@@ -39,6 +40,8 @@ GNSSSignals.TimeSystem
 GNSSSignals.GPST
 GNSSSignals.GST
 GNSSSignals.get_time_system
+GNSSSignals.get_time_system_id
+GNSSSignals.get_time_system_name
 GNSSSignals.get_system_start_time
 GNSSSignals.get_tai_offset
 ```
@@ -115,6 +118,7 @@ GNSSSignals.get_carrier_phase_offset
 GNSSSignals.get_signal_name
 GNSSSignals.get_signal_id
 GNSSSignals.get_constellation_id
+GNSSSignals.get_constellation_name
 GNSSSignals.min_bits_for_code_length
 GNSSSignals.get_code_type
 ```
