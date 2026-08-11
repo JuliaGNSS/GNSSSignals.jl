@@ -52,13 +52,17 @@ export AbstractGNSSSignal,
     get_code_spectrum,
     get_band,
     get_band_id,
+    get_band_name,
     get_signal_id,
     get_constellation_id,
+    get_constellation_name,
     get_signal_name,
     TimeSystem,
     GPST,
     GST,
     get_time_system,
+    get_time_system_id,
+    get_time_system_name,
     get_system_start_time,
     get_tai_offset,
     min_bits_for_code_length,
@@ -95,9 +99,12 @@ Abstract supertype for a signal transmitted by the GPS constellation, e.g.
 [`GPSL1CA`](@ref), [`GPSL5I`](@ref).
 
 Its purpose is to carry the constellation-level facts that every GPS signal
-shares, so they can be stated once instead of per signal. The time system is
-the current example: `get_time_system(::Type{<:AbstractGPSSignal}) = GPST()`
-covers all GPS signals through subtype dispatch. Genuinely per-signal facts
+shares, so they can be stated once instead of per signal: the time system
+([`get_time_system`](@ref), and with it [`get_time_system_id`](@ref) /
+[`get_time_system_name`](@ref)) and the constellation identity
+([`get_constellation_id`](@ref) / [`get_constellation_name`](@ref)). Each is one
+method on this type — `get_time_system(::Type{<:AbstractGPSSignal}) = GPST()` —
+covering all GPS signals through subtype dispatch. Genuinely per-signal facts
 ([`get_band`](@ref), [`get_modulation`](@ref), the chip rates …) stay defined
 on the concrete signal types.
 """

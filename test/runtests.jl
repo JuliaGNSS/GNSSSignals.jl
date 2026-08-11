@@ -3,6 +3,29 @@ import Unitful: Hz, MHz, Frequency
 import GNSSSignals: BOCsin, BOCcos, CBOC
 using CodecZlib: GzipDecompressorStream
 
+# Every concrete signal, band and time system the package defines. A type added
+# later must be appended here to be swept by the accessor-layer invariant tests
+# ("every signal answers every identity accessor" and friends). Test-suite
+# stand-ins (e.g. `TestOnlyBand`) stay out: the invariants are the package's to
+# keep.
+const ALL_SIGNALS = (
+    GPSL1CA,
+    GPSL1C_D,
+    GPSL1C_P,
+    GPSL2CM,
+    GPSL2CL,
+    GPSL5I,
+    GPSL5Q,
+    GalileoE1B,
+    GalileoE1B_BOC11,
+    GalileoE1C,
+    GalileoE1C_BOC11,
+    GalileoE5aI,
+    GalileoE5aQ,
+)
+const ALL_BANDS = (L1, L2, L5)
+const ALL_TIME_SYSTEMS = (GPST, GST)
+
 # Decode a hex-packed ±1 sample fixture (LSB-first packing into hex
 # nibbles, so 4 samples per nibble). Bit 0 of nibble `k` holds sample
 # `4k+1`, bit 3 holds sample `4k+4`. Bit value 0 → -1, 1 → +1.

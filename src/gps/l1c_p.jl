@@ -30,21 +30,10 @@ end
 get_modulation(::Type{<:GPSL1C_P}) =
     TMBOC(BOCsin(1, 1), BOCsin(6, 1),
           ntuple(k -> (k - 1) ∈ L1C_TMBOC_BOC6_POSITIONS, Val(L1C_TMBOC_PERIOD)))
-@inline get_modulation(s::GPSL1C_P) = get_modulation(typeof(s))
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-"""
 @inline get_band(::Type{<:GPSL1C_P}) = L1()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
-get_signal_name(::GPSL1C_P) = "GPS L1C-P"
+@inline get_signal_name(::Type{<:GPSL1C_P}) = "GPS L1C-P"
 
 function read_gpsl1c_p_codes()
     _l1c_build_primary_codes(L1C_P_WEIL_INDEX, L1C_P_INSERTION_INDEX)

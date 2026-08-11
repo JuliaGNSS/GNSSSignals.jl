@@ -28,21 +28,10 @@ struct GPSL1C_D{C<:AbstractMatrix} <: AbstractGPSSignal{C}
 end
 
 get_modulation(::Type{<:GPSL1C_D}) = BOCsin(1, 1)
-@inline get_modulation(::GPSL1C_D) = BOCsin(1, 1)
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-"""
 @inline get_band(::Type{<:GPSL1C_D}) = L1()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
-get_signal_name(::GPSL1C_D) = "GPS L1C-D"
+@inline get_signal_name(::Type{<:GPSL1C_D}) = "GPS L1C-D"
 
 function read_gpsl1c_d_codes()
     _l1c_build_primary_codes(L1C_D_WEIL_INDEX, L1C_D_INSERTION_INDEX)

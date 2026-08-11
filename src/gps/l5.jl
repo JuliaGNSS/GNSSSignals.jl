@@ -229,9 +229,7 @@ end
 # Shared interface (modulation, band, frequencies).
 
 get_modulation(::Type{<:GPSL5I}) = LOC()
-@inline get_modulation(::GPSL5I) = LOC()
 get_modulation(::Type{<:GPSL5Q}) = LOC()
-@inline get_modulation(::GPSL5Q) = LOC()
 
 # L5I data rides the in-phase carrier (default 0); L5Q pilot is in quadrature.
 # IS-GPS-705 §3.3.1.5: the Q5 carrier LAGS the I5 carrier by 90° (cos(ωt−π/2) = sin(ωt)),
@@ -239,33 +237,11 @@ get_modulation(::Type{<:GPSL5Q}) = LOC()
 # I·cos − Q·sin) puts the pilot at +π/2 (leading). Same modulation, opposite ICD convention.
 @inline get_carrier_phase_offset(::Type{<:GPSL5Q}) = -π / 2
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-
-# Examples
-```julia-repl
-julia> get_band(GPSL5I())
-L5()
-```
-"""
 @inline get_band(::Type{<:GPSL5I}) = L5()
 @inline get_band(::Type{<:GPSL5Q}) = L5()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-
-# Examples
-```julia-repl
-julia> get_signal_name(GPSL5I())
-"GPS L5-I"
-```
-"""
-get_signal_name(::GPSL5I) = "GPS L5-I"
-get_signal_name(::GPSL5Q) = "GPS L5-Q"
+@inline get_signal_name(::Type{<:GPSL5I}) = "GPS L5-I"
+@inline get_signal_name(::Type{<:GPSL5Q}) = "GPS L5-Q"
 
 """
 $(SIGNATURES)

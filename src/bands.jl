@@ -43,16 +43,22 @@ $(SIGNATURES)
 
 Get the center (carrier) frequency of a band.
 
+One method per concrete [`Band`](@ref) — `L1` 1575.42 MHz, `L2` 1227.6 MHz,
+`L5` 1176.45 MHz. Works on a band instance or its type, as
+[`get_band_id`](@ref) / [`get_band_name`](@ref) do.
+
 ```julia-repl
 julia> get_center_frequency(L1())
 1575420000 Hz
+
+julia> get_center_frequency(L5)
+1176450000 Hz
 ```
 """
-@inline get_center_frequency(::L1) = 1_575_420_000Hz
-
-@inline get_center_frequency(::L2) = 1_227_600_000Hz
-
-@inline get_center_frequency(::L5) = 1_176_450_000Hz
+@inline get_center_frequency(::Type{L1}) = 1_575_420_000Hz
+@inline get_center_frequency(::Type{L2}) = 1_227_600_000Hz
+@inline get_center_frequency(::Type{L5}) = 1_176_450_000Hz
+@inline get_center_frequency(b::Band) = get_center_frequency(typeof(b))
 
 """
 $(SIGNATURES)
@@ -84,6 +90,20 @@ Get the [`Band`](@ref) a signal is transmitted on.
 Concrete signal types define one method each on the type, e.g.
 `get_band(::Type{<:GPSL1CA}) = L1()`, so the band is available without
 constructing a signal. The instance method forwards to the type.
+
+Band identity is by RF frequency, so signals of different constellations sharing
+a carrier report the same band — `get_band(GalileoE1B())` is `L1()`. See
+[`get_band_id`](@ref) / [`get_band_name`](@ref) for the band's key and label, and
+[`get_center_frequency`](@ref) for its carrier frequency.
+
+# Examples
+```julia-repl
+julia> get_band(GPSL1CA())
+L1()
+
+julia> get_band(GalileoE5aI)
+L5()
+```
 """
 function get_band end
 
@@ -120,3 +140,49 @@ julia> get_band_id(GPSL1CA())
 @inline get_band_id(b::Band) = get_band_id(typeof(b))
 @inline get_band_id(::Type{S}) where {S<:AbstractGNSSSignal} = get_band_id(get_band(S))
 @inline get_band_id(s::AbstractGNSSSignal) = get_band_id(get_band(s))
+
+"""
+$(SIGNATURES)
+
+Get the human-readable name of a [`Band`](@ref), e.g. `"L1"`, `"L5"`.
+
+The display counterpart to [`get_band_id`](@ref) — same granularity, but a
+`String` meant for log lines and user-facing output rather than a key to
+branch or dictionary on (prefer the `Symbol` id for that; comparing symbols is
+cheaper and the name is free to be respelled).
+
+Band identity is by RF frequency, so the name is the *band's* label, not the
+constellation's label for it: `get_band_name(GalileoE1B())` is `"L1"`, not
+`"E1"`. Use [`get_signal_name`](@ref) (`"Galileo E1B"`) when you need the
+ICD-specific naming.
+
+Stated as a literal per band — `get_band_name(::Type{L1}) = "L1"` — so naming a
+band is free: the call allocates nothing and folds to a compile-time constant.
+Each literal still spells exactly what `String` of [`get_band_id`](@ref) yields,
+and a test pins that, so the two identity layers cannot drift apart.
+
+A [`Band`](@ref) declared elsewhere needs no method of its own: the
+`String(get_band_id(B))` fallback names it for free. That path allocates a fresh
+`String` on every call (32 bytes, measured) even where the band type is
+statically known, because a heap-allocated `String` — unlike an interned `Symbol`
+or a literal already in the method's source — cannot be baked into the IR as a
+constant. State the name as a literal, as the bands here do, if you are naming
+such a band in a hot loop rather than a log line.
+
+Works on a band or signal, instance or type.
+
+```julia-repl
+julia> get_band_name(L1())
+"L1"
+
+julia> get_band_name(GPSL1CA())
+"L1"
+```
+"""
+@inline get_band_name(::Type{L1}) = "L1"
+@inline get_band_name(::Type{L2}) = "L2"
+@inline get_band_name(::Type{L5}) = "L5"
+@inline get_band_name(::Type{B}) where {B<:Band} = String(get_band_id(B))
+@inline get_band_name(b::Band) = get_band_name(typeof(b))
+@inline get_band_name(::Type{S}) where {S<:AbstractGNSSSignal} = get_band_name(get_band(S))
+@inline get_band_name(s::AbstractGNSSSignal) = get_band_name(get_band(s))

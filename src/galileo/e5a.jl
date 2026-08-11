@@ -233,43 +233,16 @@ end
 # Shared interface (band, modulation, frequencies).
 
 get_modulation(::Type{<:GalileoE5aI}) = LOC()
-@inline get_modulation(::GalileoE5aI) = LOC()
 get_modulation(::Type{<:GalileoE5aQ}) = LOC()
-@inline get_modulation(::GalileoE5aQ) = LOC()
 
 # E5aI data rides the in-phase carrier (default 0); E5aQ pilot is in quadrature.
 @inline get_carrier_phase_offset(::Type{<:GalileoE5aQ}) = π / 2
 
-"""
-$(SIGNATURES)
-
-Get the band the signal is transmitted on.
-
-Galileo E5a shares the GPS L5 carrier frequency (1176.45 MHz), so this returns
-[`L5`](@ref) — band identity is by RF, not by ICD label.
-
-# Examples
-```julia-repl
-julia> get_band(GalileoE5aI())
-L5()
-```
-"""
 @inline get_band(::Type{<:GalileoE5aI}) = L5()
 @inline get_band(::Type{<:GalileoE5aQ}) = L5()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-
-# Examples
-```julia-repl
-julia> get_signal_name(GalileoE5aI())
-"Galileo E5a-I"
-```
-"""
-get_signal_name(::GalileoE5aI) = "Galileo E5a-I"
-get_signal_name(::GalileoE5aQ) = "Galileo E5a-Q"
+@inline get_signal_name(::Type{<:GalileoE5aI}) = "Galileo E5a-I"
+@inline get_signal_name(::Type{<:GalileoE5aQ}) = "Galileo E5a-Q"
 
 """
 $(SIGNATURES)
