@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.7.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.6.0...v3.7.0) (2026-08-11)
+
+
+### Features
+
+* **api:** add name and id accessors; de-duplicate the accessor layer ([e9e4a90](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/e9e4a906c55c2acd3d25b2031c11df29e4b26226))
+
 # [3.6.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.5.0...v3.6.0) (2026-07-11)
 
 
