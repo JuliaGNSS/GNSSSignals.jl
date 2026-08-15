@@ -8,6 +8,57 @@
 # Only the Int8 `vpermb` is wired up here — that is all the code resampler needs. The
 # AVX2 (`vpshufb`) and NEON (`tbl4`) windowed paths are future work; see default_backend.
 
+# ---- compiler-target feature gating (arch-independent helpers) ----
+# Hardware support (CPUID) is necessary but NOT sufficient for the x86 fast paths: `_permute`
+# and `_pshufb` are `alwaysinline` llvmcalls, and LLVM's always-inliner ignores the callee's
+# "target-features" (llvm/llvm-project#70563), so the raw intrinsic is inlined into callers
+# compiled for *Julia's JIT target*. If that target lacks the feature, instruction selection
+# aborts the whole process with a fatal `LLVM ERROR: Cannot select: X86ISD::VPERMV` — not a
+# catchable exception — even though the CPU could execute the instruction just fine. Seen in
+# the wild on PkgEval for the LLVM 22 bump (JuliaLang/julia#62563), where the JIT's feature
+# set lacked avx512vbmi on a VBMI machine. A backend may therefore only use a feature when
+# BOTH the hardware (`_x86_features`, CPUID) AND the compile target report it.
+
+# The feature names Julia's compiler enables for natively-targeted code, as a
+# `Set{String}` (e.g. "avx2", "avx512vbmi"), or `nothing` when they cannot be determined
+# (callers must then claim no fast-path features). `jl_get_cpu_features` is the compiler
+# library's view of the host — the feature set the JIT compiles with when Julia is not
+# started with an explicit cpu target.
+function _jit_native_features()
+    str = try
+        String(ccall(:jl_get_cpu_features, Ref{String}, ()))::String
+    catch
+        return nothing
+    end
+    Set{String}(String(f[2:end]) for f in split(str, ',') if startswith(f, '+'))
+end
+
+# The explicit cpu target Julia was started with (`-C`/`--cpu-target`/`JULIA_CPU_TARGET`),
+# or `nothing` when targeting the native host. With an explicit target the JIT's feature set
+# is whatever the spec resolves to, which cannot be introspected portably — callers must be
+# conservative.
+function _explicit_cpu_target()
+    ct = Base.JLOptions().cpu_target
+    ct == C_NULL && return nothing
+    unsafe_string(ct)
+end
+
+# Pure policy combining hardware features (CPUID), the JIT's native feature set, and any
+# explicit cpu target into the feature set the backends may rely on. Split out (like
+# `_select_backend`) so it is unit-testable on every architecture without a live CPU.
+function _effective_x86_features(hw, jit, cpu_target)
+    # An explicit non-native cpu target caps the JIT below the host in ways we cannot see;
+    # claim nothing beyond the portable baseline. (Costs the fast path under a hand-set
+    # `-C`, but the alternative is a fatal LLVM abort whenever the cap excludes vbmi/avx2.)
+    cpu_target === nothing || cpu_target == "native" ||
+        return (avx2 = false, avx512vbmi = false)
+    # Unknown JIT feature set: same conservative baseline.
+    jit === nothing && return (avx2 = false, avx512vbmi = false)
+    (avx2       = hw.avx2       && "avx2" in jit,
+     # vpermb on <64 x i8> needs BW in addition to VBMI; require both from the target.
+     avx512vbmi = hw.avx512vbmi && "avx512vbmi" in jit && "avx512bw" in jit)
+end
+
 @static if Sys.ARCH in (:x86_64, :i686)
 
 # ---- CPU feature detection (cpuid leaf 7 + xgetbv), mirrors SinCosLUT ----
@@ -54,13 +105,20 @@ end
 # feature set below, not this const, so we never emit `vpermb` on a non-VBMI CPU (SIGILL, #104).
 const HOST_FEATURES = _x86_features()
 
-# The CPU features of the machine ACTUALLY running, re-detected once per session in `__init__`
-# (see `default_backend`). Seeded with the precompile-time const so a read before `__init__`
-# (unusual) is still valid; `__init__` overwrites it with a live `cpuid` on the running CPU.
+# The features the running session may actually USE, re-computed once per session in
+# `__init__` (see `default_backend`): hardware CPUID of the machine actually running ∧ the
+# compiler target's features (see `_effective_x86_features` above — using a hardware feature
+# the JIT target lacks is a fatal LLVM abort, not just a SIGILL risk). Seeded with the
+# precompile-time const so a read before `__init__` (unusual) behaves as before; `__init__`
+# overwrites it with the live effective set.
 const RUNTIME_FEATURES = Ref(HOST_FEATURES)
 
-# Re-run CPU-feature detection on the executing machine and store it. Called from `__init__`.
-_refresh_host_features!() = (RUNTIME_FEATURES[] = _x86_features(); nothing)
+# Hardware CPUID ∧ compiler-target features of the executing session.
+_effective_features() =
+    _effective_x86_features(_x86_features(), _jit_native_features(), _explicit_cpu_target())
+
+# Re-run feature detection on the executing machine/session and store it. Called from `__init__`.
+_refresh_host_features!() = (RUNTIME_FEATURES[] = _effective_features(); nothing)
 
 # Pure backend selection from a CPU-feature set (a plain NamedTuple), split out so it is
 # unit-testable without a live CPU: a non-VBMI set must NEVER yield `AVX512()` (whose `vpermb`

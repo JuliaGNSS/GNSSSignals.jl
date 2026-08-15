@@ -28,10 +28,12 @@ _step_num(cps) = round(Int, cps * _SD)
 
 _width(be) = be isa CL.AVX512 ? 64 : be isa CL.AVX2 ? 32 : be isa CL.Neon ? 16 : 1
 
-# Backends to exercise: Portable always; AVX-512 / AVX2 only when the host supports them;
-# NEON only on aarch64 (Apple-Silicon CI). HOST_FEATURES is x86-only (`@static`-guarded),
+# Backends to exercise: Portable always; AVX-512 / AVX2 only when this session may use them —
+# the RUNTIME (effective) feature set, i.e. hardware ∧ compiler target: exercising a backend
+# whose llvmcall feature the JIT target lacks is a fatal LLVM abort, not a test failure.
+# NEON only on aarch64 (Apple-Silicon CI). RUNTIME_FEATURES is x86-only (`@static`-guarded),
 # so guard the access for ARM/other archs, where only Portable (+ NEON on aarch64) runs.
-_hasfeat(f) = isdefined(CL, :HOST_FEATURES) && getfield(CL.HOST_FEATURES, f)
+_hasfeat(f) = isdefined(CL, :RUNTIME_FEATURES) && getfield(CL.RUNTIME_FEATURES[], f)
 const _BACKENDS = (CL.Portable(),
                    (_hasfeat(:avx512vbmi) ? (CL.AVX512(),) : ())...,
                    (_hasfeat(:avx2)       ? (CL.AVX2(),)   : ())...,
@@ -1279,6 +1281,59 @@ end
     end
 
     # ─────────────────────────────────────────────────────────────────────────────
+    # Compiler-target gating: hardware CPUID is necessary but not sufficient. The `vpermb` /
+    # `pshufb` llvmcalls are `alwaysinline` and LLVM's always-inliner ignores the callee's
+    # "target-features" (llvm/llvm-project#70563), so if Julia's JIT target lacks the feature
+    # the inlined intrinsic is a fatal `LLVM ERROR: Cannot select` — seen on PkgEval for the
+    # LLVM 22 bump (JuliaLang/julia#62563), where the JIT feature set lacked avx512vbmi on a
+    # VBMI machine. The effective feature set must be hardware ∧ compiler target. The policy
+    # is a pure function (`_effective_x86_features`), testable on every architecture.
+    @testset "compiler-target feature gating" begin
+        hw     = (avx2 = true, avx512vbmi = true)
+        jitall = Set(["avx2", "avx512f", "avx512bw", "avx512vbmi"])
+
+        # Hardware and compiler target agree: everything usable.
+        @test CL._effective_x86_features(hw, jitall, nothing) ==
+            (avx2 = true, avx512vbmi = true)
+        # An explicitly "native" cpu target is the same as no explicit target.
+        @test CL._effective_x86_features(hw, jitall, "native") ==
+            (avx2 = true, avx512vbmi = true)
+
+        # The julia#62563 PkgEval scenario: hardware has VBMI, the JIT target does not.
+        # Selecting AVX512 here would fatally abort LLVM — must demote.
+        @test CL._effective_x86_features(hw, Set(["avx2", "avx512f", "avx512bw"]), nothing) ==
+            (avx2 = true, avx512vbmi = false)
+        # vpermb on <64 x i8> also needs avx512bw; vbmi without bw must not enable AVX512.
+        @test CL._effective_x86_features(hw, Set(["avx2", "avx512f", "avx512vbmi"]), nothing) ==
+            (avx2 = true, avx512vbmi = false)
+        # One tier down: JIT target without avx2 (e.g. a generic target) → Portable only.
+        @test CL._effective_x86_features(hw, Set(["sse2"]), nothing) ==
+            (avx2 = false, avx512vbmi = false)
+
+        # Hardware lacking a feature always wins, whatever the target claims.
+        @test CL._effective_x86_features((avx2 = true, avx512vbmi = false), jitall, nothing) ==
+            (avx2 = true, avx512vbmi = false)
+        @test CL._effective_x86_features((avx2 = false, avx512vbmi = false), jitall, nothing) ==
+            (avx2 = false, avx512vbmi = false)
+
+        # An explicit non-native cpu target (`-C`/`JULIA_CPU_TARGET`) caps the JIT in ways we
+        # cannot introspect: claim only the portable baseline, for any spec shape.
+        for spec in ("skylake-avx512", "generic", "native;skylake-avx512,clone_all")
+            @test CL._effective_x86_features(hw, jitall, spec) ==
+                (avx2 = false, avx512vbmi = false)
+        end
+        # Unknown JIT feature set: same conservative baseline.
+        @test CL._effective_x86_features(hw, nothing, nothing) ==
+            (avx2 = false, avx512vbmi = false)
+
+        # Smoke: the live introspection helpers return the documented types on this host.
+        jit = CL._jit_native_features()
+        @test jit === nothing || jit isa Set{String}
+        ct = CL._explicit_cpu_target()
+        @test ct === nothing || ct isa String
+    end
+
+    # ─────────────────────────────────────────────────────────────────────────────
     # #104: CPU features are detected at PRECOMPILE time and baked into `HOST_FEATURES`. If the
     # pkgimage is precompiled on an AVX-512-VBMI host and later loaded on a CPU without VBMI
     # (JULIA_CPU_TARGET=generic, shared/NFS depot, Docker/CI), the stale const would make
@@ -1295,8 +1350,13 @@ end
             @test !(CL._select_backend((avx2 = true, avx512vbmi = false)) isa CL.AVX512)
             @test CL._select_backend((avx2 = true, avx512vbmi = true)) isa CL.AVX512
 
-            # __init__ populated the runtime feature Ref with the CPU actually executing.
-            @test CL.RUNTIME_FEATURES[] == CL._x86_features()
+            # __init__ populated the runtime feature Ref with the session's EFFECTIVE features:
+            # hardware CPUID ∧ compiler-target features (see the compiler-target gating testset).
+            @test CL.RUNTIME_FEATURES[] == CL._effective_features()
+            # The effective set never claims more than the hardware.
+            hw = CL._x86_features()
+            @test !(CL.RUNTIME_FEATURES[].avx2 && !hw.avx2)
+            @test !(CL.RUNTIME_FEATURES[].avx512vbmi && !hw.avx512vbmi)
 
             # Which `@static` branch of `default_backend()` was COMPILED depends on this build's
             # precompile host (the `@static if HOST_FEATURES.*` gate). We can't recompile here, so

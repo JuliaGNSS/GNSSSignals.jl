@@ -133,10 +133,12 @@ include("code_lut/generator.jl")
         default_backend() = Portable()
     end
 
-    # Re-validate CPU features on the machine actually running, once per session. `HOST_FEATURES`
+    # Re-validate features for the session actually running, once per session. `HOST_FEATURES`
     # was baked at precompile and may over-claim on a relocated/shared pkgimage; refreshing the
     # runtime Ref here is what makes `default_backend()` demote away from AVX-512 on a non-VBMI
-    # host (see permute.jl / #104).
+    # host (see permute.jl / #104). The refresh stores the EFFECTIVE set — hardware CPUID ∧ the
+    # compiler target's features — because a hardware feature the JIT target lacks is a fatal
+    # LLVM abort when the llvmcall is inlined (see permute.jl / JuliaLang/julia#62563).
     __init__() = _refresh_host_features!()
 elseif Sys.ARCH === :aarch64
     default_backend() = Neon()
