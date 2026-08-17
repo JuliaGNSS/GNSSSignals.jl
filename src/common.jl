@@ -236,6 +236,58 @@ Default `0.0` covers every single-component signal and in-phase component above.
 @inline get_carrier_phase_offset(::Type{<:AbstractGNSSSignal}) = 0.0
 @inline get_carrier_phase_offset(s::AbstractGNSSSignal) = get_carrier_phase_offset(typeof(s))
 
+"""
+$(SIGNATURES)
+
+Nominal power of a signal component, as a **dimensionless linear power**: its share
+of its composite signal, with composites on the same constellation and band scaled
+against one another. The value is the ICD power split itself, so the components of
+one composite sum to `1`.
+
+A loop tracking several components of one satellite weights each discriminator
+output by its component's power — `w = map(get_relative_power, signals)`,
+normalised. Only ratios matter, so elevation, satellite block, free-space loss and
+antenna gain cancel; the absolute ICD figures are worst-case floors several dB
+below what a receiver sees, and are deliberately not exposed.
+
+| constellation, band | composite (the unit, `1`) | components |
+|:---|:---|:---|
+| GPS L1 | L1C | `GPSL1C_P` `0.75`, `GPSL1C_D` `0.25`; `GPSL1CA` `0.708` |
+| GPS L2 | L2C | `GPSL2CM` `0.5`, `GPSL2CL` `0.5` |
+| GPS L5 | L5 | `GPSL5I` `0.5`, `GPSL5Q` `0.5` |
+| Galileo E1 | E1 | `GalileoE1B` `0.5`, `GalileoE1C` `0.5` |
+| Galileo E5a | E5a | `GalileoE5aI` `0.5`, `GalileoE5aQ` `0.5` |
+
+Every composite but GPS L1C splits evenly; L1C is 75/25 pilot/data (IS-GPS-800J,
+Table 3.2-1). These are payload design constants, fixed independently of satellite
+block and elevation, so each is stated as the plain split and comes out exact.
+
+`GPSL1CA` is the one value that is not a bare split, and the reason the scale spans
+a band rather than a composite: C/A is a *separate* signal on the L1 carrier, not a
+third component of L1C, so it is scaled against that composite — `−158.5 dBW`
+(IS-GPS-200N, Table 3-Va) against L1C's `−157.0 dBW`, i.e. `10^(-0.15)`. That lets a
+joint L1 loop weight all three against each other directly.
+
+Values from different rows are **not** comparable: a ratio across constellations or
+bands would have to account for front-end gain, filter loss and noise figure, which
+can swamp a 1–2 dB difference in transmitted power. `GalileoE1B` and `GPSL5I` both
+being `0.5` says only that each takes half of its own composite. Weight across bands
+from measured C/N₀ instead.
+
+```julia-repl
+julia> get_relative_power(GPSL1C_P()), get_relative_power(GPSL1C_D())
+(0.75, 0.25)
+
+julia> get_relative_power(GPSL1CA())
+0.7079457843841379
+```
+
+Defined per concrete signal type beside [`get_band`](@ref), with no generic default,
+so a signal without a value raises a `MethodError`. Works on an instance or a type
+and folds to a compile-time constant.
+"""
+@inline get_relative_power(s::AbstractGNSSSignal) = get_relative_power(typeof(s))
+
 # NOTE: the legacy fixed-point `gen_code!` and its `sample_code!` / `dispatch_sample_code_worker!`
 # / `sample_code_worker!` / `sample_code_worker_generic!` / `sample_code_tail!` /
 # `_pad_inner_iterations` machinery (plus the `SAMPLE_CODE_INNER_THRESHOLD` / `HAS_AVX512`

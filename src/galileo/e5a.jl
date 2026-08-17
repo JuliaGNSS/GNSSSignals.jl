@@ -241,6 +241,11 @@ get_modulation(::Type{<:GalileoE5aQ}) = LOC()
 @inline get_band(::Type{<:GalileoE5aI}) = L5()
 @inline get_band(::Type{<:GalileoE5aQ}) = L5()
 
+# 50/50 I/Q power sharing of the E5a composite, whose −155.25 dBW total (Galileo OS
+# SIS ICD v2.2, Table 13) is the unit here. See [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GalileoE5aI}) = 0.5
+@inline get_relative_power(::Type{<:GalileoE5aQ}) = 0.5
+
 @inline get_signal_name(::Type{<:GalileoE5aI}) = "Galileo E5a-I"
 @inline get_signal_name(::Type{<:GalileoE5aQ}) = "Galileo E5a-Q"
 

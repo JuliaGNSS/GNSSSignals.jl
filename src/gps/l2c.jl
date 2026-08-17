@@ -144,6 +144,14 @@ get_modulation(::Type{<:GPSL2CL}) = LOC()
 @inline get_band(::Type{<:GPSL2CM}) = L2()
 @inline get_band(::Type{<:GPSL2CL}) = L2()
 
+# CM and CL are chip-by-chip time-multiplexed, so each carries half the average
+# L2C power. This 50/50 split follows from the multiplexing rather than a tabulated
+# figure — the ICD gives the combined L2C only (−160.0 dBW, IS-GPS-200N, Table 3-Va,
+# IIR-M/IIF worst case), and that total is the unit here. See
+# [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GPSL2CM}) = 0.5
+@inline get_relative_power(::Type{<:GPSL2CL}) = 0.5
+
 @inline get_signal_name(::Type{<:GPSL2CM}) = "GPS L2CM"
 @inline get_signal_name(::Type{<:GPSL2CL}) = "GPS L2CL"
 
