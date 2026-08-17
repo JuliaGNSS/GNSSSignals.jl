@@ -167,9 +167,12 @@ Float32
 """
 get_code_type(signal::T) where {T<:AbstractGNSSSignal} = get_code_type(signal, get_modulation(T))
 
-get_code_type(signal::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation) where {T} = T
-get_code_type(signal::AbstractGNSSSignal{<:AbstractMatrix{T}}, modulation::CBOC) where {T} =
-    promote_type(T, typeof(modulation.boc1_power))
+# `eltype(C)` rather than matching `AbstractMatrix{T}`: `C` is a direct parameter, so it
+# always binds, whereas `T` would be unbound for a UnionAll code type like `GPSL1CA{Matrix}`
+# (`Matrix <: AbstractMatrix` holds without fixing `T` — Aqua's unbound-parameter check).
+get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} = eltype(C)
+get_code_type(signal::AbstractGNSSSignal{C}, modulation::CBOC) where {C} =
+    promote_type(eltype(C), typeof(modulation.boc1_power))
 
 get_code_factor(signal::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
 get_code_factor(modulation::LOC) = 1
