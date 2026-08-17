@@ -544,9 +544,19 @@ const POWER_GROUPS = (
     end
 
     @testset "folds to a compile-time constant" begin
-        # Like the other type-level accessors, calling this must cost nothing.
-        @test @allocated(get_relative_power(GPSL1CA)) == 0
+        # Like the other type-level accessors, calling this must cost nothing. CI runs
+        # the suite with coverage instrumentation (Pkg.test(coverage = true)), which
+        # inserts :code_coverage_effect statements into the typed IR and allocates in
+        # the measured call itself — so pin the fold as "nothing left but a constant
+        # return once coverage statements are ignored", and check allocations only in
+        # uninstrumented runs.
         f() = get_relative_power(GPSL1CA)
-        @test length(code_typed(f, ())[1][1].code) == 1   # just `return <const>`
+        stmts = filter(code_typed(f, ())[1][1].code) do stmt
+            !(stmt isa Expr && stmt.head === :code_coverage_effect)
+        end
+        @test only(stmts) === Core.ReturnNode(get_relative_power(GPSL1CA))
+        if Base.JLOptions().code_coverage == 0
+            @test @allocated(get_relative_power(GPSL1CA)) == 0
+        end
     end
 end
