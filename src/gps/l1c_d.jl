@@ -31,6 +31,12 @@ get_modulation(::Type{<:GPSL1C_D}) = BOCsin(1, 1)
 
 @inline get_band(::Type{<:GPSL1C_D}) = L1()
 
+# 25 % of the L1C composite (IS-GPS-800J, Table 3.2-1) — the one non-50/50
+# data/pilot split in the package. Stating the split itself, rather than the ICD's
+# separately tabulated −163.0 dBW, costs 0.02 dB and makes the pilot/data ratio
+# exactly 3. See [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GPSL1C_D}) = 0.25
+
 @inline get_signal_name(::Type{<:GPSL1C_D}) = "GPS L1C-D"
 
 function read_gpsl1c_d_codes()

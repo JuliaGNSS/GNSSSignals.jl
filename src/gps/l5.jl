@@ -240,6 +240,13 @@ get_modulation(::Type{<:GPSL5Q}) = LOC()
 @inline get_band(::Type{<:GPSL5I}) = L5()
 @inline get_band(::Type{<:GPSL5Q}) = L5()
 
+# An equal-power composite: the ICD tabulates I5 and Q5 at the same −157.9 dBW
+# (IS-GPS-705J, Table 3-III, Block IIF worst case), a 50/50 split. The block
+# dependence drops out — GPS III/IIIF is 0.9 dB stronger at −157.0, but it lifts
+# both components together. See [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GPSL5I}) = 0.5
+@inline get_relative_power(::Type{<:GPSL5Q}) = 0.5
+
 @inline get_signal_name(::Type{<:GPSL5I}) = "GPS L5-I"
 @inline get_signal_name(::Type{<:GPSL5Q}) = "GPS L5-Q"
 

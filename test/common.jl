@@ -446,3 +446,107 @@ end
         end
     end
 end
+
+# The composites `get_relative_power` splits: the real components of each, whose
+# values must sum to 1. The BOC(1,1) stand-ins are not listed — they duplicate a
+# component rather than adding one — and are covered by their own testset below.
+const POWER_COMPOSITES = (
+    (GPSL1C_D, GPSL1C_P),       # GPS L1: L1C, the one 75/25 split
+    (GPSL2CM, GPSL2CL),         # GPS L2: L2C
+    (GPSL5I, GPSL5Q),           # GPS L5
+    (GalileoE1B, GalileoE1C),   # Galileo E1
+    (GalileoE5aI, GalileoE5aQ), # Galileo E5a
+)
+
+# The constellation-and-band group each signal belongs to. Every signal the package
+# defines appears exactly once, which the exhaustiveness check below enforces.
+const POWER_GROUPS = (
+    (GPSL1CA, GPSL1C_D, GPSL1C_P),
+    (GPSL2CM, GPSL2CL),
+    (GPSL5I, GPSL5Q),
+    (GalileoE1B, GalileoE1C, GalileoE1B_BOC11, GalileoE1C_BOC11),
+    (GalileoE5aI, GalileoE5aQ),
+)
+
+@testset "get_relative_power" begin
+    # The value is the ICD power split itself, stated as a plain constant rather
+    # than derived, so each is exact.
+    @test get_relative_power(GalileoE1B()) === 0.5
+    @test get_relative_power(GalileoE1C()) === 0.5
+    @test get_relative_power(GalileoE5aI()) === 0.5
+    @test get_relative_power(GalileoE5aQ()) === 0.5
+    @test get_relative_power(GPSL5I()) === 0.5      # ICD tabulates I5/Q5 equal
+    @test get_relative_power(GPSL5Q()) === 0.5
+    @test get_relative_power(GPSL2CM()) === 0.5     # CM/CL time-multiplexed
+    @test get_relative_power(GPSL2CL()) === 0.5
+    @test get_relative_power(GPSL1C_P()) === 0.75   # the one 75/25 split
+    @test get_relative_power(GPSL1C_D()) === 0.25
+
+    # Being splits, the components of one composite sum to exactly 1, and the L1C
+    # pilot/data ratio is exactly 3 — no tolerance needed for either.
+    for composite in POWER_COMPOSITES
+        @test sum(get_relative_power, composite) === 1.0
+    end
+    @test get_relative_power(GPSL1C_P()) / get_relative_power(GPSL1C_D()) === 3.0
+
+    @testset "GPS L1: C/A against L1C" begin
+        # The one value that is not a bare split, and the reason the scale spans a
+        # band rather than a composite: C/A is a separate signal on the L1 carrier,
+        # not a third component of L1C, so it is scaled against that composite.
+        # −158.5 dBW against L1C's −157.0 is 1.5 dB below it.
+        @test get_relative_power(GPSL1CA()) ≈ 10.0^(-1.5 / 10)
+        # Hence the pilot sits 0.25 dB above C/A and the data component 4.52 below.
+        @test 10log10(get_relative_power(GPSL1C_P()) / get_relative_power(GPSL1CA())) ≈
+              0.2506126339170007
+        @test 10log10(get_relative_power(GPSL1C_D()) / get_relative_power(GPSL1CA())) ≈
+              -4.520599913279623
+
+        # Normalised weights over the three signals a joint L1 loop would combine.
+        w = map(get_relative_power, (GPSL1CA(), GPSL1C_D(), GPSL1C_P()))
+        @test sum(w ./ sum(w)) ≈ 1.0
+        @test collect(w ./ sum(w)) ≈
+              [0.4145013213281905, 0.14637466966795237, 0.4391240090038571]
+    end
+
+    @testset "BOC(1,1) approximations inherit their parent" begin
+        # The approximation changes the correlation shape, not the power split.
+        @test get_relative_power(GalileoE1B_BOC11()) === get_relative_power(GalileoE1B())
+        @test get_relative_power(GalileoE1C_BOC11()) === get_relative_power(GalileoE1C())
+    end
+
+    @testset "scale is per constellation and band" begin
+        # A value only means something next to another from the same group. Pinning
+        # the grouping keeps that visible: it is why no cross-band ratio is offered,
+        # and why GalileoE1B and GPSL5I both being 0.5 says nothing about their
+        # relative strength.
+        for group in POWER_GROUPS
+            # A signal listed in the wrong group fails here rather than silently
+            # gaining a peer it is not comparable with.
+            @test allequal(map(get_constellation_id, group))
+            @test allequal(map(get_band_id, group))
+        end
+        # Groups are disjoint and cover every signal the package defines.
+        @test sort!(collect(Iterators.flatten(POWER_GROUPS)); by = nameof) ==
+              sort!(collect(ALL_SIGNALS); by = nameof)
+    end
+
+    @testset "accessor layer" begin
+        # No generic default, so an omitted signal is a MethodError at a caller
+        # rather than a test failure — sweep every type the package defines.
+        for S in ALL_SIGNALS
+            @test @inferred(get_relative_power(S)) isa Float64
+            @test 0 < get_relative_power(S) <= 1
+            # Instance and type forms agree bit-for-bit (the instance path is a
+            # plain forwarder, so a per-signal method stated on the instance
+            # instead of the type would show up here).
+            @test get_relative_power(S) === get_relative_power(S())
+        end
+    end
+
+    @testset "folds to a compile-time constant" begin
+        # Like the other type-level accessors, calling this must cost nothing.
+        @test @allocated(get_relative_power(GPSL1CA)) == 0
+        f() = get_relative_power(GPSL1CA)
+        @test length(code_typed(f, ())[1][1].code) == 1   # just `return <const>`
+    end
+end

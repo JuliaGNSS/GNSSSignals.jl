@@ -29,6 +29,13 @@ get_modulation(::Type{<:GPSL1CA}) = LOC()
 
 @inline get_band(::Type{<:GPSL1CA}) = L1()
 
+# A single fully-modulated component with no pilot, so C/A has no composite to be a
+# share of. It is instead scaled against the L1C composite it shares the carrier
+# with: −158.5 dBW (IS-GPS-200N, Table 3-Va) against L1C's −157.0, i.e. 1.5 dB below
+# it, so 10^(-0.15). The only value in the package that is not a bare ICD power
+# split. See [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GPSL1CA}) = 0.7079457843841379
+
 @inline get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"
 
 function read_gpsl1ca_codes()

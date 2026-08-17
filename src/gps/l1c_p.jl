@@ -33,6 +33,10 @@ get_modulation(::Type{<:GPSL1C_P}) =
 
 @inline get_band(::Type{<:GPSL1C_P}) = L1()
 
+# 75 % of the L1C composite (IS-GPS-800J, Table 3.2-1). See [`GPSL1C_D`](@ref)'s
+# note and [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GPSL1C_P}) = 0.75
+
 @inline get_signal_name(::Type{<:GPSL1C_P}) = "GPS L1C-P"
 
 function read_gpsl1c_p_codes()

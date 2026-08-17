@@ -23,6 +23,12 @@ get_modulation(::Type{<:GalileoE1B}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11)
 
 @inline get_band(::Type{<:GalileoE1B}) = L1()
 
+# 50/50 E1-B/E1-C power sharing of the E1 composite, whose −157.25 dBW total
+# (Galileo OS SIS ICD v2.2, Table 13) is the unit here. This is the split *between*
+# the two components; the 10/11 CBOC split *within* each one lives in
+# [`get_modulation`](@ref). See [`get_relative_power`](@ref).
+@inline get_relative_power(::Type{<:GalileoE1B}) = 0.5
+
 @inline get_signal_name(::Type{<:GalileoE1B}) = "Galileo E1B"
 
 function read_from_documentation(raw_code)
@@ -160,6 +166,12 @@ end
 get_modulation(::Type{<:GalileoE1B_BOC11}) = BOCsin(1, 1)
 
 @inline get_band(::Type{<:GalileoE1B_BOC11}) = L1()
+
+# Approximates E1-B, so it stands in for the same transmitted component and
+# carries its power. The approximation drops the BOC(6,1) content, which changes
+# the correlation shape, not the E1-B/E1-C power split this reports.
+@inline get_relative_power(::Type{<:GalileoE1B_BOC11}) = get_relative_power(GalileoE1B)
+
 @inline get_signal_name(::Type{<:GalileoE1B_BOC11}) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B_BOC11()
