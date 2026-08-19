@@ -1,5 +1,12 @@
 # Changelog
 
+# [3.9.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.8.0...v3.9.0) (2026-08-19)
+
+
+### Features
+
+* add BeiDou Open Service signals (B1I, B3I, B2b, B2a, B1C) ([bfa354e](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/bfa354e72eaba0663cef4cba91467b3842ba70c8))
+
 # [3.8.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.7.0...v3.8.0) (2026-08-19)
 
 
