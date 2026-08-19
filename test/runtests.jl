@@ -22,9 +22,16 @@ const ALL_SIGNALS = (
     GalileoE1C_BOC11,
     GalileoE5aI,
     GalileoE5aQ,
+    BeiDouB1I,
+    BeiDouB3I,
+    BeiDouB2bI,
+    BeiDouB2aI,
+    BeiDouB2aQ,
+    BeiDouB1C_D,
+    BeiDouB1C_P,
 )
-const ALL_BANDS = (L1, L2, L5)
-const ALL_TIME_SYSTEMS = (GPST, GST)
+const ALL_BANDS = (L1, L2, L5, B1I, B3I, B2b)
+const ALL_TIME_SYSTEMS = (GPST, GST, BDT)
 
 # Decode a hex-packed ±1 sample fixture (LSB-first packing into hex
 # nibbles, so 4 samples per nibble). Bit 0 of nibble `k` holds sample
@@ -67,6 +74,7 @@ if !SIMD_ONLY
     include("galileo/e1b.jl")
     include("galileo/e1c.jl")
     include("galileo/e5a.jl")
+    include("beidou/beidou.jl")
     include("common.jl")
 end
 

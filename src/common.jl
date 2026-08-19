@@ -133,8 +133,8 @@ signal inherits it without constructing a value. Works on an instance or a type
 and folds to a compile-time constant.
 
 Distinct from [`get_time_system`](@ref) (the constellation's reference time
-scale, `GPST()`/`GST()`), and coarser than [`get_band_id`](@ref) (`:L1`) and
-[`get_signal_id`](@ref) (`:GPSL1CA`).
+scale, `GPST()`/`GST()`/`BDT()`), and coarser than [`get_band_id`](@ref) (`:L1`)
+and [`get_signal_id`](@ref) (`:GPSL1CA`).
 
 ```julia-repl
 julia> get_constellation_id(GPSL1CA())
@@ -146,13 +146,14 @@ julia> get_constellation_id(GalileoE1B)
 """
 @inline get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS
 @inline get_constellation_id(::Type{<:AbstractGalileoSignal}) = :Galileo
+@inline get_constellation_id(::Type{<:AbstractBeiDouSignal}) = :BeiDou
 @inline get_constellation_id(s::AbstractGNSSSignal) = get_constellation_id(typeof(s))
 
 """
 $(SIGNATURES)
 
 Get the human-readable name of the GNSS constellation a signal belongs to —
-`"GPS"` or `"Galileo"`.
+`"GPS"`, `"Galileo"` or `"BeiDou"`.
 
 The display counterpart to [`get_constellation_id`](@ref) — same granularity
 (every signal of one constellation returns the same string), but a `String`
@@ -190,6 +191,7 @@ julia> get_constellation_name(GalileoE1B)
 """
 @inline get_constellation_name(::Type{<:AbstractGPSSignal}) = "GPS"
 @inline get_constellation_name(::Type{<:AbstractGalileoSignal}) = "Galileo"
+@inline get_constellation_name(::Type{<:AbstractBeiDouSignal}) = "BeiDou"
 @inline get_constellation_name(::Type{S}) where {S<:AbstractGNSSSignal} =
     String(get_constellation_id(S))
 @inline get_constellation_name(s::AbstractGNSSSignal) = get_constellation_name(typeof(s))
@@ -230,8 +232,17 @@ The sign follows each ICD's own convention, so it differs by constellation:
   `I·cos − Q·sin`); `GalileoE5aI` is the reference (`0.0`).
 - **Galileo E1B/E1C** are both on the E1 in-phase carrier → `0.0`; their relative
   180° anti-phase is carried in the CBOC code (`get_modulation`), not the carrier.
+- **BeiDou B2a** follows the same complex-envelope convention as Galileo
+  (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3, `s_data + j·s_pilot` with `I·cos − Q·sin`), so
+  the `BeiDouB2aQ` pilot *leads* its `BeiDouB2aI` reference by 90° → `+π/2`.
+- **BeiDou B1C** is likewise `s_data + j·s_pilot` (BDS-SIS-ICD-B1C-1.0 Eq. 4-3):
+  the ICD's own phase table (Table 4-2) puts the data at 0° and the pilot's
+  BOC(1,1) arm at 90°, so `BeiDouB1C_P` — whose replica is that BOC(1,1) arm —
+  is `+π/2` against the `BeiDouB1C_D` reference (`0.0`).
 
-Default `0.0` covers every single-component signal and in-phase component above.
+Default `0.0` covers every single-component signal and in-phase component above
+(including `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI`, each its band's I component
+per its ICD).
 """
 @inline get_carrier_phase_offset(::Type{<:AbstractGNSSSignal}) = 0.0
 @inline get_carrier_phase_offset(s::AbstractGNSSSignal) = get_carrier_phase_offset(typeof(s))
@@ -257,10 +268,18 @@ below what a receiver sees, and are deliberately not exposed.
 | GPS L5 | L5 | `GPSL5I` `0.5`, `GPSL5Q` `0.5` |
 | Galileo E1 | E1 | `GalileoE1B` `0.5`, `GalileoE1C` `0.5` |
 | Galileo E5a | E5a | `GalileoE5aI` `0.5`, `GalileoE5aQ` `0.5` |
+| BeiDou B1C | B1C | `BeiDouB1C_D` `0.25`, `BeiDouB1C_P` `0.75` |
+| BeiDou B2a | B2a | `BeiDouB2aI` `0.5`, `BeiDouB2aQ` `0.5` |
+| BeiDou B1I / B3I / B2b | each its own | `BeiDouB1I` / `BeiDouB3I` / `BeiDouB2bI`, `1.0` each |
 
-Every composite but GPS L1C splits evenly; L1C is 75/25 pilot/data (IS-GPS-800J,
-Table 3.2-1). These are payload design constants, fixed independently of satellite
-block and elevation, so each is stated as the plain split and comes out exact.
+Every composite splits evenly except the two modern L1-carrier ones, which are
+75/25 pilot/data: GPS L1C (IS-GPS-800J, Table 3.2-1) and BeiDou B1C
+(BDS-SIS-ICD-B1C-1.0 §4.2.2, data:pilot 1:3). These are payload design constants,
+fixed independently of satellite block and elevation, so each is stated as the
+plain split and comes out exact. `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI` are
+single-component: each is the only open-service component on its carrier (the
+quadrature counterparts are not in the OS ICDs), so each is its own composite,
+`1.0`.
 
 `GPSL1CA` is the one value that is not a bare split, and the reason the scale spans
 a band rather than a composite: C/A is a *separate* signal on the L1 carrier, not a
