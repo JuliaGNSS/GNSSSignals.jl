@@ -27,9 +27,21 @@ end
     @test get_carrier_phase_offset(GPSL5Q()) == -π / 2
     # Galileo E5aQ pilot LEADS its E5a-I reference by 90° → +π/2 (OS SIS ICD Eq. 1).
     @test get_carrier_phase_offset(GalileoE5aQ()) == π / 2
+    # BeiDou uses the same complex-envelope convention as Galileo (`s_data + j·s_pilot`,
+    # RF `I·cos − Q·sin`), so its quadrature pilots also LEAD by 90° → +π/2:
+    # B2aQ (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3) and the B1C pilot's BOC(1,1) arm, which
+    # the BeiDouB1C_P replica tracks (BDS-SIS-ICD-B1C-1.0 Eq. 4-3, Table 4-2).
+    @test get_carrier_phase_offset(BeiDouB2aQ()) == π / 2
+    @test get_carrier_phase_offset(BeiDouB1C_P()) == π / 2
     # In-phase references and in-phase components default to 0.
     @test get_carrier_phase_offset(GPSL5I()) == 0.0
     @test get_carrier_phase_offset(GalileoE5aI()) == 0.0
+    @test get_carrier_phase_offset(BeiDouB2aI()) == 0.0
+    @test get_carrier_phase_offset(BeiDouB1C_D()) == 0.0
+    # Single-component BeiDou signals are each their band's I component per their ICDs.
+    @test get_carrier_phase_offset(BeiDouB1I()) == 0.0
+    @test get_carrier_phase_offset(BeiDouB3I()) == 0.0
+    @test get_carrier_phase_offset(BeiDouB2bI()) == 0.0
     # GPS L1C rides the same P(Y) in-phase carrier (IS-GPS-800J §3.2.1.6.1) → 0,
     # i.e. 90° off C/A on the same band.
     @test get_carrier_phase_offset(GPSL1C_D()) == 0.0
@@ -72,10 +84,15 @@ end
     @test @inferred(get_signal_id(GPSL5I())) === :GPSL5I
     @test @inferred(get_signal_id(GalileoE1B())) === :GalileoE1B
     @test @inferred(get_signal_id(GalileoE1C())) === :GalileoE1C
+    @test @inferred(get_signal_id(BeiDouB1I())) === :BeiDouB1I
+    @test @inferred(get_signal_id(BeiDouB1C_P())) === :BeiDouB1C_P
+    @test @inferred(get_signal_id(BeiDouB2aI)) === :BeiDouB2aI
     # Type-level dispatch works without constructing the signal.
     @test @inferred(get_signal_id(GPSL1CA)) === :GPSL1CA
     # Finer than the band id: same PRN on two bands → two distinct signal ids.
     @test get_signal_id(GPSL1CA()) !== get_signal_id(GPSL5I())
+    # BeiDou B1C data and pilot share a carrier but are distinct signals.
+    @test get_signal_id(BeiDouB1C_D()) !== get_signal_id(BeiDouB1C_P())
 end
 
 @testset "get_constellation_id" begin
@@ -83,6 +100,8 @@ end
     @test @inferred(get_constellation_id(GPSL5I())) === :GPS
     @test @inferred(get_constellation_id(GalileoE1B())) === :Galileo
     @test @inferred(get_constellation_id(GalileoE5aI())) === :Galileo
+    @test @inferred(get_constellation_id(BeiDouB1I())) === :BeiDou
+    @test @inferred(get_constellation_id(BeiDouB2aQ())) === :BeiDou
     # Type-level dispatch works without constructing the signal.
     @test @inferred(get_constellation_id(GalileoE1B)) === :Galileo
     # Coarser than the signal id: two bands of one constellation share an id.
@@ -94,6 +113,8 @@ end
     @test @inferred(get_constellation_name(GPSL5I())) == "GPS"
     @test @inferred(get_constellation_name(GalileoE1B())) == "Galileo"
     @test @inferred(get_constellation_name(GalileoE5aI())) == "Galileo"
+    @test @inferred(get_constellation_name(BeiDouB1I())) == "BeiDou"
+    @test @inferred(get_constellation_name(BeiDouB1C_D())) == "BeiDou"
     # Type-level dispatch works without constructing the signal.
     @test @inferred(get_constellation_name(GalileoE1B)) == "Galileo"
     # Coarser than the signal name: two bands of one constellation share a name.
@@ -107,7 +128,7 @@ end
     # value equality alone cannot tell the two apart ("GPS" == String(:GPS)). So check
     # the method dispatch actually reaches, not just what it returns.
     derived = which(get_constellation_name, Tuple{Type{AbstractGNSSSignal}})
-    for S in (GPSL1CA, GPSL5I, GalileoE1B, GalileoE5aQ)
+    for S in (GPSL1CA, GPSL5I, GalileoE1B, GalileoE5aQ, BeiDouB1I, BeiDouB1C_P)
         @test which(get_constellation_name, Tuple{Type{S}}) !== derived
         # Stated, but still exactly String() of the id — the two cannot drift apart.
         @test get_constellation_name(S) == String(get_constellation_id(S))
@@ -451,11 +472,16 @@ end
 # values must sum to 1. The BOC(1,1) stand-ins are not listed — they duplicate a
 # component rather than adding one — and are covered by their own testset below.
 const POWER_COMPOSITES = (
-    (GPSL1C_D, GPSL1C_P),       # GPS L1: L1C, the one 75/25 split
-    (GPSL2CM, GPSL2CL),         # GPS L2: L2C
-    (GPSL5I, GPSL5Q),           # GPS L5
-    (GalileoE1B, GalileoE1C),   # Galileo E1
-    (GalileoE5aI, GalileoE5aQ), # Galileo E5a
+    (GPSL1C_D, GPSL1C_P),         # GPS L1: L1C, a 75/25 split
+    (GPSL2CM, GPSL2CL),           # GPS L2: L2C
+    (GPSL5I, GPSL5Q),             # GPS L5
+    (GalileoE1B, GalileoE1C),     # Galileo E1
+    (GalileoE5aI, GalileoE5aQ),   # Galileo E5a
+    (BeiDouB1C_D, BeiDouB1C_P),   # BeiDou B1C, the other 75/25 split
+    (BeiDouB2aI, BeiDouB2aQ),     # BeiDou B2a
+    (BeiDouB1I,),                 # single-component: each its own composite
+    (BeiDouB3I,),
+    (BeiDouB2bI,),
 )
 
 # The constellation-and-band group each signal belongs to. Every signal the package
@@ -466,6 +492,14 @@ const POWER_GROUPS = (
     (GPSL5I, GPSL5Q),
     (GalileoE1B, GalileoE1C, GalileoE1B_BOC11, GalileoE1C_BOC11),
     (GalileoE5aI, GalileoE5aQ),
+    # Constellation-and-band grouping keeps BeiDou apart from GPS/Galileo even where
+    # the carrier is shared: B1C rides L1 and B2a rides L5, but a BeiDou value is
+    # only comparable with another BeiDou value from the same band.
+    (BeiDouB1C_D, BeiDouB1C_P),
+    (BeiDouB2aI, BeiDouB2aQ),
+    (BeiDouB1I,),
+    (BeiDouB3I,),
+    (BeiDouB2bI,),
 )
 
 @testset "get_relative_power" begin
@@ -479,15 +513,29 @@ const POWER_GROUPS = (
     @test get_relative_power(GPSL5Q()) === 0.5
     @test get_relative_power(GPSL2CM()) === 0.5     # CM/CL time-multiplexed
     @test get_relative_power(GPSL2CL()) === 0.5
-    @test get_relative_power(GPSL1C_P()) === 0.75   # the one 75/25 split
+    @test get_relative_power(GPSL1C_P()) === 0.75   # 75/25 split (IS-GPS-800J)
     @test get_relative_power(GPSL1C_D()) === 0.25
+    @test get_relative_power(BeiDouB2aI()) === 0.5  # ICD states data:pilot 1:1
+    @test get_relative_power(BeiDouB2aQ()) === 0.5
+    @test get_relative_power(BeiDouB1C_P()) === 0.75  # the other 75/25 split (ICD 1:3)
+    @test get_relative_power(BeiDouB1C_D()) === 0.25
+    # Single-component signals: each is the only OS component on its carrier, so
+    # each is its own composite.
+    @test get_relative_power(BeiDouB1I()) === 1.0
+    @test get_relative_power(BeiDouB3I()) === 1.0
+    @test get_relative_power(BeiDouB2bI()) === 1.0
 
-    # Being splits, the components of one composite sum to exactly 1, and the L1C
-    # pilot/data ratio is exactly 3 — no tolerance needed for either.
+    # Being splits, the components of one composite sum to exactly 1, and the two
+    # pilot/data ratios are exactly 3 — no tolerance needed for either.
     for composite in POWER_COMPOSITES
         @test sum(get_relative_power, composite) === 1.0
     end
     @test get_relative_power(GPSL1C_P()) / get_relative_power(GPSL1C_D()) === 3.0
+    @test get_relative_power(BeiDouB1C_P()) / get_relative_power(BeiDouB1C_D()) === 3.0
+
+    # The B1C value is the ICD component split, not the 29/44 the BOC(1,1) pilot
+    # replica captures — same convention as the Galileo _BOC11 stand-ins below.
+    @test get_relative_power(BeiDouB1C_P()) != 29 / 44
 
     @testset "GPS L1: C/A against L1C" begin
         # The one value that is not a bare split, and the reason the scale spans a
