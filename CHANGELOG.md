@@ -1,5 +1,18 @@
 # Changelog
 
+# [3.8.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.7.0...v3.8.0) (2026-08-19)
+
+
+### Bug Fixes
+
+* **modulation:** bind get_code_type's element type via eltype(C), not an unbound T ([8e56ed8](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/8e56ed806d37a85212fd2bbbede9e3d6d61b44a5))
+* **test:** make the constant-fold pin robust under coverage instrumentation ([593877e](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/593877e5ec170422b39ab5697f81bb7f3c90f861))
+
+
+### Features
+
+* **api:** add get_relative_power for discriminator weighting ([3c56b87](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/3c56b870b9676b100add8ae8e328afad92340f24))
+
 # [3.7.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.6.0...v3.7.0) (2026-08-11)
 
 
