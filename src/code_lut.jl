@@ -329,10 +329,17 @@ function build_signal_lut(modulation, codes::AbstractMatrix, sec::SecondaryCode;
         residual_perprn && (@inbounds secmat[:, prn] .= mc.secondary)
     end
     # Per-sample RMS amplitude of the baked code (see `SignalLUT.code_amplitude`). Computed
-    # once here from PRN 1's table — modulation-level and PRN-independent (all PRNs share the
-    # sub-carrier magnitude pattern; the primary only flips signs). Widen to `Int` before
-    # squaring: `abs2` on `Int8` overflows for CBOC's ±25 (25^2 = 625 wraps).
-    tbl = @view mc1.table.padded[1:mc1.table.length]
+    # once here from ONE PRN's table — modulation-level and PRN-independent (all PRNs share the
+    # sub-carrier magnitude pattern; the primary only flips signs). Not necessarily PRN 1: a
+    # signal whose PRN space has undefined slots stores those as an all-zero code (BeiDou B2b_I
+    # defines only PRN 6..58, so columns 1..5 and 59..63 are zero), and an all-zero column would
+    # give amplitude 0 for the whole signal. Take the first column that carries a code. Widen to
+    # `Int` before squaring: `abs2` on `Int8` overflows for CBOC's ±25 (25^2 = 625 wraps).
+    ref_prn = something(
+        findfirst(prn -> any(!iszero, @view padded[1:mc1.table.length, prn]), 1:num_prns),
+        1,
+    )
+    tbl = @view padded[1:mc1.table.length, ref_prn]
     code_amplitude = sqrt(sum(x -> abs2(Int(x)), tbl) / length(tbl))
     SignalLUT(
         padded,

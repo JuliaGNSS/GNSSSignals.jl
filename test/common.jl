@@ -18,6 +18,26 @@
     @test get_codes(signal) == signal.codes
 end
 
+@testset "get_code_amplitude is a positive, PRN-independent signal property" begin
+    # The amplitude is the RMS of ONE baked column, so it must not be read off a PRN slot
+    # the signal leaves undefined: BeiDou B2b_I defines only PRN 6..58 and stores the rest
+    # as an all-zero code, which used to make the whole signal report 0.0 — a divide-by-zero
+    # for the "divide the correlation by this" contract the accessor documents.
+    for S in ALL_SIGNALS
+        signal = S()
+        amp = get_code_amplitude(signal)
+        @test amp > 0.0
+        lut = signal.lut
+        # Every PRN that carries a code agrees with the signal-level value (only the signs
+        # differ between PRNs), and the value is the RMS of that column.
+        for prn in axes(lut.padded, 2)
+            tbl = Int.(@view lut.padded[1:lut.table_length, prn])
+            all(iszero, tbl) && continue
+            @test sqrt(sum(abs2, tbl) / length(tbl)) ≈ amp
+        end
+    end
+end
+
 @testset "get_carrier_phase_offset" begin
     # GPS civil signals ride the QUADRATURE carrier, lagging their band's P(Y)
     # in-phase reference by 90° → −π/2 (IS-GPS-200N §3.3.1.5.1, IS-GPS-705 §3.3.1.5).

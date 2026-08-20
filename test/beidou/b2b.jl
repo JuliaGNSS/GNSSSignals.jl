@@ -27,6 +27,20 @@ end
     end
 end
 
+@testset "BeiDou B2b-I code amplitude ignores the undefined PRN slots" begin
+    # PRN 1 is not in the ICD, so its stored code is all-zero. The amplitude is a
+    # signal-level (modulation) property and must come from a PRN that carries a code:
+    # BPSK(10) is a plain +/-1 code, so it is exactly 1.
+    b2b = BeiDouB2bI()
+    @test @inferred(get_code_amplitude(b2b)) == 1.0
+    lut = b2b.lut
+    @test all(iszero, @view lut.padded[1:lut.table_length, 1])   # the trap: PRN 1 is undefined
+    for prn = 6:58
+        tbl = Int.(@view lut.padded[1:lut.table_length, prn])
+        @test sqrt(sum(abs2, tbl) / length(tbl)) == 1.0
+    end
+end
+
 @testset "BeiDou B2b-I gen_code! produces a sampled BPSK(10) replica" begin
     b2b = BeiDouB2bI()
     samples_per_chip = 2
