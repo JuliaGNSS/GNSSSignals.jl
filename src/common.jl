@@ -232,6 +232,11 @@ The sign follows each ICD's own convention, so it differs by constellation:
   `I·cos − Q·sin`); `GalileoE5aI` is the reference (`0.0`).
 - **Galileo E1B/E1C** are both on the E1 in-phase carrier → `0.0`; their relative
   180° anti-phase is carried in the CBOC code (`get_modulation`), not the carrier.
+- **Galileo E6B/E6C** likewise share one carrier component, but here the 180°
+  *is* the carrier's: OS SIS ICD Eq. 10 subtracts the pilot,
+  `(e_E6-B − e_E6-C)/√2`, and the plain-BPSK E6-C code carries no sign of its own
+  (E1C's does, in `CBOC`'s `boc2_sign`), so `GalileoE6C` is `π` against the
+  `GalileoE6B` reference (`0.0`).
 - **BeiDou B2a** follows the same complex-envelope convention as Galileo
   (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3, `s_data + j·s_pilot` with `I·cos − Q·sin`), so
   the `BeiDouB2aQ` pilot *leads* its `BeiDouB2aI` reference by 90° → `+π/2`.
@@ -268,6 +273,7 @@ below what a receiver sees, and are deliberately not exposed.
 | GPS L5 | L5 | `GPSL5I` `0.5`, `GPSL5Q` `0.5` |
 | Galileo E1 | E1 | `GalileoE1B` `0.5`, `GalileoE1C` `0.5` |
 | Galileo E5a | E5a | `GalileoE5aI` `0.5`, `GalileoE5aQ` `0.5` |
+| Galileo E6 | E6 | `GalileoE6B` `0.5`, `GalileoE6C` `0.5` |
 | BeiDou B1C | B1C | `BeiDouB1C_D` `0.25`, `BeiDouB1C_P` `0.75` |
 | BeiDou B2a | B2a | `BeiDouB2aI` `0.5`, `BeiDouB2aQ` `0.5` |
 | BeiDou B1I / B3I / B2b | each its own | `BeiDouB1I` / `BeiDouB3I` / `BeiDouB2bI`, `1.0` each |

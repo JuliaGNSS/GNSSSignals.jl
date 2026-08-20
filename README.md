@@ -22,6 +22,8 @@ A Julia package for generating GNSS spreading codes and signals.
 * Galileo E1C BOC(1,1) approximation (lower minimum sampling rate; common SDR substitute for full CBOC)
 * Galileo E5a-I (BPSK(10) with 20-bit CS20 secondary code)
 * Galileo E5a-Q (BPSK(10) pilot with 100-bit per-SVID CS100 secondary code)
+* Galileo E6-B (BPSK(5) at 1278.75 MHz, 5115-chip memory code, C/NAV data component carrying the High Accuracy Service)
+* Galileo E6-C (BPSK(5) pilot at 1278.75 MHz, dataless, with the 100-chip per-SVID CS100 secondary code)
 * BeiDou B1I (BPSK(2) at 1561.098 MHz, 2046-chip Gold code with 20-bit NH20 secondary code on the MEO/IGSO D1 signal)
 * BeiDou B3I (BPSK(10) at 1268.52 MHz, 10230-chip Gold code with 20-bit NH20 secondary code on the MEO/IGSO D1 signal)
 * BeiDou B2b-I (BPSK(10) at 1207.14 MHz, 10230-chip Gold code)

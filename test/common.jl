@@ -68,6 +68,11 @@ end
     @test get_carrier_phase_offset(GPSL1C_P()) == 0.0
     @test get_carrier_phase_offset(GalileoE1B()) == 0.0   # E1B/E1C anti-phase is in the code, not the carrier
     @test get_carrier_phase_offset(GalileoE1C()) == 0.0
+    # E6 shares one carrier component too, but there the 180° is the carrier's:
+    # OS SIS ICD Eq. 10 subtracts the pilot and the plain-BPSK E6-C code carries
+    # no sign of its own (E1C's does, via CBOC's boc2_sign).
+    @test get_carrier_phase_offset(GalileoE6B()) == 0.0
+    @test get_carrier_phase_offset(GalileoE6C()) == Float64(π)
     # C/A and L1C are physically in quadrature with each other.
     @test get_carrier_phase_offset(GPSL1C_P()) - get_carrier_phase_offset(GPSL1CA()) == π / 2
     # Type- and instance-forms agree.
@@ -497,6 +502,7 @@ const POWER_COMPOSITES = (
     (GPSL5I, GPSL5Q),             # GPS L5
     (GalileoE1B, GalileoE1C),     # Galileo E1
     (GalileoE5aI, GalileoE5aQ),   # Galileo E5a
+    (GalileoE6B, GalileoE6C),     # Galileo E6
     (BeiDouB1C_D, BeiDouB1C_P),   # BeiDou B1C, the other 75/25 split
     (BeiDouB2aI, BeiDouB2aQ),     # BeiDou B2a
     (BeiDouB1I,),                 # single-component: each its own composite
@@ -512,6 +518,7 @@ const POWER_GROUPS = (
     (GPSL5I, GPSL5Q),
     (GalileoE1B, GalileoE1C, GalileoE1B_BOC11, GalileoE1C_BOC11),
     (GalileoE5aI, GalileoE5aQ),
+    (GalileoE6B, GalileoE6C),
     # Constellation-and-band grouping keeps BeiDou apart from GPS/Galileo even where
     # the carrier is shared: B1C rides L1 and B2a rides L5, but a BeiDou value is
     # only comparable with another BeiDou value from the same band.
@@ -529,6 +536,8 @@ const POWER_GROUPS = (
     @test get_relative_power(GalileoE1C()) === 0.5
     @test get_relative_power(GalileoE5aI()) === 0.5
     @test get_relative_power(GalileoE5aQ()) === 0.5
+    @test get_relative_power(GalileoE6B()) === 0.5   # OS SIS ICD §2.3.2, 50/50
+    @test get_relative_power(GalileoE6C()) === 0.5
     @test get_relative_power(GPSL5I()) === 0.5      # ICD tabulates I5/Q5 equal
     @test get_relative_power(GPSL5Q()) === 0.5
     @test get_relative_power(GPSL2CM()) === 0.5     # CM/CL time-multiplexed

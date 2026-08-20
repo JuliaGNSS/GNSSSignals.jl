@@ -64,12 +64,22 @@ frequency). Carries the BeiDou B2b signal.
 struct B2b <: Band end
 
 """
+    E6 <: Band
+
+The 1278.75 MHz GNSS band (the Galileo E6 frequency). Carries the Galileo E6-B
+and E6-C signals — and with them the C/NAV message and the High Accuracy
+Service — as well as the QZSS L6 signals, which share the carrier.
+"""
+struct E6 <: Band end
+
+"""
 $(SIGNATURES)
 
 Get the center (carrier) frequency of a band.
 
 One method per concrete [`Band`](@ref) — `L1` 1575.42 MHz, `L2` 1227.6 MHz,
-`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3I` 1268.52 MHz, `B2b` 1207.14 MHz.
+`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3I` 1268.52 MHz, `B2b` 1207.14 MHz,
+`E6` 1278.75 MHz.
 Works on a band instance or its type, as [`get_band_id`](@ref) /
 [`get_band_name`](@ref) do.
 
@@ -87,6 +97,7 @@ julia> get_center_frequency(L5)
 @inline get_center_frequency(::Type{B1I}) = 1_561_098_000Hz
 @inline get_center_frequency(::Type{B3I}) = 1_268_520_000Hz
 @inline get_center_frequency(::Type{B2b}) = 1_207_140_000Hz
+@inline get_center_frequency(::Type{E6}) = 1_278_750_000Hz
 @inline get_center_frequency(b::Band) = get_center_frequency(typeof(b))
 
 """
@@ -214,6 +225,7 @@ julia> get_band_name(GPSL1CA())
 @inline get_band_name(::Type{B1I}) = "B1I"
 @inline get_band_name(::Type{B3I}) = "B3I"
 @inline get_band_name(::Type{B2b}) = "B2b"
+@inline get_band_name(::Type{E6}) = "E6"
 @inline get_band_name(::Type{B}) where {B<:Band} = String(get_band_id(B))
 @inline get_band_name(b::Band) = get_band_name(typeof(b))
 @inline get_band_name(::Type{S}) where {S<:AbstractGNSSSignal} = get_band_name(get_band(S))
