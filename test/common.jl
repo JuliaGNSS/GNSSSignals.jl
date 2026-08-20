@@ -47,6 +47,11 @@ end
     @test get_carrier_phase_offset(GPSL5Q()) == -π / 2
     # Galileo E5aQ pilot LEADS its E5a-I reference by 90° → +π/2 (OS SIS ICD Eq. 1).
     @test get_carrier_phase_offset(GalileoE5aQ()) == π / 2
+    # E5b follows the same (I + jQ) convention on its own sideband (Eq. 2).
+    @test get_carrier_phase_offset(GalileoE5bI()) == 0.0
+    @test get_carrier_phase_offset(GalileoE5bQ()) == π / 2
+    # E5a-QP: the ICD states no phase relation to the E5a-I reference, so 0.
+    @test get_carrier_phase_offset(GalileoE5aQP()) == 0.0
     # BeiDou uses the same complex-envelope convention as Galileo (`s_data + j·s_pilot`,
     # RF `I·cos − Q·sin`), so its quadrature pilots also LEAD by 90° → +π/2:
     # B2aQ (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3) and the B1C pilot's BOC(1,1) arm, which
@@ -502,6 +507,7 @@ const POWER_COMPOSITES = (
     (GPSL5I, GPSL5Q),             # GPS L5
     (GalileoE1B, GalileoE1C),     # Galileo E1
     (GalileoE5aI, GalileoE5aQ),   # Galileo E5a
+    (GalileoE5bI, GalileoE5bQ),   # Galileo E5b
     (GalileoE6B, GalileoE6C),     # Galileo E6
     (BeiDouB1C_D, BeiDouB1C_P),   # BeiDou B1C, the other 75/25 split
     (BeiDouB2aI, BeiDouB2aQ),     # BeiDou B2a
@@ -517,7 +523,8 @@ const POWER_GROUPS = (
     (GPSL2CM, GPSL2CL),
     (GPSL5I, GPSL5Q),
     (GalileoE1B, GalileoE1C, GalileoE1B_BOC11, GalileoE1C_BOC11),
-    (GalileoE5aI, GalileoE5aQ),
+    (GalileoE5aI, GalileoE5aQ, GalileoE5aQP),
+    (GalileoE5bI, GalileoE5bQ),
     (GalileoE6B, GalileoE6C),
     # Constellation-and-band grouping keeps BeiDou apart from GPS/Galileo even where
     # the carrier is shared: B1C rides L1 and B2a rides L5, but a BeiDou value is
@@ -538,6 +545,8 @@ const POWER_GROUPS = (
     @test get_relative_power(GalileoE5aQ()) === 0.5
     @test get_relative_power(GalileoE6B()) === 0.5   # OS SIS ICD §2.3.2, 50/50
     @test get_relative_power(GalileoE6C()) === 0.5
+    @test get_relative_power(GalileoE5bI()) === 0.5   # E5b I/Q, also 50/50
+    @test get_relative_power(GalileoE5bQ()) === 0.5
     @test get_relative_power(GPSL5I()) === 0.5      # ICD tabulates I5/Q5 equal
     @test get_relative_power(GPSL5Q()) === 0.5
     @test get_relative_power(GPSL2CM()) === 0.5     # CM/CL time-multiplexed
@@ -583,6 +592,21 @@ const POWER_GROUPS = (
         @test sum(w ./ sum(w)) ≈ 1.0
         @test collect(w ./ sum(w)) ≈
               [0.4145013213281905, 0.14637466966795237, 0.4391240090038571]
+    end
+
+    @testset "Galileo E5a: QP against the E5a composite" begin
+        # The other value that is not a bare split, for the same reason as C/A on
+        # L1: E5a-QP is a separate signal on the E5a carrier, not a third component
+        # of the E5a composite, so it is scaled against that composite. −160.75 dBW
+        # against E5a's −155.25 is 5.5 dB below it (OS SIS ICD v2.2, Table 13).
+        @test get_relative_power(GalileoE5aQP()) ≈ 10.0^(-5.5 / 10)
+        # Each E5a component is half the composite (−3.01 dB), so QP sits 2.49 dB
+        # below either of them rather than the full 5.5 dB.
+        @test 10log10(get_relative_power(GalileoE5aI()) / get_relative_power(GalileoE5aQP())) ≈
+              2.4897000433601884
+        # It is therefore weaker than either E5a component, but not negligibly so.
+        @test get_relative_power(GalileoE5aQP()) < get_relative_power(GalileoE5aI())
+        @test get_relative_power(GalileoE5aQP()) > 0.25
     end
 
     @testset "BOC(1,1) approximations inherit their parent" begin

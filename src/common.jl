@@ -230,6 +230,11 @@ The sign follows each ICD's own convention, so it differs by constellation:
   (IS-GPS-800J §3.2.1.6.1) → `0.0`; hence L1C sits 90° off C/A on the same band.
 - **Galileo E5aQ** *leads* the E5a-I reference by 90° → `+π/2` (OS SIS ICD Eq. 1,
   `I·cos − Q·sin`); `GalileoE5aI` is the reference (`0.0`).
+- **Galileo E5bQ** likewise *leads* its own sideband's `GalileoE5bI` reference by 90°
+  → `+π/2`: the E5 AltBOC feeds each sideband as `(I + jQ)` (OS SIS ICD Eq. 2), and
+  the ICD blesses processing E5a and E5b as two independent QPSK signals (§2.3.1.2).
+  `GalileoE5aQP` shares the E5a carrier but the ICD states no phase relation for it
+  (§2.3.1.4), so it reports the `0.0` default — no offset is claimed, not one of `0`.
 - **Galileo E1B/E1C** are both on the E1 in-phase carrier → `0.0`; their relative
   180° anti-phase is carried in the CBOC code (`get_modulation`), not the carrier.
 - **Galileo E6B/E6C** likewise share one carrier component, but here the 180°
@@ -272,7 +277,8 @@ below what a receiver sees, and are deliberately not exposed.
 | GPS L2 | L2C | `GPSL2CM` `0.5`, `GPSL2CL` `0.5` |
 | GPS L5 | L5 | `GPSL5I` `0.5`, `GPSL5Q` `0.5` |
 | Galileo E1 | E1 | `GalileoE1B` `0.5`, `GalileoE1C` `0.5` |
-| Galileo E5a | E5a | `GalileoE5aI` `0.5`, `GalileoE5aQ` `0.5` |
+| Galileo E5a | E5a | `GalileoE5aI` `0.5`, `GalileoE5aQ` `0.5`; `GalileoE5aQP` `0.282` |
+| Galileo E5b | E5b | `GalileoE5bI` `0.5`, `GalileoE5bQ` `0.5` |
 | Galileo E6 | E6 | `GalileoE6B` `0.5`, `GalileoE6C` `0.5` |
 | BeiDou B1C | B1C | `BeiDouB1C_D` `0.25`, `BeiDouB1C_P` `0.75` |
 | BeiDou B2a | B2a | `BeiDouB2aI` `0.5`, `BeiDouB2aQ` `0.5` |
@@ -283,15 +289,19 @@ Every composite splits evenly except the two modern L1-carrier ones, which are
 (BDS-SIS-ICD-B1C-1.0 §4.2.2, data:pilot 1:3). These are payload design constants,
 fixed independently of satellite block and elevation, so each is stated as the
 plain split and comes out exact. `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI` are
-single-component: each is the only open-service component on its carrier (the
+single-component: each is BeiDou's only open-service component on its carrier (the
 quadrature counterparts are not in the OS ICDs), so each is its own composite,
-`1.0`.
+`1.0`. That the Galileo E5b components share `BeiDouB2bI`'s carrier does not enter
+into it — the scale is per constellation and band, so a BeiDou value is only
+comparable with another BeiDou value.
 
-`GPSL1CA` is the one value that is not a bare split, and the reason the scale spans
-a band rather than a composite: C/A is a *separate* signal on the L1 carrier, not a
-third component of L1C, so it is scaled against that composite — `−158.5 dBW`
-(IS-GPS-200N, Table 3-Va) against L1C's `−157.0 dBW`, i.e. `10^(-0.15)`. That lets a
-joint L1 loop weight all three against each other directly.
+`GPSL1CA` and `GalileoE5aQP` are the two values that are not bare splits, and the
+reason the scale spans a band rather than a composite: each is a *separate* signal on
+a carrier its composite already occupies, not a further component of that composite,
+so each is scaled against it. C/A is `−158.5 dBW` (IS-GPS-200N, Table 3-Va) against
+L1C's `−157.0 dBW`, i.e. `10^(-0.15)`; E5a-QP is `−160.75 dBW` against E5a's
+`−155.25 dBW` (Galileo OS SIS ICD v2.2, Table 13), i.e. `10^(-0.55)`. That lets a
+joint L1 or E5a loop weight all of a carrier's signals against each other directly.
 
 Values from different rows are **not** comparable: a ratio across constellations or
 bands would have to account for front-end gain, filter loss and noise figure, which
