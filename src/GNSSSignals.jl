@@ -20,6 +20,7 @@ export AbstractGNSSSignal,
     B1I,
     B3I,
     B2b,
+    E6,
     GPSL1CA,
     GPSL1C_D,
     GPSL1C_P,
@@ -33,6 +34,8 @@ export AbstractGNSSSignal,
     GalileoE1C_BOC11,
     GalileoE5aI,
     GalileoE5aQ,
+    GalileoE6B,
+    GalileoE6C,
     BeiDouB1I,
     BeiDouB3I,
     BeiDouB2bI,
@@ -226,9 +229,11 @@ include("gps/l1c_d.jl")
 include("gps/l1c_p.jl")
 include("gps/l2c_constants.jl")
 include("gps/l2c.jl")
+include("galileo/codes.jl")
 include("galileo/e1b.jl")
 include("galileo/e1c.jl")
 include("galileo/e5a.jl")
+include("galileo/e6.jl")
 include("beidou/codes.jl")
 include("beidou/b1i.jl")
 include("beidou/b3i.jl")

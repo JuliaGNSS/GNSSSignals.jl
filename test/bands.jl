@@ -4,6 +4,7 @@
     @test @inferred(get_center_frequency(B1I())) == 1_561_098_000Hz
     @test @inferred(get_center_frequency(B3I())) == 1_268_520_000Hz
     @test @inferred(get_center_frequency(B2b())) == 1_207_140_000Hz
+    @test @inferred(get_center_frequency(E6())) == 1_278_750_000Hz
 
     # Band type entry, as get_band_id / get_band_name accept.
     @test @inferred(get_center_frequency(L1)) == 1_575_420_000Hz
@@ -12,6 +13,7 @@
     @test @inferred(get_center_frequency(B1I)) == 1_561_098_000Hz
     @test @inferred(get_center_frequency(B3I)) == 1_268_520_000Hz
     @test @inferred(get_center_frequency(B2b)) == 1_207_140_000Hz
+    @test @inferred(get_center_frequency(E6)) == 1_278_750_000Hz
     @test get_center_frequency(L2()) == get_center_frequency(L2)
 
     @test @inferred(get_band(GPSL1CA())) isa L1
@@ -20,6 +22,7 @@
     @test @inferred(get_band(BeiDouB1I())) isa B1I
     @test @inferred(get_band(BeiDouB3I())) isa B3I
     @test @inferred(get_band(BeiDouB2bI())) isa B2b
+    @test @inferred(get_band(GalileoE6B())) isa E6
     # BeiDou B1C / B2a share the GPS L1 / L5 carriers.
     @test @inferred(get_band(BeiDouB1C_D())) isa L1
     @test @inferred(get_band(BeiDouB2aI())) isa L5
@@ -54,6 +57,10 @@ end
     @test @inferred(get_band_id(B2b())) === :B2b
     @test @inferred(get_band_id(BeiDouB1I())) === :B1I
     @test @inferred(get_band_id(BeiDouB2bI())) === :B2b
+    # Galileo E6 gets its own id: 1278.75 MHz is shared with QZSS L6, not with any
+    # band above.
+    @test @inferred(get_band_id(E6())) === :E6
+    @test @inferred(get_band_id(GalileoE6C())) === :E6
     @test get_band_id(BeiDouB1C_D()) === get_band_id(GPSL1CA()) === :L1
     @test get_band_id(BeiDouB2aI()) === get_band_id(GPSL5I()) === :L5
 
@@ -80,7 +87,7 @@ end
     @test @inferred(get_band_name(GalileoE5aI)) == "L5"
 
     # Display counterpart of the id — same granularity, String instead of Symbol.
-    for band in (L1(), L2(), L5(), B1I(), B3I(), B2b())
+    for band in (L1(), L2(), L5(), B1I(), B3I(), B2b(), E6())
         @test get_band_name(band) == String(get_band_id(band))
     end
 

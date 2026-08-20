@@ -268,6 +268,37 @@ get_secondary_code_length(e5a_q) # 100
 get_modulation(e5a_q)            # LOC()
 ```
 
+### Galileo E6-B
+
+Galileo E6-B is the data component of Galileo E6, on its own carrier at 1278.75 MHz ([`E6`](@ref GNSSSignals.E6)). It is BPSK(5): a 5115-chip primary code at 5.115 Mcps, repeating every 1 ms with no secondary code. The component carries the C/NAV message at 1000 symbols/s — the channel the Galileo High Accuracy Service (HAS) corrections ride on. Unlike the E1 and E5a codes, the E6 primary codes are optimised *memory* codes (no LFSR definition), taken from the Galileo E6-B/C Codes Technical Note; codes 1-50 are defined:
+
+```julia
+e6b = GalileoE6B()
+get_code_length(e6b)             # 5115
+get_band(e6b)                    # E6()
+get_center_frequency(e6b)        # 1278750000 Hz
+get_code_frequency(e6b)          # 5115000 Hz
+get_data_frequency(e6b)          # 1000 Hz (C/NAV symbol rate)
+get_secondary_code_length(e6b)   # 1 (no secondary code)
+get_modulation(e6b)              # LOC()
+```
+
+### Galileo E6-C
+
+Galileo E6-C is the dataless pilot of Galileo E6. It uses its own set of 5115-chip memory codes and overlays the same 100-chip per-SVID CS100 secondary codes as E5a-Q, giving a 100 ms tiered code. Both E6 components sit on one carrier component with a 50/50 power split, and the ICD subtracts the pilot there, so E6-C reports a carrier phase offset of π against the E6-B reference:
+
+```julia
+e6c = GalileoE6C()
+get_code_length(e6c)             # 5115
+get_band(e6c)                    # E6()
+get_data_frequency(e6c)          # 0 Hz (dataless)
+get_secondary_code_length(e6c)   # 100
+get_carrier_phase_offset(e6c)    # π  (OS SIS ICD Eq. 10 subtracts the pilot)
+get_modulation(e6c)              # LOC()
+```
+
+Note that the E6-C ranging codes are currently transmitted unencrypted, but the Technical Note states that encryption is planned for future use — E6-C availability is not guaranteed the way an Open Service component's is.
+
 ## Bands
 
 A [`Band`](@ref GNSSSignals.Band) represents a shared RF carrier frequency. Two signals with the same band can be driven by a single carrier NCO in a receiver — that is the architectural reason this abstraction exists.
@@ -278,10 +309,12 @@ get_band(GalileoE1B())         # L1()
 get_band(GalileoE1C())         # L1()
 get_band(GPSL2CM())            # L2()
 get_band(GPSL5I())             # L5()
+get_band(GalileoE6B())         # E6()
 
 get_center_frequency(L1())     # 1575420000 Hz
 get_center_frequency(L2())     # 1227600000 Hz
 get_center_frequency(L5())     # 1176450000 Hz
+get_center_frequency(E6())     # 1278750000 Hz
 ```
 
 Band identity here is by RF frequency, not by ICD label: Galileo E1 returns `L1()` because it shares 1575.42 MHz with GPS L1.
