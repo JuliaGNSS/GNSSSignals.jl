@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.9.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.9.0...v3.9.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **code_lut:** derive code amplitude from a PRN that has a code ([37e116d](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/37e116d72150fc20ea5fd9ec867a323f027838b3))
+
 # [3.9.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.8.0...v3.9.0) (2026-08-19)
 
 
