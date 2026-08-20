@@ -1,6 +1,6 @@
 @testset "BeiDou B2b-I" begin
     b2b = BeiDouB2bI()
-    @test @inferred(get_band(b2b)) == B2b()
+    @test @inferred(get_band(b2b)) == E5b()
     @test @inferred(get_center_frequency(b2b)) == 1_207_140_000Hz
     @test @inferred(get_code_length(b2b)) == 10230
     @test @inferred(get_secondary_code_length(b2b)) == 1

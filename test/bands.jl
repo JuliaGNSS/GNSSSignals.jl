@@ -3,7 +3,7 @@
     @test @inferred(get_center_frequency(L5())) == 1_176_450_000Hz
     @test @inferred(get_center_frequency(B1I())) == 1_561_098_000Hz
     @test @inferred(get_center_frequency(B3I())) == 1_268_520_000Hz
-    @test @inferred(get_center_frequency(B2b())) == 1_207_140_000Hz
+    @test @inferred(get_center_frequency(E5b())) == 1_207_140_000Hz
     @test @inferred(get_center_frequency(E6())) == 1_278_750_000Hz
 
     # Band type entry, as get_band_id / get_band_name accept.
@@ -12,7 +12,7 @@
     @test @inferred(get_center_frequency(L5)) == 1_176_450_000Hz
     @test @inferred(get_center_frequency(B1I)) == 1_561_098_000Hz
     @test @inferred(get_center_frequency(B3I)) == 1_268_520_000Hz
-    @test @inferred(get_center_frequency(B2b)) == 1_207_140_000Hz
+    @test @inferred(get_center_frequency(E5b)) == 1_207_140_000Hz
     @test @inferred(get_center_frequency(E6)) == 1_278_750_000Hz
     @test get_center_frequency(L2()) == get_center_frequency(L2)
 
@@ -21,8 +21,12 @@
     @test @inferred(get_band(GalileoE1B())) isa L1
     @test @inferred(get_band(BeiDouB1I())) isa B1I
     @test @inferred(get_band(BeiDouB3I())) isa B3I
-    @test @inferred(get_band(BeiDouB2bI())) isa B2b
+    @test @inferred(get_band(BeiDouB2bI())) isa E5b
     @test @inferred(get_band(GalileoE6B())) isa E6
+    # Galileo E5b and BeiDou B2b are the same 1207.14 MHz carrier, so they report
+    # the same band — named E5b here, as the shared GPS/Galileo ones are named L1/L5.
+    @test @inferred(get_band(GalileoE5bI())) isa E5b
+    @test get_band_id(GalileoE5bQ()) === get_band_id(BeiDouB2bI()) === :E5b
     # BeiDou B1C / B2a share the GPS L1 / L5 carriers.
     @test @inferred(get_band(BeiDouB1C_D())) isa L1
     @test @inferred(get_band(BeiDouB2aI())) isa L5
@@ -54,9 +58,9 @@ end
     # while the BeiDou-only carriers get their own ids.
     @test @inferred(get_band_id(B1I())) === :B1I
     @test @inferred(get_band_id(B3I())) === :B3I
-    @test @inferred(get_band_id(B2b())) === :B2b
+    @test @inferred(get_band_id(E5b())) === :E5b
     @test @inferred(get_band_id(BeiDouB1I())) === :B1I
-    @test @inferred(get_band_id(BeiDouB2bI())) === :B2b
+    @test @inferred(get_band_id(BeiDouB2bI())) === :E5b
     # Galileo E6 gets its own id: 1278.75 MHz is shared with QZSS L6, not with any
     # band above.
     @test @inferred(get_band_id(E6())) === :E6
@@ -87,7 +91,7 @@ end
     @test @inferred(get_band_name(GalileoE5aI)) == "L5"
 
     # Display counterpart of the id — same granularity, String instead of Symbol.
-    for band in (L1(), L2(), L5(), B1I(), B3I(), B2b(), E6())
+    for band in (L1(), L2(), L5(), B1I(), B3I(), E5b(), E6())
         @test get_band_name(band) == String(get_band_id(band))
     end
 

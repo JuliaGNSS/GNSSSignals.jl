@@ -20,6 +20,9 @@ GNSSSignals.GalileoE1C
 GNSSSignals.GalileoE1C_BOC11
 GNSSSignals.GalileoE5aI
 GNSSSignals.GalileoE5aQ
+GNSSSignals.GalileoE5aQP
+GNSSSignals.GalileoE5bI
+GNSSSignals.GalileoE5bQ
 GNSSSignals.GalileoE6B
 GNSSSignals.GalileoE6C
 GNSSSignals.BeiDouB1I
@@ -40,7 +43,7 @@ GNSSSignals.L2
 GNSSSignals.L5
 GNSSSignals.B1I
 GNSSSignals.B3I
-GNSSSignals.B2b
+GNSSSignals.E5b
 GNSSSignals.E6
 GNSSSignals.get_band
 GNSSSignals.get_band_id

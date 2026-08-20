@@ -268,6 +268,51 @@ get_secondary_code_length(e5a_q) # 100
 get_modulation(e5a_q)            # LOC()
 ```
 
+### Galileo E5a-QP
+
+Galileo E5a-QP (E5a Quasi-Pilot) is new in OS SIS ICD Issue 2.2: a dataless BPSK(5) component on the E5a carrier whose primary code is only **330 chips** long (2/31 ms at 5.115 Mcps), meant to make first acquisition cheap. There is no secondary code — the short code just repeats, 31 times per 2 ms. Its 40 codes are built by XOR-ing three generative short codes of 15, 11 and 10 chips (ICD §3.4.2, Table 21), so PRNs 1-40 are supported:
+
+```julia
+e5a_qp = GalileoE5aQP()
+get_code_length(e5a_qp)          # 330
+get_code_frequency(e5a_qp)       # 5115000 Hz
+get_band(e5a_qp)                 # L5()
+get_data_frequency(e5a_qp)       # 0 Hz (no user data)
+get_secondary_code_length(e5a_qp)# 1 (no secondary code)
+get_relative_power(e5a_qp)       # 0.282 — 5.5 dB below the E5a composite
+```
+
+Two caveats from the ICD: E5a-QP is transmitted by a [subset of the constellation](https://www.gsc-europa.eu/galileo/services/galileo-open-service/quasipilot) only, and it will eventually be discontinued in favour of further quasi-pilot signals.
+
+### Galileo E5b-I
+
+Galileo E5b-I is the data component of the E5b sideband, at 1207.14 MHz. It uses a 10230-chip primary code at 10.23 Mcps with the 4-bit CS4 secondary code (shared by all SVIDs, a 4 ms tiered code) and carries I/NAV at 250 symbols/s — the same message E1-B carries. E5b is one half of the wideband E5 AltBOC(15,10) signal; the ICD notes that E5a and E5b "can be processed independently by the user receiver as though they were two separate QPSK signals", which is what this implementation models (BPSK(10) per sideband).
+
+Note that 1207.14 MHz is also the BeiDou B2b carrier — exactly the same frequency — so [`get_band`](@ref GNSSSignals.get_band) returns [`E5b`](@ref GNSSSignals.E5b) for both constellations' signals there. Band identity is by RF frequency, not by ICD label, the same reason Galileo E1 reports `L1()`:
+
+```julia
+e5b_i = GalileoE5bI()
+get_code_length(e5b_i)           # 10230
+get_band(e5b_i)                  # E5b()
+get_center_frequency(e5b_i)      # 1207140000 Hz
+get_data_frequency(e5b_i)        # 250 Hz (I/NAV symbol rate)
+get_secondary_code_length(e5b_i) # 4 (CS4)
+get_modulation(e5b_i)            # LOC()
+```
+
+### Galileo E5b-Q
+
+Galileo E5b-Q is the dataless pilot of the E5b sideband. It shares the E5b-I base register 1 (different register-2 polynomial and per-SVID seeds) and overlays the CS100 codes 51-100 — CS100₍ₙ₊₅₀₎ to SVID `n`, the half of the table E5a-Q does not use — for a 100 ms tiered code. PRNs 1-50 are supported:
+
+```julia
+e5b_q = GalileoE5bQ()
+get_code_length(e5b_q)           # 10230
+get_band(e5b_q)                  # E5b()
+get_data_frequency(e5b_q)        # 0 Hz (dataless)
+get_secondary_code_length(e5b_q) # 100
+get_carrier_phase_offset(e5b_q)  # π/2 (leads the E5b-I reference, as E5a-Q does)
+```
+
 ### Galileo E6-B
 
 Galileo E6-B is the data component of Galileo E6, on its own carrier at 1278.75 MHz ([`E6`](@ref GNSSSignals.E6)). It is BPSK(5): a 5115-chip primary code at 5.115 Mcps, repeating every 1 ms with no secondary code. The component carries the C/NAV message at 1000 symbols/s — the channel the Galileo High Accuracy Service (HAS) corrections ride on. Unlike the E1 and E5a codes, the E6 primary codes are optimised *memory* codes (no LFSR definition), taken from the Galileo E6-B/C Codes Technical Note; codes 1-50 are defined:
@@ -310,12 +355,16 @@ get_band(GalileoE1C())         # L1()
 get_band(GPSL2CM())            # L2()
 get_band(GPSL5I())             # L5()
 get_band(GalileoE6B())         # E6()
+get_band(GalileoE5bI())        # E5b()
 
 get_center_frequency(L1())     # 1575420000 Hz
 get_center_frequency(L2())     # 1227600000 Hz
 get_center_frequency(L5())     # 1176450000 Hz
+get_center_frequency(E5b())    # 1207140000 Hz
 get_center_frequency(E6())     # 1278750000 Hz
 ```
+
+Two constellations can meet on one band: Galileo E5b and BeiDou B2b are the same 1207.14 MHz carrier, so both report `E5b()`. Where a band has two ICD labels, the package picks one — the GPS label for `L1`/`L2`/`L5`, the Galileo label for `E5b`/`E6`, the BeiDou label for the carriers only BeiDou uses (`B1I`, `B3I`).
 
 Band identity here is by RF frequency, not by ICD label: Galileo E1 returns `L1()` because it shares 1575.42 MHz with GPS L1.
 

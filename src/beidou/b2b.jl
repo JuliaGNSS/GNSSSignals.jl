@@ -4,7 +4,7 @@ include("b2b_constants.jl")
     BeiDouB2bI{C} <: AbstractBeiDouSignal{C}
 
 BeiDou B2b_I signal — the open-service data signal on the BeiDou B2b frequency
-(1207.14 MHz, reported as the [`B2b`](@ref) band).
+(1207.14 MHz, reported as the [`E5b`](@ref) band, which Galileo E5b shares).
 
 BPSK(10)-modulated 10230-chip ranging code at 10.23 Mcps (a Gold code); the
 B-CNAV3 navigation message is broadcast at 1000 symbols/s. B2b_I has no
@@ -21,7 +21,7 @@ defined and generate an all-zero code.
 ```julia
 b2b = BeiDouB2bI()
 get_code_length(b2b)     # 10230
-get_band(b2b)            # B2b()
+get_band(b2b)            # E5b()
 gen_code(20460, b2b, 6, 20.46e6 * u"Hz")   # PRN 6 (first defined PRN)
 ```
 """
@@ -64,11 +64,13 @@ $(SIGNATURES)
 
 Get the band the signal is transmitted on.
 
-BeiDou B2b is on the 1207.14 MHz B2b frequency, so this returns [`B2b`](@ref).
+BeiDou B2b is on the 1207.14 MHz carrier, which this package names after
+Galileo's label for it, so this returns [`E5b`](@ref) — as `BeiDouB1C_D` returns
+[`L1`](@ref) for the carrier it shares with GPS.
 """
-@inline get_band(::Type{<:BeiDouB2bI}) = B2b()
+@inline get_band(::Type{<:BeiDouB2bI}) = E5b()
 
-# The only open-service component on the 1207.14 MHz carrier (the B2b ICD v1.0
+# BeiDou's only open-service component on the 1207.14 MHz carrier (the B2b ICD v1.0
 # specifies the I component only), so it is its own composite. See
 # [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:BeiDouB2bI}) = 1.0

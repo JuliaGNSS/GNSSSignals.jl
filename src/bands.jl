@@ -56,12 +56,15 @@ signal.
 struct B3I <: Band end
 
 """
-    B2b <: Band
+    E5b <: Band
 
-The 1207.14 MHz GNSS band (the BeiDou B2b frequency, also the legacy B2I
-frequency). Carries the BeiDou B2b signal.
+The 1207.14 MHz GNSS band. Carries the Galileo E5b signals (E5b-I / E5b-Q) and
+the BeiDou B2b signal — the two constellations share the carrier exactly: 118 ×
+10.23 MHz, named E5b by the Galileo OS SIS ICD (Table 2) and B2b (formerly B2I)
+by the BeiDou ICDs. One of the two labels has to name the band, and this package
+uses the Galileo one, as it uses the GPS ones for [`L1`](@ref) and [`L5`](@ref).
 """
-struct B2b <: Band end
+struct E5b <: Band end
 
 """
     E6 <: Band
@@ -78,7 +81,7 @@ $(SIGNATURES)
 Get the center (carrier) frequency of a band.
 
 One method per concrete [`Band`](@ref) — `L1` 1575.42 MHz, `L2` 1227.6 MHz,
-`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3I` 1268.52 MHz, `B2b` 1207.14 MHz,
+`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3I` 1268.52 MHz, `E5b` 1207.14 MHz,
 `E6` 1278.75 MHz.
 Works on a band instance or its type, as [`get_band_id`](@ref) /
 [`get_band_name`](@ref) do.
@@ -96,7 +99,7 @@ julia> get_center_frequency(L5)
 @inline get_center_frequency(::Type{L5}) = 1_176_450_000Hz
 @inline get_center_frequency(::Type{B1I}) = 1_561_098_000Hz
 @inline get_center_frequency(::Type{B3I}) = 1_268_520_000Hz
-@inline get_center_frequency(::Type{B2b}) = 1_207_140_000Hz
+@inline get_center_frequency(::Type{E5b}) = 1_207_140_000Hz
 @inline get_center_frequency(::Type{E6}) = 1_278_750_000Hz
 @inline get_center_frequency(b::Band) = get_center_frequency(typeof(b))
 
@@ -224,7 +227,7 @@ julia> get_band_name(GPSL1CA())
 @inline get_band_name(::Type{L5}) = "L5"
 @inline get_band_name(::Type{B1I}) = "B1I"
 @inline get_band_name(::Type{B3I}) = "B3I"
-@inline get_band_name(::Type{B2b}) = "B2b"
+@inline get_band_name(::Type{E5b}) = "E5b"
 @inline get_band_name(::Type{E6}) = "E6"
 @inline get_band_name(::Type{B}) where {B<:Band} = String(get_band_id(B))
 @inline get_band_name(b::Band) = get_band_name(typeof(b))

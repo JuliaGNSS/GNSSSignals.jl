@@ -64,13 +64,12 @@ struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSigna
     lut::SignalLUT        # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-#= E5a primary code generation (Galileo OS SIS ICD §3.5).
+#= E5a primary code generation (Galileo OS SIS ICD v2.2 §3.4.1).
 
-Each E5 primary code is the modulo-2 sum (chip-wise product of ±1) of two
-length-2¹⁴ maximal-length sequences, truncated to 10230 chips. Base register 1
-is common to every SVID (all-ones start); base register 2 carries a per-SVID
-start value. The taps below are the ICD feedback polynomials in octal; E5a-I
-and E5a-Q share the same taps and differ only in the register-2 start values. =#
+The generator itself — two 14-stage shift registers, base register 1 all-ones
+and base register 2 per-SVID, truncated to 10230 chips — is shared with E5b and
+lives in `galileo/codes.jl`. E5a-I and E5a-Q share the same feedback taps below
+and differ only in the register-2 start values. =#
 
 const E5A_X1_TAP = 0o40503   # base register 1 feedback polynomial
 const E5A_X2_TAP = 0o50661   # base register 2 feedback polynomial
@@ -93,71 +92,8 @@ const E5A_Q_X2_INIT = [
     0o36270, 0o06600, 0o26773, 0o17375, 0o35267, 0o36255, 0o12044, 0o26442, 0o21621, 0o25411,
 ]
 
-"""
-$(SIGNATURES)
-
-Reverse the low `n` bits of `register` (bit 0 ↔ bit n-1).
-
-The ICD numbers shift-register stages and feedback taps MSB-first, whereas the
-generation loop in `_e5_lfsr_bits` shifts LSB-first. This converts a tap mask
-or start value between the two conventions.
-"""
-function _e5_rev_reg(register, n)
-    reversed = 0
-    for i = 0:n-1
-        reversed = (reversed << 1) | ((register >> i) & 1)
-    end
-    reversed
-end
-
-"""
-$(SIGNATURES)
-
-Run a length-`n` Fibonacci LFSR for `count` chips and return its output bit
-sequence (`0`/`1`). `register` is the initial state and `tap` the feedback
-mask (both LSB-first). Each step outputs the LSB, then shifts right and feeds
-the parity of `register & tap` into the top stage.
-"""
-function _e5_lfsr_bits(count, register, tap, n)
-    bits = Vector{Int8}(undef, count)
-    mask = (1 << n) - 1
-    for i = 1:count
-        bits[i] = register & 1
-        feedback = count_ones(register & tap) & 1
-        register = ((feedback << (n - 1)) | (register >> 1)) & mask
-    end
-    bits
-end
-
-# Base register 1 (common to every SVID, all-ones start) and the per-SVID
-# base register 2; both taps are converted to the LSB-first loop convention.
-_e5_x1_bits(count) = _e5_lfsr_bits(count, 0b11111111111111, _e5_rev_reg(E5A_X1_TAP >> 1, 14), 14)
-_e5_x2_bits(count, x2_init) =
-    _e5_lfsr_bits(count, _e5_rev_reg(x2_init, 14), _e5_rev_reg(E5A_X2_TAP >> 1, 14), 14)
-
-"""
-$(SIGNATURES)
-
-Build the 10230 × 50 Galileo E5a primary code matrix for the given table of
-per-SVID base-register-2 start values (`E5A_I_X2_INIT` or `E5A_Q_X2_INIT`).
-
-The common base register 1 is generated once and reused for every PRN. Chips
-are mapped `0 -> -1`, `1 -> +1` to match the package-wide convention (see
-[`GPSL5I`](@ref)).
-"""
-function read_galileo_e5a_codes(x2_init_table)
-    code_length = 10230
-    x1 = _e5_x1_bits(code_length)
-    codes = Matrix{Int8}(undef, code_length, length(x2_init_table))
-    for (prn, x2_init) in enumerate(x2_init_table)
-        x2 = _e5_x2_bits(code_length, x2_init)
-        @inbounds @views codes[:, prn] .= Int8(2) .* (x1 .⊻ x2) .- Int8(1)
-    end
-    codes
-end
-
 function GalileoE5aI()
-    codes = widen_codes_to_storage(read_galileo_e5a_codes(E5A_I_X2_INIT))
+    codes = widen_codes_to_storage(read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_I_X2_INIT))
     lut = build_signal_lut(get_modulation(GalileoE5aI), codes, _galileo_e5a_i_secondary_code())
     GalileoE5aI(codes, lut)
 end
@@ -173,10 +109,10 @@ const E5A_I_SECONDARY_CHIPS = (
 )
 
 function GalileoE5aQ()
-    codes = widen_codes_to_storage(read_galileo_e5a_codes(E5A_Q_X2_INIT))
+    codes = widen_codes_to_storage(read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_Q_X2_INIT))
     # CS100_n to SVID n (Galileo OS SIS ICD v2.2 §3.5.2). The table lives in
     # `galileo/codes.jl` because the E6-C pilot is assigned the same 50 codes.
-    secondary = _build_galileo_cs100_secondary()
+    secondary = _build_galileo_cs100_secondary(1:50)
     # The 100-chip per-SVID CS100 overlay is too long to bake (100·10230·1 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.
     lut = build_signal_lut(get_modulation(GalileoE5aQ), codes, PerPRNSecondaryCode(secondary))
