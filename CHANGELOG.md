@@ -1,5 +1,32 @@
 # Changelog
 
+# [4.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.9.1...v4.0.0) (2026-08-20)
+
+
+* feat!: add Galileo E5b pair and E5a-QP signals, rename the B2b band E5b ([427965c](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/427965cdf95a3dcbf7bc58499a7553bc0941c7e4))
+
+
+### Features
+
+* add Galileo civil E6 signals (E6-B, E6-C) ([49f77b5](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/49f77b59e5ae191a1bc4170c90eba93a4200a1ab))
+
+
+### BREAKING CHANGES
+
+* the exported band type `B2b` is removed and replaced by `E5b`,
+and `get_band(BeiDouB2bI())` now returns `E5b()` instead of `B2b()`. The two are
+the same 1207.14 MHz carrier - 118 x 10.23 MHz, 20.46 MHz reference bandwidth -
+so the change is in the name and the type identity, not in any frequency or
+bandwidth this package reports. Code that names the band type (`B2b()`,
+`::Type{B2b}`, a `get_band(sig) == B2b()` comparison, or a method dispatching on
+`B2b`) must be updated to `E5b`. `get_center_frequency` is unchanged at
+1_207_140_000Hz, but the band's identity strings follow the rename, so
+`get_band_id(BeiDouB2bI())` is now `:E5b` and `get_band_name(BeiDouB2bI())` is
+now "E5b" - callers keying a per-band table off either must remap that key. No deprecated alias is kept: an alias
+would have to be a `const B2b = E5b`, which makes the two names one type rather
+than deprecating anything, so it would neither warn nor ever be removable
+without a second breaking change.
+
 ## [3.9.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.9.0...v3.9.1) (2026-08-20)
 
 
