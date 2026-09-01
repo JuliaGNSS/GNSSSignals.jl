@@ -11,7 +11,9 @@ this abstraction exists, mirroring [`Band`](@ref) for the RF carrier.
 
 A time scale is fixed by two constants, both queried through it:
 [`get_system_start_time`](@ref) (its epoch) and [`get_tai_offset`](@ref) (its
-offset from TAI).
+offset from TAI). Cross-scale arithmetic needs the epoch on a continuous
+scale, which those two alone cannot reconstruct — see
+[`get_tai_system_start_time`](@ref) and [`get_epoch_offset`](@ref).
 """
 abstract type TimeSystem end
 
@@ -59,7 +61,21 @@ August 1999, i.e. `1999-08-21T23:59:47` UTC. The GPS epoch is
 
 See also [`get_tai_offset`](@ref) for the time scale's constant offset from TAI.
 
+!!! warning "UTC labels — differencing two of these is not an elapsed duration"
+
+    UTC is discontinuous, so the difference between two of these `DateTime`s is
+    missing whatever leap seconds accrued between them, and adding the
+    [`get_tai_offset`](@ref) difference does **not** recover them: that
+    correction assumes each scale was set equal to UTC at its own epoch, which
+    holds for GPST (1980) and BDT (2006) but not for GST — the Galileo epoch is
+    anchored to *GPS Time* at the week-1024 rollover, not to UTC, so the 13
+    leap seconds of 1980–1999 appear in neither term. Use
+    [`get_tai_system_start_time`](@ref) (a continuous-scale timestamp) or
+    [`get_epoch_offset`](@ref) (the elapsed-seconds answer directly) for any
+    cross-scale arithmetic; see issue #157.
+
 # Examples
+
 ```julia-repl
 julia> get_system_start_time(GPST())
 1980-01-06T00:00:00
@@ -92,6 +108,7 @@ defined as `TAI − 19 s`, so this returns `19s` for either; [`BDT`](@ref)
 system (not as a shared fallback) so each states its own value.
 
 # Examples
+
 ```julia-repl
 julia> get_tai_offset(GST())
 19 s
@@ -119,6 +136,7 @@ signal inherits it through subtype dispatch. Available on the type (without
 constructing a signal); the instance method forwards to the type.
 
 # Examples
+
 ```julia-repl
 julia> get_time_system(GPSL1CA)
 GPST()
@@ -148,6 +166,94 @@ function get_time_system end
 @inline get_tai_offset(::Type{S}) where {S<:AbstractGNSSSignal} =
     get_tai_offset(get_time_system(S))
 @inline get_tai_offset(s::AbstractGNSSSignal) = get_tai_offset(get_time_system(s))
+
+"""
+$(SIGNATURES)
+
+Get the start epoch of a GNSS time scale as a timestamp on the **TAI** scale.
+
+The same instant [`get_system_start_time`](@ref) labels in UTC, labelled in
+TAI. TAI is continuous, so — unlike the UTC labels — differencing two of these
+is an elapsed duration, which is what every cross-scale computation needs
+(see [`get_epoch_offset`](@ref) for that difference directly).
+
+These are stated per scale rather than derived, because deriving them from the
+UTC labels would need a leap-second table, and because GST's is not derivable
+from this package's other two constants at all: the Galileo OS SIS ICD (Issue
+2.2, §5.1.2) anchors the GST epoch to GPS Time at the week-1024 rollover —
+`GST − UTC` was already 13 s at the epoch — so its TAI label is
+`1999-08-21T23:59:47 UTC + 32 s (TAI − UTC in 1999)`, while
+`get_tai_offset(GST()) == 19 s` reflects none of that. GPST and BDT were each
+set equal to UTC at their epochs, so their TAI labels are simply the UTC label
+plus their own [`get_tai_offset`](@ref) — a coincidence GST breaks, which is
+why the naive `UTC difference + TAI-offset difference` arithmetic is 13 s
+wrong exactly and only for Galileo.
+
+Works on a [`TimeSystem`](@ref), or on a signal / signal type (which forwards
+through [`get_time_system`](@ref)).
+
+# Examples
+
+```julia-repl
+julia> get_tai_system_start_time(GPST())
+1980-01-06T00:00:19
+
+julia> get_tai_system_start_time(GST())
+1999-08-22T00:00:19
+
+julia> get_tai_system_start_time(BDT())
+2006-01-01T00:00:33
+```
+"""
+@inline get_tai_system_start_time(::GPST) = DateTime(1980, 1, 6, 0, 0, 19)
+@inline get_tai_system_start_time(::GST) = DateTime(1999, 8, 22, 0, 0, 19)
+@inline get_tai_system_start_time(::BDT) = DateTime(2006, 1, 1, 0, 0, 33)
+
+@inline get_tai_system_start_time(::Type{S}) where {S<:AbstractGNSSSignal} =
+    get_tai_system_start_time(get_time_system(S))
+@inline get_tai_system_start_time(s::AbstractGNSSSignal) =
+    get_tai_system_start_time(get_time_system(s))
+
+"""
+    get_epoch_offset(from::TimeSystem, to::TimeSystem) -> Unitful seconds
+
+Elapsed seconds of `to`'s time scale at the instant `from`'s epoch (week 0,
+time of week 0) begins:
+
+    get_epoch_offset(from, to) = get_tai_system_start_time(from) - get_tai_system_start_time(to)
+
+so a broadcast `(WN, TOW)` on `from`'s scale names the instant that reads
+`WN · 604800 + TOW + get_epoch_offset(from, to)` on `to`'s count — nothing
+else: both scales count elapsed TAI from their own epochs, so the epoch offset
+is the *whole* difference. The defined whole-second scale offset between the
+two counts' seconds-of-week (`+14 s` from BDT to GPST) is not an additional
+term; it is this value modulo the week, as the BeiDou identity below shows.
+Antisymmetric; zero from a scale to itself.
+
+The values are exact whole seconds by construction:
+
+    get_epoch_offset(GST(), GPST())  ==  1024 * 604800 s          # GST week 0 == GPS week 1024
+    get_epoch_offset(BDT(), GPST())  ==  1356 * 604800 s + 14 s   # BDT week 0 == GPS week 1356, 14 s in
+
+The 14 s in the BeiDou line is the same constant that separates the two
+scales' counts — BDT week boundaries fall 14 s after GPS ones — so converting
+a week number across scales must carry seconds of week through the week
+boundary; this function only supplies the epoch part.
+
+# Examples
+
+```julia-repl
+julia> get_epoch_offset(GST(), GPST())
+619315200 s
+
+julia> get_epoch_offset(BDT(), GPST())
+820108814 s
+```
+"""
+@inline get_epoch_offset(from::TimeSystem, to::TimeSystem) =
+    Dates.value(
+        Dates.Second(get_tai_system_start_time(from) - get_tai_system_start_time(to)),
+    ) * s
 
 """
 $(SIGNATURES)

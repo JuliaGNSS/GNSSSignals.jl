@@ -1,6 +1,6 @@
 module GNSSSignals
 
-using Dates: DateTime
+using Dates: Dates, DateTime
 using DocStringExtensions
 using FixedPointNumbers
 using SIMD: Vec, vload, vstore, vifelse, shufflevector
@@ -83,6 +83,8 @@ export AbstractGNSSSignal,
     get_time_system_id,
     get_time_system_name,
     get_system_start_time,
+    get_tai_system_start_time,
+    get_epoch_offset,
     get_tai_offset,
     min_bits_for_code_length,
     get_modulation,
