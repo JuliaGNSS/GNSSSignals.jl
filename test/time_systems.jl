@@ -1,4 +1,5 @@
-using Dates: DateTime
+using Dates: Dates, DateTime
+import Unitful
 import Unitful: s, Time
 
 @testset "Time systems" begin
@@ -133,5 +134,42 @@ end
         # The two constants a time scale is fixed by.
         @test get_system_start_time(T()) isa DateTime
         @test get_tai_offset(T()) isa Time
+    end
+end
+
+@testset "TAI epochs make cross-scale arithmetic exact" begin
+    # The values themselves: UTC label + (TAI − UTC at the epoch). GPST and BDT
+    # were set equal to UTC at their epochs, so their TAI labels are the UTC
+    # label plus their own TAI offset; GST's is not — its epoch is anchored to
+    # GPS Time at the week-1024 rollover (OS SIS ICD §5.1.2), 13 s after the
+    # naive derivation, which is the whole reason this accessor exists.
+    @test get_tai_system_start_time(GPST()) == DateTime(1980, 1, 6, 0, 0, 19)
+    @test get_tai_system_start_time(GST()) == DateTime(1999, 8, 22, 0, 0, 19)
+    @test get_tai_system_start_time(BDT()) == DateTime(2006, 1, 1, 0, 0, 33)
+    for T in ALL_TIME_SYSTEMS
+        naive =
+            get_system_start_time(T()) +
+            Dates.Second(Int(Unitful.ustrip(s, get_tai_offset(T()))))
+        if T === GST
+            @test get_tai_system_start_time(T()) == naive + Dates.Second(13)
+        else
+            @test get_tai_system_start_time(T()) == naive
+        end
+        @test @inferred(get_tai_system_start_time(T())) isa DateTime
+    end
+    # Signal forwarding, type and instance, like the other epoch accessors.
+    @test @inferred(get_tai_system_start_time(GalileoE1B)) ==
+          get_tai_system_start_time(GST())
+    @test get_tai_system_start_time(GPSL1CA()) == get_tai_system_start_time(GPST())
+
+    # The one number cross-scale (WN, TOW) conversion needs. GST week 0 IS GPS
+    # week 1024 (the rollover instant); BDT week 0 begins 14 s into GPS week
+    # 1356 — the same 14 s that separates the two scales' counts.
+    @test get_epoch_offset(GST(), GPST()) == 1024 * 604800 * s
+    @test get_epoch_offset(BDT(), GPST()) == (1356 * 604800 + 14) * s
+    @test get_epoch_offset(BDT(), GST()) == (332 * 604800 + 14) * s
+    for A in ALL_TIME_SYSTEMS, B in ALL_TIME_SYSTEMS
+        @test @inferred(get_epoch_offset(A(), B())) == -get_epoch_offset(B(), A())
+        A === B && @test get_epoch_offset(A(), B()) == 0s
     end
 end
