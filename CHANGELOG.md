@@ -1,5 +1,12 @@
 # Changelog
 
+# [4.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.0.0...v4.1.0) (2026-09-02)
+
+
+### Features
+
+* expose GNSS epochs on a continuous scale (fixes [#157](https://github.com/JuliaGNSS/GNSSSignals.jl/issues/157)) ([c774b67](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/c774b670e456f5ed9920fc59efd9592398ec8229)), closes [GNSSDecoder.jl#89](https://github.com/GNSSDecoder.jl/issues/89)
+
 # [4.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v3.9.1...v4.0.0) (2026-08-20)
 
 
