@@ -218,8 +218,16 @@ julia> read_in_codes(Int8, "/data/gpsl1cacodes.bin", 32, 1023)
 ```
 """
 function read_in_codes(type, filename, num_prns, code_length)
-    open(filename) do file_stream
+    # The two-argument `open` and an explicit `close`, not the `do`-block form:
+    # the closure form's keyword plumbing is the one call Julia's `--trim=safe`
+    # verifier cannot resolve, and a statically compiled receiver (the
+    # hardware-correlator loop process of GNSSReceiver.jl) constructs its signals
+    # through this function.
+    file_stream = open(filename, "r")
+    try
         read!(file_stream, Array{type}(undef, code_length, num_prns))
+    finally
+        close(file_stream)
     end
 end
 
