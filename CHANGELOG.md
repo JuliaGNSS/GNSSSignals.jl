@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.1.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.0...v4.1.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* read the code tables with a trim-safe open ([861f60e](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/861f60ee640532fb97c527f0efeef4a374e7b10e))
+* specialise read_in_codes on the element type for --trim ([67ba29b](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/67ba29b719b227458e1137fd6ec86a57a2ac915f))
+
 # [4.1.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.0.0...v4.1.0) (2026-09-02)
 
 
