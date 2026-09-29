@@ -1,5 +1,7 @@
 # Changelog
 
+# [5.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.1...v5.0.0) (2026-09-29)
+
 ## [4.1.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.0...v4.1.1) (2026-09-23)
 
 
