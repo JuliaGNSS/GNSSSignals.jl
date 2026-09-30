@@ -1,6 +1,8 @@
 # Changelog
 
-# [5.0.0](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.1...v5.0.0) (2026-09-29)
+## [4.1.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.1...v4.1.2) (2026-09-30)
+
+No changes to the package. Replaces the accidental 5.0.0 release.
 
 ## [4.1.1](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.0...v4.1.1) (2026-09-23)
 
