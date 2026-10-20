@@ -14,7 +14,7 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 [compat]
 Aqua = "0.8"
 Dates = "<0.0.1, 1"
-DocStringExtensions = "0.6, 0.7, 0.8, 0.9"
+DocStringExtensions = "0.6, 0.7, 0.8, 0.9, 0.10"
 FixedPointNumbers = "0.8, 0.9"
 SIMD = "3"
 Statistics = "<0.0.1, 1"
