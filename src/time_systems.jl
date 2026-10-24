@@ -45,6 +45,11 @@ in elapsed time (14 leap seconds accrued between the two epochs).
 """
 struct BDT <: TimeSystem end
 
+# Prints what Base's default does, but without its reflective fallback: a message that
+# interpolates a time system (as `Dictionary`'s missing-key error does with its key)
+# would otherwise reach a dynamic `show` that `juliac --trim` rejects.
+Base.show(io::IO, x::TimeSystem) = print(io, typeof(x), "()")
+
 """
 $(SIGNATURES)
 

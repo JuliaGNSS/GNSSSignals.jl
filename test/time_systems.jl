@@ -137,6 +137,17 @@ end
     end
 end
 
+@testset "Base.show for time systems" begin
+    # The same text Base's default printed before `TimeSystem` had its own `show`.
+    @test repr(GPST()) == "GPST()"
+    @test repr(GST()) == "GST()"
+    @test repr(BDT()) == "BDT()"
+    @test "$(GST())" == "GST()"
+    for T in ALL_TIME_SYSTEMS
+        @test which(show, Tuple{IO,T}).module === GNSSSignals
+    end
+end
+
 @testset "TAI epochs make cross-scale arithmetic exact" begin
     # The values themselves: UTC label + (TAI − UTC at the epoch). GPST and BDT
     # were set equal to UTC at their epochs, so their TAI labels are the UTC
