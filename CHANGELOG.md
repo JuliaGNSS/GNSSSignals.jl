@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.3](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.2...v4.1.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* give the time systems a show of their own for --trim ([7b9e8a5](https://github.com/JuliaGNSS/GNSSSignals.jl/commit/7b9e8a509fc3f2abba3ab69cee37dac62666b96a))
+
 ## [4.1.2](https://github.com/JuliaGNSS/GNSSSignals.jl/compare/v4.1.1...v4.1.2) (2026-09-30)
 
 No changes to the package. Replaces the accidental 5.0.0 release.
