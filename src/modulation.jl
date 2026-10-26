@@ -148,8 +148,10 @@ $(SIGNATURES)
 
 Get the element type for code values of a GNSS signal.
 
-Returns the numeric type used to represent code values. For BPSK (LOC) signals,
-this is typically `Int16`. For CBOC signals, this is a floating-point type.
+Returns the type of the values [`get_code`](@ref) returns: the element type of the
+code matrix (`Int16`), or a floating-point type for CBOC signals, whose two
+subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
+`Int8`.
 
 # Arguments
 - `signal`: A GNSS signal instance
@@ -253,9 +255,11 @@ function get_code_spectrum(modulation::TMBOC{B1, B2, N}, signal, f) where {B1, B
     get_code_spectrum(modulation.boc2, signal, f) * boc2_frac
 end
 
+# An `Int8` sign, so it keeps the code matrix's element type (`get_code_type`) rather than
+# widening the chip to `Int`.
 function get_subcarrier_code(modulation::BOCsin, phase::T) where {T<:Real}
     floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
-    iseven(floored_subcarrier_phase) * 2 - 1
+    iseven(floored_subcarrier_phase) ? Int8(1) : Int8(-1)
 end
 
 function get_subcarrier_code(modulation::BOCcos, phase::T) where {T<:Real}
@@ -300,7 +304,7 @@ at the specified code phase. The phase is automatically wrapped to the code leng
 - `prn`: PRN number of the satellite
 
 # Returns
-- Code value (typically `Int8` for BPSK, `Float32` for CBOC)
+- Code value, of type [`get_code_type`](@ref)`(signal)`: `Int16`, or `Float32` for CBOC
 
 # Examples
 ```julia-repl

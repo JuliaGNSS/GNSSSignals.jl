@@ -18,6 +18,12 @@
     @test get_codes(signal) == signal.codes
 end
 
+@testset "get_code returns get_code_type for $(nameof(S))" for S in ALL_SIGNALS
+    signal = S()
+    @test @inferred(get_code(signal, 0.3, 1)) isa get_code_type(signal)
+    @test @inferred(get_code_unsafe(signal, 0.3, 1)) isa get_code_type(signal)
+end
+
 @testset "get_code_amplitude is a positive, PRN-independent signal property" begin
     # The amplitude is the RMS of ONE baked column, so it must not be read off a PRN slot
     # the signal leaves undefined: BeiDou B2b_I defines only PRN 6..58 and stores the rest
