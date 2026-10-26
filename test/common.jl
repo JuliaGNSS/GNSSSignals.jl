@@ -12,10 +12,24 @@
         @test get_code_amplitude(signal) ≈ sqrt(sum(abs2, tbl) / length(tbl))
         @test get_code_amplitude(signal) ≈ sqrt(19.0^2 + 6.0^2)
     else
-        @test get_code_type(signal) == Int16
+        @test get_code_type(signal) == Int
         @test get_code_amplitude(signal) == 1.0          # ±1 code
     end
     @test get_codes(signal) == signal.codes
+end
+
+@testset "get_code returns get_code_type for $(nameof(S))" for S in ALL_SIGNALS
+    signal = S()
+    @test eltype(get_codes(signal)) === Int8
+    @test @inferred(get_code(signal, 0.3, 1)) isa get_code_type(signal)
+    @test @inferred(get_code_unsafe(signal, 0.3, 1)) isa get_code_type(signal)
+end
+
+@testset "get_code values correlate without overflowing" begin
+    # `reduce(+, …)` keeps the element type, unlike `sum`; on the stored Int8 chips it would
+    # wrap around at 127.
+    code = get_code.(GPSL1CA(), 0:1022, 1)
+    @test reduce(+, code .* code) == 1023
 end
 
 @testset "get_code_amplitude is a positive, PRN-independent signal property" begin

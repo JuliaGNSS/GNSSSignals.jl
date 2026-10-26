@@ -48,7 +48,7 @@ function read_gpsl1ca_codes()
 end
 
 function GPSL1CA()
-    codes = widen_codes_to_storage(read_gpsl1ca_codes())
+    codes = read_gpsl1ca_codes()
     lut = build_signal_lut(get_modulation(GPSL1CA), codes, NoSecondaryCode())
     GPSL1CA(codes, lut)
 end

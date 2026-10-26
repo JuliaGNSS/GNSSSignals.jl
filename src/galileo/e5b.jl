@@ -94,13 +94,13 @@ const E5B_Q_X2_INIT = [
 ]
 
 function GalileoE5bI()
-    codes = widen_codes_to_storage(read_galileo_e5_codes(E5B_X1_TAP, E5B_I_X2_TAP, E5B_I_X2_INIT))
+    codes = read_galileo_e5_codes(E5B_X1_TAP, E5B_I_X2_TAP, E5B_I_X2_INIT)
     lut = build_signal_lut(get_modulation(GalileoE5bI), codes, _galileo_e5b_i_secondary_code())
     GalileoE5bI(codes, lut)
 end
 
 function GalileoE5bQ()
-    codes = widen_codes_to_storage(read_galileo_e5_codes(E5B_X1_TAP, E5B_Q_X2_TAP, E5B_Q_X2_INIT))
+    codes = read_galileo_e5_codes(E5B_X1_TAP, E5B_Q_X2_TAP, E5B_Q_X2_INIT)
     # CS100_(n+50) to SVID n (Galileo OS SIS ICD v2.2 §3.5.2) — the upper half of
     # the shared CS100 table in `galileo/codes.jl`.
     secondary = _build_galileo_cs100_secondary(51:100)

@@ -54,7 +54,7 @@ function read_beidou_b3i_codes()
 end
 
 function BeiDouB3I()
-    codes = widen_codes_to_storage(read_beidou_b3i_codes())
+    codes = read_beidou_b3i_codes()
     secondary = _beidou_nh20_matrix(B3I_NUM_PRNS)
     lut = build_signal_lut(get_modulation(BeiDouB3I), codes, PerPRNSecondaryCode(secondary))
     BeiDouB3I(codes, secondary, lut)

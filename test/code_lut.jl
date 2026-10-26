@@ -849,7 +849,7 @@ end
     fc = get_chip_rate(signal)
     P = 12                                            # 2·lcm(1,6)
     Lp = get_code_length(signal)
-    # Primary ±1 chips for this PRN (sign of the stored Int16 chips), as the embedded bake uses.
+    # Primary ±1 chips for this PRN (sign of the stored chips), as the embedded bake uses.
     primary = Int8[Int8(sign(get_codes(signal)[i, prn])) for i in 1:Lp]
     # Build a baked CBOC ModulatedCode with given integer amplitudes (the embedded path bakes
     # the default (19,6); here we reach one level down for the amplitude sweep).

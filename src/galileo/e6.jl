@@ -87,13 +87,13 @@ read_galileo_e6c_codes() = read_in_codes(
 )
 
 function GalileoE6B()
-    codes = widen_codes_to_storage(read_galileo_e6b_codes())
+    codes = read_galileo_e6b_codes()
     lut = build_signal_lut(get_modulation(GalileoE6B), codes, NoSecondaryCode())
     GalileoE6B(codes, lut)
 end
 
 function GalileoE6C()
-    codes = widen_codes_to_storage(read_galileo_e6c_codes())
+    codes = read_galileo_e6c_codes()
     secondary = _build_galileo_cs100_secondary(1:50)
     # The 100-chip per-SVID CS100 overlay is too long to bake (100·5115·1 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.
