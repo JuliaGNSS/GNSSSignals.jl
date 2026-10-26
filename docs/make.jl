@@ -12,7 +12,11 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Usage" => "usage.md",
-        "API Reference" => "api.md",
+        "API Reference" => [
+            "Signals" => "api.md",
+            "Bands and Time Systems" => "bands_and_time_systems.md",
+            "Codes" => "codes.md",
+        ],
     ],
     checkdocs = :exports,
 )
