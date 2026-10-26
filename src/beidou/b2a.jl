@@ -104,13 +104,13 @@ function _build_beidou_b2a_secondary()
 end
 
 function BeiDouB2aI()
-    codes = widen_codes_to_storage(read_beidou_b2a_i_codes())
+    codes = read_beidou_b2a_i_codes()
     lut = build_signal_lut(get_modulation(BeiDouB2aI), codes, _beidou_b2a_i_secondary_code())
     BeiDouB2aI(codes, lut)
 end
 
 function BeiDouB2aQ()
-    codes = widen_codes_to_storage(read_beidou_b2a_q_codes())
+    codes = read_beidou_b2a_q_codes()
     secondary = _build_beidou_b2a_secondary()
     # The 100-chip per-SVID secondary is too long to bake (100·10230 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.

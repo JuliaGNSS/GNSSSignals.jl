@@ -185,7 +185,7 @@ get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
 get_modulation(gpsl2cl)             # BPSK()
 ```
 
-The full L2 CL code matrix is 767250 × 63; stored as `Int16` it occupies ~97 MB, so build `GPSL2CL()` once and reuse the instance.
+The full L2 CL code matrix is 767250 × 63; stored as `Int8` it occupies ~48 MB, so build `GPSL2CL()` once and reuse the instance.
 
 ### Galileo E1B
 
