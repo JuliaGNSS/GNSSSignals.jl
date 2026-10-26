@@ -92,6 +92,7 @@ if !SIMD_ONLY
     include("galileo/e6.jl")
     include("beidou/beidou.jl")
     include("common.jl")
+    include("api.jl")
 end
 
 include("code_lut.jl")

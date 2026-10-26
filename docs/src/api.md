@@ -80,6 +80,7 @@ GNSSSignals.PerPRNSecondaryCode
 ## Modulation Types
 
 ```@docs
+GNSSSignals.Modulation
 GNSSSignals.LOC
 GNSSSignals.BOC
 GNSSSignals.BOCsin
