@@ -4,7 +4,7 @@
 Abstract supertype for GNSS RF bands.
 
 A *band* represents a shared RF carrier frequency. Signals that report the
-same band can share a carrier NCO in a receiver — that is the architectural
+same band and satellite can share a carrier NCO in a receiver — that is the architectural
 reason this abstraction exists.
 
 Band identity here is by RF frequency, not by ICD label: GPS L1 and Galileo E1

@@ -3,11 +3,11 @@ import Unitful
 import Unitful: s, Time
 
 @testset "Time systems" begin
-    gps_signals = (GPSL1CA, GPSL1C_D, GPSL1C_P, GPSL2CM, GPSL2CL, GPSL5I, GPSL5Q)
-    galileo_signals =
-        (GalileoE1B, GalileoE1B_BOC11, GalileoE1C, GalileoE1C_BOC11, GalileoE5aI, GalileoE5aQ)
-    beidou_signals =
-        (BeiDouB1I, BeiDouB3I, BeiDouB2bI, BeiDouB2aI, BeiDouB2aQ, BeiDouB1C_D, BeiDouB1C_P)
+    gps_signals = filter(S -> S <: AbstractGPSSignal, ALL_SIGNALS)
+    galileo_signals = filter(S -> S <: AbstractGalileoSignal, ALL_SIGNALS)
+    beidou_signals = filter(S -> S <: AbstractBeiDouSignal, ALL_SIGNALS)
+    @test length(gps_signals) + length(galileo_signals) + length(beidou_signals) ==
+          length(ALL_SIGNALS)
 
     @test GPST <: TimeSystem
     @test GST <: TimeSystem

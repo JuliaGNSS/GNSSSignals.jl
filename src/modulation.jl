@@ -189,7 +189,7 @@ Get the modulation type for a GNSS signal.
 - `signal`: A GNSS signal instance or type
 
 # Returns
-- `Modulation`: The modulation type (`LOC`, `BOCsin`, `BOCcos`, or `CBOC`)
+- `Modulation`: The modulation type (`LOC`, `BOCsin`, `BOCcos`, `CBOC` or `TMBOC`)
 
 Each concrete signal states its modulation once, on its own type
 (`get_modulation(::Type{<:GPSL1CA}) = LOC()`, in that signal's file) — the form
