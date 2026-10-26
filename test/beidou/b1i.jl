@@ -10,7 +10,6 @@
     @test get_signal_name(b1i) == "BeiDou B1I"
     @test @inferred(get_modulation(b1i)) == GNSSSignals.LOC()
     @test get_code_type(b1i) === Int16
-    @test GNSSSignals.get_code_factor(b1i) == 1
 
     # The B1I chip rate is 2× the C/A rate on the 1561.098 MHz carrier.
     @test get_code_center_frequency_ratio(b1i) ≈ 2_046_000 / 1_561_098_000

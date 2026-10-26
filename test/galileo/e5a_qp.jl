@@ -21,7 +21,6 @@
     @test get_code(e5a_qp, 330, 1) == get_code(e5a_qp, 0, 1)
 
     # BPSK(5) spectrum, and 5.115 MHz against the 1176.45 MHz E5a carrier.
-    @test GNSSSignals.get_code_factor(e5a_qp) == 1
     @test get_code_spectrum(e5a_qp, 0) ≈ 1.0Hz / get_code_frequency(e5a_qp)
     @test get_code_center_frequency_ratio(e5a_qp) ≈ 1 / 230
 end

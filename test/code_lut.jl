@@ -566,6 +566,7 @@ const _BACKENDS = (CL.Portable(),
         # Wrapped in a function so the child's top-level `for` loops don't hit `-e` soft-scope.
         script = """
         using GNSSSignals, Unitful
+        using GNSSSignals: code_engine, code_state
         const CL = GNSSSignals.CodeLUT
         function main()
             sec = Int8[1,1,1,1,-1,-1,1,-1,1,-1]; per = 10230; sn = 536870912; sd = 1073741824

@@ -20,7 +20,6 @@
     @test get_code(e6b, 5115, 1) == get_code(e6b, 0, 1)
 
     # BPSK(5) spectrum, and 5.115 MHz against the 1278.75 MHz E6 carrier.
-    @test GNSSSignals.get_code_factor(e6b) == 1
     @test get_code_spectrum(e6b, 0) ≈ 1.0Hz / get_code_frequency(e6b)
     @test get_code_center_frequency_ratio(e6b) ≈ 1 / 250
 end
@@ -38,7 +37,6 @@ end
     @test @inferred(get_modulation(e6c)) == GNSSSignals.LOC()
     @test get_code_type(e6c) === Int16
 
-    @test GNSSSignals.get_code_factor(e6c) == 1
     @test get_code_spectrum(e6c, 0) ≈ 1.0Hz / get_code_frequency(e6c)
     @test get_code_center_frequency_ratio(e6c) ≈ 1 / 250
 end
@@ -70,8 +68,8 @@ end
         @test size(codes) == (5115, 50)
         for prn in (1, 25, 50)
             head_hex, tail_hex = head_tail[(component, prn)]
-            head = GNSSSignals.read_from_documentation(head_hex)
-            tail = GNSSSignals.read_from_documentation(tail_hex)
+            head = read_from_documentation(head_hex)
+            tail = read_from_documentation(tail_hex)
             @test codes[1:40, prn] == head
             @test codes[5101:5115, prn] == tail[1:15]
             @test tail[16] == -1     # the padded zero chip, decoded as -1

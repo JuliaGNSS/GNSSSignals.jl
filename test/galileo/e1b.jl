@@ -16,8 +16,6 @@
     @test @inferred(get_code_frequency(galileo_e1b)) == 1023e3Hz
     @test get_signal_name(galileo_e1b) == "Galileo E1B"
 
-    @test GNSSSignals.get_code_factor(galileo_e1b) == 1
-
     @test get_code_spectrum(galileo_e1b, 0) == 0.0
 
     @test get_code_spectrum(galileo_e1b, 2 * get_code_frequency(galileo_e1b)) == 0.0
@@ -45,7 +43,6 @@ end
 
     # Modulation differs from full E1B's CBOC.
     @test @inferred(get_modulation(e1b)) == BOCsin(1, 1)
-    @test GNSSSignals.get_code_factor(e1b) == 1
 
     # Output element type stays integer (the whole point of dropping
     # the BOC(6,1) component).

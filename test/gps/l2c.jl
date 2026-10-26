@@ -89,7 +89,6 @@ end
     @test get_signal_name(gpsl2cm) == "GPS L2CM"
     @test @inferred(get_modulation(gpsl2cm)) == GNSSSignals.LOC()
     @test get_code_type(gpsl2cm) === Int16
-    @test GNSSSignals.get_code_factor(gpsl2cm) == 1
 
     # BPSK(0.5115) spectrum: nulls at multiples of the chip rate, unit integral.
     @test get_code_spectrum(gpsl2cm, 0) ≈ 1.0Hz / get_code_frequency(gpsl2cm)
@@ -118,7 +117,6 @@ end
     @test get_signal_name(gpsl2cl) == "GPS L2CL"
     @test @inferred(get_modulation(gpsl2cl)) == GNSSSignals.LOC()
     @test get_code_type(gpsl2cl) === Int16
-    @test GNSSSignals.get_code_factor(gpsl2cl) == 1
 
     @test get_code_spectrum(gpsl2cl, 0) ≈ 1.0Hz / get_code_frequency(gpsl2cl)
     @testset "Test $(m). zero" for m = 1:10

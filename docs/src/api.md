@@ -51,6 +51,5 @@ GNSSSignals.get_signal_name
 GNSSSignals.get_signal_id
 GNSSSignals.get_constellation_id
 GNSSSignals.get_constellation_name
-GNSSSignals.min_bits_for_code_length
 GNSSSignals.get_code_type
 ```

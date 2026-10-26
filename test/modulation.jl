@@ -55,22 +55,6 @@
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 1), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 2), 2.3) == 4
 
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2, 1)) == 1
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2, 2)) == 2
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCcos(2, 2.5)) == 2.5
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2, 1)) == 1
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2, 2)) == 2
-    @test GNSSSignals.get_code_factor(GNSSSignals.BOCsin(2, 2.5)) == 2.5
-    @test GNSSSignals.get_code_factor(
-        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 1), GNSSSignals.BOCsin(1, 1), 1 / 2),
-    ) == 1
-    @test GNSSSignals.get_code_factor(
-        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2), GNSSSignals.BOCsin(1, 2), 1 / 2),
-    ) == 2
-    @test GNSSSignals.get_code_factor(
-        GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2.5), GNSSSignals.BOCsin(1, 2.5), 1 / 2),
-    ) == 2.5
-
     # Test LOC floored phase
     @test GNSSSignals.get_floored_phase(GNSSSignals.LOC(), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.LOC(), 5.9) == 5
@@ -78,9 +62,6 @@
     # Test CBOC floored phase
     cboc_test = GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2), GNSSSignals.BOCsin(6, 2), 10 / 11)
     @test GNSSSignals.get_floored_phase(cboc_test, 2.3) == 4
-
-    # Test LOC code factor
-    @test GNSSSignals.get_code_factor(GNSSSignals.LOC()) == 1
 end
 
 @testset "TMBOC accessors" begin
