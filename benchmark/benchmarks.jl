@@ -9,6 +9,9 @@ _mhz(fs) = (m = ustrip_hz(fs) / 1e6; (m == round(m) ? string(Int(m)) : string(m)
 
 const SUITE = BenchmarkGroup()
 
+# `gen_code!` at the signal's nominal chip rate, phase and index, its defaults, so the same
+# calls run on the compared revision, whatever its chip-rate accessor is named.
+
 # `gen_code!` fills `Int8`.
 _buf(n) = zeros(Int8, n)
 
@@ -19,10 +22,9 @@ _buf(n) = zeros(Int8, n)
 # ─────────────────────────────────────────────────────────────────────────────
 for (name, signal, fs) in (("GPSL1", GPSL1CA(), 2e6Hz), ("GPSL5", GPSL5I(), 20e6Hz),
                            ("GalileoE1B", GalileoE1B(), 15e6Hz))
-    fc = get_code_frequency(signal)
     out = _buf(2000)
     SUITE["2000 sample code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
-        $out, $signal, $1, $fs, $fc, $0.0, $0,
+        $out, $signal, $1, $fs,
     ) evals = 10 samples = 10000
 end
 
@@ -56,11 +58,10 @@ const _MS_CASES = (
 for (S, fs) in _MS_CASES
     name = String(nameof(S))
     signal = S()
-    fc = get_code_frequency(signal)
     N = round(Int, ustrip_hz(fs) * 1e-3)
     out = _buf(N)
     SUITE["1 ms code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
-        $out, $signal, $1, $fs, $fc, $0.0, $0,
+        $out, $signal, $1, $fs,
     ) evals = 10 samples = 1000
 end
 

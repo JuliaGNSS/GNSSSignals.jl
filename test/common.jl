@@ -325,7 +325,7 @@ end
     # Sampling frequency below code frequency · subchip_factor errors.
     code = zeros(Int8, 100)
     @test_throws ErrorException gen_code!(
-        code, gpsl1ca, 1, 500e3Hz, get_code_frequency(gpsl1ca),
+        code, gpsl1ca, 1, 500e3Hz, get_chip_rate(gpsl1ca),
     )
 end
 
@@ -334,14 +334,14 @@ end
     signal = GPSL1CA()
     sampling_rate = 200e6Hz   # ≈ 195× oversampling → run-fill regime
     samples = 2000
-    _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0, samples)
+    _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 0.0, 0, samples)
 end
 
 @testset "Code generation $(get_signal_name(signal))" for signal in
                                                           [GalileoE1B(), GalileoE1C(), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
     @test eltype(out) === Int8
     # gen_code (non-bang) allocates Int8 and matches the in-place fill.
@@ -357,7 +357,7 @@ end
 ]
     sampling_rate = 25e6Hz
     samples = 100
-    _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 3.5, 0, samples)
+    _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 3.5, 0, samples)
 end
 
 # Very short outputs (chip-boundary / tail edge cases) must still match the oracle.
@@ -369,7 +369,7 @@ end
 ]
     sampling_rate = 25e6Hz
     for samples in (1, 2, 3, 5, 7, 63, 65, 127, 129)
-        @test_nowarn _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 3.5, 0, samples)
+        @test_nowarn _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 3.5, 0, samples)
     end
 end
 
@@ -384,7 +384,7 @@ end
     GPSL5I(),
     GPSL1C_P(),
 ]
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     P = signal.lut.subchip_factor
     per = signal.lut.period_subchips
     sampling_rate = fc * P * 5 // 2                       # permute regime, sub-chip oversampled
@@ -414,7 +414,7 @@ end
     sampling_rate = 25MHz
     signal = GPSL1CA()
     samples = 1000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
     @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0)
 end
@@ -423,7 +423,7 @@ end
     signal = GPSL1CA()
     sampling_rate = 2.5e6Hz
     num_samples = 4000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 2065.0, 0, num_samples)
     @test out == gen_code(num_samples, signal, 1, sampling_rate, fc, 2065.0)
 end
@@ -436,7 +436,7 @@ end
 ]
     sampling_rate = 25e6Hz
     samples = 4002
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, -1, samples)
     @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0, -1)
 end
@@ -455,7 +455,7 @@ end
 @testset "Code generation with negative start_phase (no overflow / BoundsError)" begin
     signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
-    code_frequency = get_code_frequency(signal) + 4000Hz * get_code_center_frequency_ratio(signal)
+    code_frequency = get_chip_rate(signal) + 4000Hz * get_chip_rate_to_center_frequency_ratio(signal)
     start_phase = -1000.0
     start_index_shift = 0
     @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_frequency, start_phase, start_index_shift, 1023)

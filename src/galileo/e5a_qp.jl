@@ -26,7 +26,7 @@ for cross-correlation reasons), each the XOR of three short codes of 15, 11 and
 ```julia
 e5a_qp = GalileoE5aQP()
 get_code_length(e5a_qp)      # 330
-get_code_frequency(e5a_qp)   # 5115000 Hz
+get_chip_rate(e5a_qp)        # 5115000 Hz
 get_band(e5a_qp)             # L5()
 ```
 """
@@ -149,22 +149,22 @@ Get the code length for Galileo E5a-QP (330 chips — 2/31 ms at 5.115 Mcps).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E5a-QP (5.115 MHz, Galileo OS SIS ICD
+Get the nominal chip rate of Galileo E5a-QP (5.115 MHz, Galileo OS SIS ICD
 v2.2, Table 8).
 """
-@inline get_code_frequency(::Type{<:GalileoE5aQP}) = 5_115_000Hz
+@inline get_chip_rate(::Type{<:GalileoE5aQP}) = 5_115_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E5a-QP.
+Get the bit rate, as tracked, of Galileo E5a-QP.
 
-The E5a-QP component carries no user data.
+The E5a-QP component carries no user data, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::Type{<:GalileoE5aQP}) = 0Hz
+@inline get_bit_rate(::Type{<:GalileoE5aQP}) = 0Hz
 
 """
 $(SIGNATURES)

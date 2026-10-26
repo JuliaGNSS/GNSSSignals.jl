@@ -71,21 +71,21 @@ end
     @test @inferred(get_code(gpsl5i, 0, 1)) == 1
     @test @inferred(get_code(gpsl5i, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5i, 0.0, 1)) == 1
-    @test @inferred(get_data_frequency(gpsl5i)) == 100Hz
-    @test @inferred(get_code_frequency(gpsl5i)) == 10230e3Hz
+    @test @inferred(get_bit_rate(gpsl5i)) == 100Hz
+    @test @inferred(get_chip_rate(gpsl5i)) == 10230e3Hz
     @test get_code.(gpsl5i, 0:10229, 1) == L5_SAT1_CODE
     @test get_signal_name(gpsl5i) == "GPS L5-I"
     @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.LOC()
     @test get_code_type(gpsl5i) === Int16
 
-    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_code_frequency(gpsl5i)
+    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_chip_rate(gpsl5i)
     @testset "Test $(m). zero" for m = 1:10
-        @test get_code_spectrum(gpsl5i, m * get_code_frequency(gpsl5i)) == 0
-        @test get_code_spectrum(gpsl5i, -m * get_code_frequency(gpsl5i)) == 0
+        @test get_code_spectrum(gpsl5i, m * get_chip_rate(gpsl5i)) == 0
+        @test get_code_spectrum(gpsl5i, -m * get_chip_rate(gpsl5i)) == 0
     end
     @test sum(get_code_spectrum.(gpsl5i, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
 
-    @test get_code_center_frequency_ratio(gpsl5i) ≈ 1 / 115
+    @test get_chip_rate_to_center_frequency_ratio(gpsl5i) ≈ 1 / 115
 end
 
 @testset "GPS L5-I primary codes match the IS-GPS-705 reference" begin
@@ -120,21 +120,21 @@ end
     @test @inferred(get_code(gpsl5q, 0, 1)) == 1
     @test @inferred(get_code(gpsl5q, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5q, 0.0, 1)) == 1
-    @test @inferred(get_data_frequency(gpsl5q)) == 0Hz   # dataless pilot
-    @test @inferred(get_code_frequency(gpsl5q)) == 10230e3Hz
+    @test @inferred(get_bit_rate(gpsl5q)) == 0Hz   # dataless pilot
+    @test @inferred(get_chip_rate(gpsl5q)) == 10230e3Hz
     @test get_signal_name(gpsl5q) == "GPS L5-Q"
     @test @inferred(get_modulation(gpsl5q)) == GNSSSignals.LOC()
     @test get_code_type(gpsl5q) === Int16
 
     # BPSK(10) spectrum and code/center-frequency ratio (Q5 shares the L5
     # band, so the ratio is the same 1/115 as GPS L5-I).
-    @test get_code_spectrum(gpsl5q, 0) ≈ 1.0Hz / get_code_frequency(gpsl5q)
+    @test get_code_spectrum(gpsl5q, 0) ≈ 1.0Hz / get_chip_rate(gpsl5q)
     @testset "Test $(m). zero" for m = 1:10
-        @test get_code_spectrum(gpsl5q, m * get_code_frequency(gpsl5q)) == 0
-        @test get_code_spectrum(gpsl5q, -m * get_code_frequency(gpsl5q)) == 0
+        @test get_code_spectrum(gpsl5q, m * get_chip_rate(gpsl5q)) == 0
+        @test get_code_spectrum(gpsl5q, -m * get_chip_rate(gpsl5q)) == 0
     end
     @test sum(get_code_spectrum.(gpsl5q, -1e12:1e4:1e12)) * 1e4 ≈ 1 rtol = 1e-5
-    @test get_code_center_frequency_ratio(gpsl5q) ≈ 1 / 115
+    @test get_chip_rate_to_center_frequency_ratio(gpsl5q) ≈ 1 / 115
 end
 
 @testset "GPS L5-Q primary codes match the IS-GPS-705 reference" begin

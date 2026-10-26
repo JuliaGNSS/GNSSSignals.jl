@@ -40,7 +40,7 @@ const ALL_SIGNALS = (
     BeiDouB1C_D,
     BeiDouB1C_P,
 )
-const ALL_BANDS = (L1, L2, L5, B1I, B3I, E5b, E6)
+const ALL_BANDS = (L1, L2, L5, B1I, B3, E5b, E6)
 const ALL_TIME_SYSTEMS = (GPST, GST, BDT)
 
 # The ±1 chips of a code as an ICD prints it, in hex (spaces and line breaks ignored).

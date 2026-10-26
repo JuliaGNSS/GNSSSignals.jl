@@ -8,7 +8,7 @@ GNSSSignals.L1
 GNSSSignals.L2
 GNSSSignals.L5
 GNSSSignals.B1I
-GNSSSignals.B3I
+GNSSSignals.B3
 GNSSSignals.E5b
 GNSSSignals.E6
 GNSSSignals.get_band

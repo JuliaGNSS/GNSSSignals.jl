@@ -6,7 +6,7 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 
 ### Supported GNSS Signals
 
-| Signal | Band | Carrier Frequency | Code Frequency | Code Length | Secondary Code | Modulation |
+| Signal | Band | Carrier Frequency | Chip Rate | Code Length | Secondary Code | Modulation |
 |--------|------|-------------------|----------------|-------------|----------------|------------|
 | GPS L1 C/A | L1 | 1575.42 MHz | 1.023 MHz | 1023 chips | — | BPSK |
 | GPS L1C-D | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | — | BOC(1,1) |
@@ -27,7 +27,7 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 | Galileo E6-B | E6 | 1278.75 MHz | 5.115 MHz | 5115 chips | — | BPSK |
 | Galileo E6-C | E6 | 1278.75 MHz | 5.115 MHz | 5115 chips | 100-chip CS100 | BPSK (pilot) |
 | BeiDou B1I | B1I | 1561.098 MHz | 2.046 MHz | 2046 chips | 20-chip NH20 (D1) | BPSK |
-| BeiDou B3I | B3I | 1268.52 MHz | 10.23 MHz | 10230 chips | 20-chip NH20 (D1) | BPSK |
+| BeiDou B3I | B3 | 1268.52 MHz | 10.23 MHz | 10230 chips | 20-chip NH20 (D1) | BPSK |
 | BeiDou B2b-I | E5b | 1207.14 MHz | 10.23 MHz | 10230 chips | — | BPSK |
 | BeiDou B2a data | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 5-chip | BPSK |
 | BeiDou B2a pilot | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 100-chip | BPSK (pilot) |

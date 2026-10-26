@@ -199,8 +199,35 @@ julia> get_constellation_name(GalileoE1B)
 # Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
 # these forward an instance to its type.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
-@inline get_code_frequency(s::AbstractGNSSSignal) = get_code_frequency(typeof(s))
-@inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
+
+"""
+    get_chip_rate(signal) -> Frequency
+
+The nominal chip rate of a signal's primary ranging code: the chips per second the
+satellite broadcasts, as its ICD states it (1.023 MHz for GPS L1 C/A, 10.23 MHz for GPS
+L5). It is a property of the signal; the rate a receiver's replica runs at is its *code
+frequency*, this rate shifted by the code Doppler, which [`gen_code!`](@ref) and
+[`GNSSSignals.code_engine`](@ref) take as their `code_frequency` argument (defaulting to
+this one). Defined per concrete signal type; works on an instance or a type.
+"""
+@inline get_chip_rate(s::AbstractGNSSSignal) = get_chip_rate(typeof(s))
+
+"""
+    get_bit_rate(signal) -> Frequency
+
+The rate of navigation bits **as tracked**: the binary signs a tracking loop recovers
+after spreading-code and secondary-code removal, before error-correction decoding. On a
+signal whose message is FEC-encoded (a convolutional or LDPC code), these tracked bits are
+the transmitted channel symbols, so this returns the symbol rate rather than the decoded
+message's information bit rate: GPS L5-I is tracked at 100 bit/s (100 symbols/s), while
+its rate-½ CNAV message carries 50 bit/s. Where the message has no such code (GPS L1 C/A's
+LNAV, BeiDou D1 and D2), the tracked bits are the transmitted message bits themselves;
+their parity bits (LNAV's Hamming code, D1's and D2's BCH(15,11) code) are counted in this
+rate, so the information rate is lower still. `0 Hz` for a dataless pilot.
+
+Defined per concrete signal type; works on an instance or a type.
+"""
+@inline get_bit_rate(s::AbstractGNSSSignal) = get_bit_rate(typeof(s))
 
 """
 $(SIGNATURES)
@@ -338,7 +365,8 @@ and the `sampling_frequency ≥ code_frequency · subchip_factor` requirement.
 - `signal`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be ≥ code frequency · subchip_factor)
-- `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
+- `code_frequency`: Code frequency the replica runs at (default: the signal's nominal chip
+  rate, [`get_chip_rate`](@ref))
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index`: Index offset (default: 0)
 
@@ -358,7 +386,7 @@ function gen_code(
     signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(signal),
+    code_frequency::Frequency = get_chip_rate(signal),
     start_phase = 0.0,
     start_index::Integer = 0,
 )
@@ -369,7 +397,7 @@ end
 """
 $(SIGNATURES)
 
-Get the ratio of code frequency to center frequency.
+Get the ratio of chip rate to center frequency.
 
 This ratio is used to compute the code Doppler from the carrier Doppler.
 
@@ -381,12 +409,12 @@ This ratio is used to compute the code Doppler from the carrier Doppler.
 
 # Examples
 ```julia-repl
-julia> get_code_center_frequency_ratio(GPSL1CA())
+julia> get_chip_rate_to_center_frequency_ratio(GPSL1CA())
 0.0006493506493506494
 ```
 """
-@inline function get_code_center_frequency_ratio(signal::AbstractGNSSSignal)
-    get_code_frequency(signal) / get_center_frequency(signal)
+@inline function get_chip_rate_to_center_frequency_ratio(signal::AbstractGNSSSignal)
+    get_chip_rate(signal) / get_center_frequency(signal)
 end
 
 """
@@ -418,10 +446,10 @@ $(SIGNATURES)
 Calculate the spectral power density of a BPSK modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BPSK
-signal with chip rate `fc`.
+signal with chip rate `chip_rate`.
 
 # Arguments
-- `fc`: Code chip rate
+- `chip_rate`: Chip rate of the code
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
@@ -434,17 +462,17 @@ julia> get_code_spectrum_BPSK(1.023MHz, 0kHz)
 9.775171065493646e-7
 ```
 """
-function get_code_spectrum_BPSK(fc::Frequency, f)
-    return get_code_spectrum_BPSK(fc / 1Hz, f)
+function get_code_spectrum_BPSK(chip_rate::Frequency, f)
+    return get_code_spectrum_BPSK(chip_rate / 1Hz, f)
 end
-function get_code_spectrum_BPSK(fc, f::Frequency)
-    return get_code_spectrum_BPSK(fc, f / 1Hz)
+function get_code_spectrum_BPSK(chip_rate, f::Frequency)
+    return get_code_spectrum_BPSK(chip_rate, f / 1Hz)
 end
-function get_code_spectrum_BPSK(fc::Frequency, f::Frequency)
-    return get_code_spectrum_BPSK(fc / 1Hz, f / 1Hz)
+function get_code_spectrum_BPSK(chip_rate::Frequency, f::Frequency)
+    return get_code_spectrum_BPSK(chip_rate / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BPSK(fc, f)
-    return sinc(f / fc)^2 / fc
+function get_code_spectrum_BPSK(chip_rate, f)
+    return sinc(f / chip_rate)^2 / chip_rate
 end
 
 """
@@ -453,27 +481,27 @@ $(SIGNATURES)
 Calculate the spectral power density of a sine-phased BOC modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BOC(sin)
-signal with chip rate `fc` and subcarrier frequency `fs`.
+signal with chip rate `chip_rate` and subcarrier frequency `subcarrier_frequency`.
 
 # Arguments
-- `fc`: Code chip rate
-- `fs`: Subcarrier frequency
+- `chip_rate`: Chip rate of the code
+- `subcarrier_frequency`: Subcarrier frequency
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
 - Spectral power density value
 """
-function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f)
-    return get_code_spectrum_BOCsin(fc / 1Hz, fs / 1Hz, f)
+function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
+    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
 end
-function get_code_spectrum_BOCsin(fc, fs, f::Frequency)
-    return get_code_spectrum_BOCsin(fc, fs, f / 1Hz)
+function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f::Frequency)
+    return get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f / 1Hz)
 end
-function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f::Frequency)
-    return get_code_spectrum_BOCsin(fc / 1Hz, fs / 1Hz, f / 1Hz)
+function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
+    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BOCsin(fc, fs, f)
-    return ((sinc(f / fc) * tan(pi * f / (2 * fs)))^2 / fc)
+function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f)
+    return ((sinc(f / chip_rate) * tan(pi * f / (2 * subcarrier_frequency)))^2 / chip_rate)
 end
 
 """
@@ -482,25 +510,26 @@ $(SIGNATURES)
 Calculate the spectral power density of a cosine-phased BOC modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BOC(cos)
-signal with chip rate `fc` and subcarrier frequency `fs`.
+signal with chip rate `chip_rate` and subcarrier frequency `subcarrier_frequency`.
 
 # Arguments
-- `fc`: Code chip rate
-- `fs`: Subcarrier frequency
+- `chip_rate`: Chip rate of the code
+- `subcarrier_frequency`: Subcarrier frequency
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
 - Spectral power density value
 """
-function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f)
-    return get_code_spectrum_BOCcos(fc / 1Hz, fs / 1Hz, f)
+function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
+    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
 end
-function get_code_spectrum_BOCcos(fc, fs, f::Frequency)
-    return get_code_spectrum_BOCcos(fc, fs, f / 1Hz)
+function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f::Frequency)
+    return get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f / 1Hz)
 end
-function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f::Frequency)
-    return get_code_spectrum_BOCcos(fc / 1Hz, fs / 1Hz, f / 1Hz)
+function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
+    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BOCcos(fc, fs, f)
-    return (2 * sinc(f / fc) * sinpi(f / 4fs)^2 / cospi(f / 2fs))^2 / fc
+function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f)
+    return (2 * sinc(f / chip_rate) * sinpi(f / (4 * subcarrier_frequency))^2 /
+            cospi(f / (2 * subcarrier_frequency)))^2 / chip_rate
 end

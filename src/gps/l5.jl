@@ -28,7 +28,7 @@ GPS L5-Q signal (the quadrature, dataless pilot component of GPS L5).
 BPSK-modulated 10230-chip primary code at 10.23 Mcps on the L5 band
 (1176.45 MHz), with a 20-bit Neuman-Hofman secondary code (NH20) overlaying
 the pilot channel for a 20 ms tiered code. As the pilot component it carries
-no navigation data, so [`get_data_frequency`](@ref) returns 0 Hz.
+no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
 
 The Q5 primary code uses the same XA/XB shift-register generator as
 [`GPSL5I`](@ref) (IS-GPS-705 §3.2.1.1, `gen_l5_code`) and differs only in the
@@ -40,7 +40,7 @@ supported, matching [`GPSL5I`](@ref).
 gpsl5q = GPSL5Q()
 get_code_length(gpsl5q)            # 10230
 get_secondary_code_length(gpsl5q)  # 20
-get_data_frequency(gpsl5q)         # 0 Hz
+get_bit_rate(gpsl5q)               # 0 Hz
 get_band(gpsl5q)                   # L5()
 ```
 """
@@ -116,7 +116,7 @@ end
 INITIAL_XB_CODE_STATES_I5[1] is a 13-chip array holding the shift-register
 values for PRN 1; INITIAL_XB_CODE_STATES_I5[3][4] is the 4th shift-register
 stage for the GPS signal with PRN number 3. =#
-const INITIAL_XB_CODE_STATES_I5 = [             #sat PRN number
+const INITIAL_XB_CODE_STATES_I5 = [             # PRN
     [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0],    #01
     [1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1],    #02
     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],    #03
@@ -166,7 +166,7 @@ advanced by the IS-GPS-705 Q5 "XB code advance" for each PRN (the same advances
 published by GNSS-SDR's `GPS_L5q_INIT_REG` and PocketSDR's `L5Q_XB_adv`); the
 analogous derivation reproduces the I5 table in `INITIAL_XB_CODE_STATES_I5`
 exactly. =#
-const INITIAL_XB_CODE_STATES_Q5 = [             #sat PRN number
+const INITIAL_XB_CODE_STATES_Q5 = [             # PRN
     [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0],    #01
     [0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0],    #02
     [1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1],    #03
@@ -207,11 +207,11 @@ const INITIAL_XB_CODE_STATES_Q5 = [             #sat PRN number
 ]
 
 function read_gpsl5i_codes()
-    mapreduce(sat -> gen_l5_code(INITIAL_XB_CODE_STATES_I5[sat]), hcat, 1:37)
+    mapreduce(prn -> gen_l5_code(INITIAL_XB_CODE_STATES_I5[prn]), hcat, 1:37)
 end
 
 function read_gpsl5q_codes()
-    mapreduce(sat -> gen_l5_code(INITIAL_XB_CODE_STATES_Q5[sat]), hcat, 1:37)
+    mapreduce(prn -> gen_l5_code(INITIAL_XB_CODE_STATES_Q5[prn]), hcat, 1:37)
 end
 
 function GPSL5I()
@@ -267,55 +267,53 @@ julia> get_code_length(GPSL5I())
 """
 $(SIGNATURES)
 
-Get the code chipping rate for GPS L5 (10.23 MHz, both components).
+Get the nominal chip rate of GPS L5 (10.23 MHz, both components).
 
 # Examples
 ```julia-repl
-julia> get_code_frequency(GPSL5I())
+julia> get_chip_rate(GPSL5I())
 10230000 Hz
 ```
 """
-@inline get_code_frequency(::Type{<:GPSL5I}) = 10_230_000Hz
-@inline get_code_frequency(::Type{<:GPSL5Q}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GPSL5I}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GPSL5Q}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L5-I.
+Get the bit rate, as tracked, of GPS L5-I.
 
-The L5-I channel carries the CNAV navigation message at 100 sps (50 bps with
-rate-1/2 convolutional coding); `get_data_frequency` returns the broadcast
-symbol rate, matching the convention used across this package (see
-[`GPSL1C_D`](@ref)).
+The L5-I channel carries the CNAV navigation message, tracked at 100 bit/s: the symbol
+rate of its rate-½ convolutional code, the message carrying 50 bit/s.
 
 # Returns
 - `Frequency`: 100 Hz
 
 # Examples
 ```julia-repl
-julia> get_data_frequency(GPSL5I())
+julia> get_bit_rate(GPSL5I())
 100 Hz
 ```
 """
-@inline get_data_frequency(::Type{<:GPSL5I}) = 100Hz
+@inline get_bit_rate(::Type{<:GPSL5I}) = 100Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L5-Q.
+Get the bit rate, as tracked, of GPS L5-Q.
 
-The Q5 component is a dataless pilot, so its data frequency is 0 Hz.
+The Q5 component is a dataless pilot, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 
 # Examples
 ```julia-repl
-julia> get_data_frequency(GPSL5Q())
+julia> get_bit_rate(GPSL5Q())
 0 Hz
 ```
 """
-@inline get_data_frequency(::Type{<:GPSL5Q}) = 0Hz
+@inline get_bit_rate(::Type{<:GPSL5Q}) = 0Hz
 
 """
 $(SIGNATURES)

@@ -4,7 +4,7 @@ include("b3i_constants.jl")
     BeiDouB3I{C, M} <: AbstractBeiDouSignal{C}
 
 BeiDou B3I signal — the open-service signal on the BeiDou B3 frequency
-(1268.52 MHz, reported as the [`B3I`](@ref) band).
+(1268.52 MHz, reported as the [`B3`](@ref) band).
 
 BPSK-modulated 10230-chip ranging code at 10.23 Mcps (a Gold code). As on
 [`BeiDouB1I`](@ref), the 20-bit Neuman-Hoffman secondary code (NH20) overlays
@@ -24,7 +24,7 @@ Both registers reset at the start of each 1 ms period. PRNs 1-63 are supported.
 b3i = BeiDouB3I()
 get_code_length(b3i)            # 10230
 get_secondary_code_length(b3i)  # 20
-get_band(b3i)                   # B3I()
+get_band(b3i)                   # B3()
 ```
 """
 struct BeiDouB3I{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractBeiDouSignal{C}
@@ -67,9 +67,9 @@ $(SIGNATURES)
 
 Get the band the signal is transmitted on.
 
-BeiDou B3I is on the 1268.52 MHz B3 frequency, so this returns [`B3I`](@ref).
+BeiDou B3I is on the 1268.52 MHz B3 frequency, so this returns [`B3`](@ref).
 """
-@inline get_band(::Type{<:BeiDouB3I}) = B3I()
+@inline get_band(::Type{<:BeiDouB3I}) = B3()
 
 # The only open-service component on the 1268.52 MHz carrier (the B3Q counterpart
 # is not in the OS ICD), so it is its own composite. See [`get_relative_power`](@ref).
@@ -92,19 +92,19 @@ Get the code length for BeiDou B3I (10230 chips).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for BeiDou B3I (10.23 MHz).
+Get the nominal chip rate of BeiDou B3I (10.23 MHz).
 """
-@inline get_code_frequency(::Type{<:BeiDouB3I}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:BeiDouB3I}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for BeiDou B3I (D1 navigation message, 50 bps).
+Get the bit rate, as tracked, of BeiDou B3I (D1 navigation message, 50 bit/s).
 
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::Type{<:BeiDouB3I}) = 50Hz
+@inline get_bit_rate(::Type{<:BeiDouB3I}) = 50Hz
 
 """
 $(SIGNATURES)

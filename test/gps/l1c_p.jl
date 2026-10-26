@@ -5,8 +5,8 @@
     @test @inferred(get_code_length(sig)) == 10230
     @test @inferred(get_secondary_code_length(sig)) == 1800
     @test @inferred(get_secondary_code(sig)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(sig)) == 0Hz   # pilot is dataless
-    @test @inferred(get_code_frequency(sig)) == 1023e3Hz
+    @test @inferred(get_bit_rate(sig)) == 0Hz   # pilot is dataless
+    @test @inferred(get_chip_rate(sig)) == 1023e3Hz
     @test get_signal_name(sig) == "GPS L1C-P"
 
     # Modulation: TMBOC over BOC(1,1) and BOC(6,1), pattern length 33.

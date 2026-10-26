@@ -12,16 +12,16 @@
     @test @inferred(get_code(galileo_e1b, 1.5, 1)) ≈ -1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(GNSSSignals.get_code_unsafe(galileo_e1b, 0.0, 1)) ≈
           1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
-    @test @inferred(get_data_frequency(galileo_e1b)) == 250Hz
-    @test @inferred(get_code_frequency(galileo_e1b)) == 1023e3Hz
+    @test @inferred(get_bit_rate(galileo_e1b)) == 250Hz
+    @test @inferred(get_chip_rate(galileo_e1b)) == 1023e3Hz
     @test get_signal_name(galileo_e1b) == "Galileo E1B"
 
     @test get_code_spectrum(galileo_e1b, 0) == 0.0
 
-    @test get_code_spectrum(galileo_e1b, 2 * get_code_frequency(galileo_e1b)) == 0.0
-    @test get_code_spectrum(galileo_e1b, -2 * get_code_frequency(galileo_e1b)) == 0.0
+    @test get_code_spectrum(galileo_e1b, 2 * get_chip_rate(galileo_e1b)) == 0.0
+    @test get_code_spectrum(galileo_e1b, -2 * get_chip_rate(galileo_e1b)) == 0.0
 
-    @test get_code_center_frequency_ratio(galileo_e1b) ≈ 1 / 1540
+    @test get_chip_rate_to_center_frequency_ratio(galileo_e1b) ≈ 1 / 1540
 
     # `get_code_type` for CBOC signals comes from
     # `promote_type(eltype(codes), typeof(modulation.boc1_power))`. Pin
@@ -37,8 +37,8 @@ end
     @test @inferred(get_code_length(e1b)) == 4092
     @test @inferred(get_secondary_code(e1b)) isa NoSecondaryCode
     @test @inferred(get_secondary_code_length(e1b)) == 1
-    @test @inferred(get_data_frequency(e1b)) == 250Hz
-    @test @inferred(get_code_frequency(e1b)) == 1023e3Hz
+    @test @inferred(get_bit_rate(e1b)) == 250Hz
+    @test @inferred(get_chip_rate(e1b)) == 1023e3Hz
     @test get_signal_name(e1b) == "Galileo E1B (BOC(1,1) approximation)"
 
     # Modulation differs from full E1B's CBOC.

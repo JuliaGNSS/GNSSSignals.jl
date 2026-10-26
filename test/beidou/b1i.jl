@@ -5,15 +5,15 @@
     @test @inferred(get_code_length(b1i)) == 2046
     @test @inferred(get_secondary_code_length(b1i)) == 20
     @test @inferred(get_secondary_code(b1i)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(b1i)) == 50Hz
-    @test @inferred(get_code_frequency(b1i)) == 2_046_000Hz
+    @test @inferred(get_bit_rate(b1i)) == 50Hz
+    @test @inferred(get_chip_rate(b1i)) == 2_046_000Hz
     @test get_signal_name(b1i) == "BeiDou B1I"
     @test @inferred(get_modulation(b1i)) == GNSSSignals.LOC()
     @test get_code_type(b1i) === Int16
 
     # The B1I chip rate is 2× the C/A rate on the 1561.098 MHz carrier.
-    @test get_code_center_frequency_ratio(b1i) ≈ 2_046_000 / 1_561_098_000
-    @test get_code_spectrum(b1i, 0) ≈ 1.0Hz / get_code_frequency(b1i)
+    @test get_chip_rate_to_center_frequency_ratio(b1i) ≈ 2_046_000 / 1_561_098_000
+    @test get_code_spectrum(b1i, 0) ≈ 1.0Hz / get_chip_rate(b1i)
 end
 
 @testset "BeiDou B1I ranging codes are balanced Gold codes" begin
@@ -56,7 +56,7 @@ end
 @testset "BeiDou B1I gen_code! produces a sampled BPSK(2) replica" begin
     b1i = BeiDouB1I()
     samples_per_chip = 2
-    code_freq = get_code_frequency(b1i)
+    code_freq = get_chip_rate(b1i)
     n_chips = 3 * get_code_length(b1i)           # exercise the NH20 overlay
     n_samples = samples_per_chip * n_chips
     prn = 6                                      # a D1 (MEO/IGSO) PRN, so NH20 applies

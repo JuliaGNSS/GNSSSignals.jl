@@ -43,17 +43,18 @@ struct L5 <: Band end
 
 The 1561.098 MHz GNSS band (the legacy BeiDou B1 frequency). Carries the
 BeiDou B1I signal. Distinct from the [`L1`](@ref) band (1575.42 MHz) that
-carries BeiDou B1C.
+carries BeiDou B1C. It is named after its open signal, not after the carrier like
+[`B3`](@ref) and [`E6`](@ref), because in BDS-3 "B1" also spans B1C at 1575.42 MHz.
 """
 struct B1I <: Band end
 
 """
-    B3I <: Band
+    B3 <: Band
 
-The 1268.52 MHz GNSS band (the BeiDou B3 frequency). Carries the BeiDou B3I
+The 1268.52 MHz GNSS band, named B3 by the BeiDou ICDs. Carries the BeiDou B3I
 signal.
 """
-struct B3I <: Band end
+struct B3 <: Band end
 
 """
     E5b <: Band
@@ -81,7 +82,7 @@ $(SIGNATURES)
 Get the center (carrier) frequency of a band.
 
 One method per concrete [`Band`](@ref) — `L1` 1575.42 MHz, `L2` 1227.6 MHz,
-`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3I` 1268.52 MHz, `E5b` 1207.14 MHz,
+`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3` 1268.52 MHz, `E5b` 1207.14 MHz,
 `E6` 1278.75 MHz.
 Works on a band instance or its type, as [`get_band_id`](@ref) /
 [`get_band_name`](@ref) do.
@@ -98,7 +99,7 @@ julia> get_center_frequency(L5)
 @inline get_center_frequency(::Type{L2}) = 1_227_600_000Hz
 @inline get_center_frequency(::Type{L5}) = 1_176_450_000Hz
 @inline get_center_frequency(::Type{B1I}) = 1_561_098_000Hz
-@inline get_center_frequency(::Type{B3I}) = 1_268_520_000Hz
+@inline get_center_frequency(::Type{B3}) = 1_268_520_000Hz
 @inline get_center_frequency(::Type{E5b}) = 1_207_140_000Hz
 @inline get_center_frequency(::Type{E6}) = 1_278_750_000Hz
 @inline get_center_frequency(b::Band) = get_center_frequency(typeof(b))
@@ -226,7 +227,7 @@ julia> get_band_name(GPSL1CA())
 @inline get_band_name(::Type{L2}) = "L2"
 @inline get_band_name(::Type{L5}) = "L5"
 @inline get_band_name(::Type{B1I}) = "B1I"
-@inline get_band_name(::Type{B3I}) = "B3I"
+@inline get_band_name(::Type{B3}) = "B3"
 @inline get_band_name(::Type{E5b}) = "E5b"
 @inline get_band_name(::Type{E6}) = "E6"
 @inline get_band_name(::Type{B}) where {B<:Band} = String(get_band_id(B))

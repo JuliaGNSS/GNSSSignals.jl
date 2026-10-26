@@ -5,8 +5,8 @@
     @test @inferred(get_code_length(b1c_d)) == 10230
     @test @inferred(get_secondary_code_length(b1c_d)) == 1
     @test @inferred(get_secondary_code(b1c_d)) isa NoSecondaryCode
-    @test @inferred(get_data_frequency(b1c_d)) == 100Hz
-    @test @inferred(get_code_frequency(b1c_d)) == 1_023_000Hz
+    @test @inferred(get_bit_rate(b1c_d)) == 100Hz
+    @test @inferred(get_chip_rate(b1c_d)) == 1_023_000Hz
     @test get_signal_name(b1c_d) == "BeiDou B1C data"
     # Data component is sine-phased BOC(1,1).
     @test @inferred(get_modulation(b1c_d)) == GNSSSignals.BOCsin(1, 1)
@@ -19,8 +19,8 @@ end
     @test @inferred(get_code_length(b1c_p)) == 10230
     @test @inferred(get_secondary_code_length(b1c_p)) == 1800
     @test @inferred(get_secondary_code(b1c_p)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(b1c_p)) == 0Hz   # dataless pilot
-    @test @inferred(get_code_frequency(b1c_p)) == 1_023_000Hz
+    @test @inferred(get_bit_rate(b1c_p)) == 0Hz   # dataless pilot
+    @test @inferred(get_chip_rate(b1c_p)) == 1_023_000Hz
     @test get_signal_name(b1c_p) == "BeiDou B1C pilot"
     # ICD signal is QMBOC(6,1,4/33); its real in-phase replica is BOC(1,1) (see docstring).
     @test @inferred(get_modulation(b1c_p)) == GNSSSignals.BOCsin(1, 1)
