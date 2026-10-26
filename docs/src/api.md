@@ -63,7 +63,9 @@ GNSSSignals.get_time_system_name
 GNSSSignals.get_system_start_time
 GNSSSignals.get_tai_system_start_time
 GNSSSignals.get_epoch_offset
+GNSSSignals.get_leap_second_offset
 GNSSSignals.get_tai_offset
+GNSSSignals.SECONDS_PER_WEEK
 ```
 
 ## Secondary Codes

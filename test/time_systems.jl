@@ -184,3 +184,18 @@ end
         A === B && @test get_epoch_offset(A(), B()) == 0s
     end
 end
+
+@testset "leap seconds between the counts" begin
+    @test GNSSSignals.SECONDS_PER_WEEK == 7 * 24 * 60 * 60
+    @test get_leap_second_offset(BDT(), GPST()) == 14s
+    @test get_leap_second_offset(BDT(), GST()) == 14s
+    @test get_leap_second_offset(GST(), GPST()) == 0s
+    week = GNSSSignals.SECONDS_PER_WEEK * s
+    for A in ALL_TIME_SYSTEMS, B in ALL_TIME_SYSTEMS
+        offset = @inferred get_leap_second_offset(A(), B())
+        @test offset == -get_leap_second_offset(B(), A())
+        A === B && @test offset == 0s
+        # The epoch offset less its whole weeks: the two together convert a (WN, TOW).
+        @test rem(get_epoch_offset(A(), B()), week, RoundNearest) == offset
+    end
+end

@@ -230,9 +230,10 @@ time of week 0) begins:
 so a broadcast `(WN, TOW)` on `from`'s scale names the instant that reads
 `WN · 604800 + TOW + get_epoch_offset(from, to)` on `to`'s count — nothing
 else: both scales count elapsed TAI from their own epochs, so the epoch offset
-is the *whole* difference. The defined whole-second scale offset between the
-two counts' seconds-of-week (`+14 s` from BDT to GPST) is not an additional
-term; it is this value modulo the week, as the BeiDou identity below shows.
+is the *whole* difference. The leap seconds between the two counts' seconds of
+week (`+14 s` from BDT to GPST, [`get_leap_second_offset`](@ref)) are not an
+additional term; they are this value modulo the week, as the BeiDou identity
+below shows.
 Antisymmetric; zero from a scale to itself.
 
 The values are exact whole seconds by construction:
@@ -259,6 +260,47 @@ julia> get_epoch_offset(BDT(), GPST())
     Dates.value(
         Dates.Second(get_tai_system_start_time(from) - get_tai_system_start_time(to)),
     ) * s
+
+"""
+    SECONDS_PER_WEEK
+
+The length of a GNSS week in seconds, `604800`. Every time system here counts its
+broadcast time as a week number plus a time of week of this length.
+
+Not exported: bind it with `using GNSSSignals: SECONDS_PER_WEEK`.
+"""
+const SECONDS_PER_WEEK = 604_800
+
+"""
+    get_leap_second_offset(from::TimeSystem, to::TimeSystem) -> Unitful seconds
+
+The seconds to add to a time of week counted in `from` to read the same instant in
+the count of `to`: the leap seconds accrued between the two epochs,
+
+    get_leap_second_offset(from, to) = get_tai_offset(from) - get_tai_offset(to)
+
+`0 s` between [`GPST`](@ref) and [`GST`](@ref), both `TAI − 19 s`; a [`BDT`](@ref)
+reading is 14 s behind, so `get_leap_second_offset(BDT(), GPST()) == 14 s`. It is
+[`get_epoch_offset`](@ref) without its whole weeks, so a `(WN, TOW)` conversion
+across scales needs both. Antisymmetric; zero from a scale to itself.
+
+It follows from the scales' definitions and is never broadcast: a broadcast time
+offset (GGTO, BGTO) carries only the nanosecond steering residual on top of it
+(IS-GPS-800J §3.5.4.2.1.1: users "must also apply any integer seconds difference
+between the systems using definitions of each system time scale").
+
+# Examples
+
+```julia-repl
+julia> get_leap_second_offset(BDT(), GPST())
+14 s
+
+julia> get_leap_second_offset(GST(), GPST())
+0 s
+```
+"""
+@inline get_leap_second_offset(from::TimeSystem, to::TimeSystem) =
+    get_tai_offset(from) - get_tai_offset(to)
 
 """
 $(SIGNATURES)
