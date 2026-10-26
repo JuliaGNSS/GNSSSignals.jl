@@ -112,13 +112,13 @@ function _build_beidou_b1c_secondary()
 end
 
 function BeiDouB1C_D()
-    codes = widen_codes_to_storage(read_beidou_b1c_d_codes())
+    codes = read_beidou_b1c_d_codes()
     lut = build_signal_lut(get_modulation(BeiDouB1C_D), codes, NoSecondaryCode())
     BeiDouB1C_D(codes, lut)
 end
 
 function BeiDouB1C_P()
-    codes = widen_codes_to_storage(read_beidou_b1c_p_codes())
+    codes = read_beidou_b1c_p_codes()
     overlay = _build_beidou_b1c_secondary()
     # The 1800-chip per-SVID overlay is far too long to bake, so it stays residual in the
     # SignalLUT and is applied per primary period at gen time.

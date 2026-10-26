@@ -153,8 +153,11 @@ $(SIGNATURES)
 
 Get the element type for code values of a GNSS signal.
 
-Returns the numeric type used to represent code values. For BPSK (LOC) signals,
-this is typically `Int16`. For CBOC signals, this is a floating-point type.
+Returns the type of the values [`get_code`](@ref) returns: `Int` for an integer code
+matrix (the built-in signals store `Int8` chips, which `get_code` widens so that sums and
+products of its values cannot overflow), or a floating-point type for CBOC signals, whose
+two subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
+`Int8`.
 
 # Arguments
 - `signal`: A GNSS signal instance
@@ -165,7 +168,7 @@ this is typically `Int16`. For CBOC signals, this is a floating-point type.
 # Examples
 ```julia-repl
 julia> get_code_type(GPSL1CA())
-Int16
+Int64
 julia> get_code_type(GalileoE1B())
 Float32
 ```
@@ -175,9 +178,10 @@ get_code_type(signal::T) where {T<:AbstractGNSSSignal} = get_code_type(signal, g
 # `eltype(C)` rather than matching `AbstractMatrix{T}`: `C` is a direct parameter, so it
 # always binds, whereas `T` would be unbound for a UnionAll code type like `GPSL1CA{Matrix}`
 # (`Matrix <: AbstractMatrix` holds without fixing `T` — Aqua's unbound-parameter check).
-get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} = eltype(C)
+get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} =
+    typeof(_widen_chip(zero(eltype(C))))
 get_code_type(signal::AbstractGNSSSignal{C}, modulation::CBOC) where {C} =
-    promote_type(eltype(C), typeof(modulation.boc1_power))
+    promote_type(typeof(_widen_chip(zero(eltype(C)))), typeof(modulation.boc1_power))
 
 """
 $(SIGNATURES)
@@ -209,11 +213,12 @@ CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOC
 # `2m/n` subcarrier half-periods: the subcarrier runs at m · 1.023 MHz, the code at n · 1.023
 # MHz. The phase is multiplied by that factor rather than divided by `n`: the factor does not
 # depend on the phase, so a loop computes it once, and in the phase's own float type it gives
-# for n = 1 exactly the `phase · 2m` this was before n was carried.
+# for n = 1 exactly the `phase · 2m` this was before n was carried. An `Int8` sign, so the
+# product keeps the chip's type (`get_code_type`).
 function get_subcarrier_code(modulation::BOCsin, phase::Real)
     half_periods_per_chip = oftype(float(phase), 2 * modulation.m / modulation.n)
     floored_subcarrier_phase = floor(Int, phase * half_periods_per_chip)
-    iseven(floored_subcarrier_phase) * 2 - 1
+    iseven(floored_subcarrier_phase) ? Int8(1) : Int8(-1)
 end
 
 # The cosine subcarrier is the sine one a quarter subcarrier period later: sign(cos x) =
@@ -259,7 +264,9 @@ at the specified code phase. The phase is automatically wrapped to the code leng
 - `prn`: PRN number of the satellite
 
 # Returns
-- Code value (typically `Int8` for BPSK, `Float32` for CBOC)
+- Code value, of type [`get_code_type`](@ref)`(signal)`: `Int`, or `Float32` for CBOC.
+  The stored `Int8` chip is widened, so correlations and sums over `get_code` values
+  cannot overflow.
 
 # Examples
 ```julia-repl
@@ -274,6 +281,12 @@ function get_code(signal::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
     get_code(get_modulation(T), signal, phase, prn)
 end
 
+# An integer chip is widened to `Int`: the built-in matrices store `Int8`, whose sums and
+# products wrap around after 127, and a caller correlating `get_code` values should not
+# have to know that.
+@inline _widen_chip(chip::Integer) = Int(chip)
+@inline _widen_chip(chip) = chip
+
 # Multiply the primary chip by its secondary-code chip. The absolute chip is
 # either wrapped by get_code or supplied in range by get_code_unsafe.
 Base.@propagate_inbounds function _primary_secondary_code(signal, absolute_chip, prn)
@@ -281,7 +294,7 @@ Base.@propagate_inbounds function _primary_secondary_code(signal, absolute_chip,
     sec = get_secondary_code(signal)
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
-    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    _widen_chip(get_code_at_index(signal, chip_idx, prn)) * secondary_value(sec, prn, sec_idx)
 end
 
 @inline _modulate_code(::BPSK, code, phase) = code

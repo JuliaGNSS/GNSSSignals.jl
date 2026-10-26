@@ -115,7 +115,7 @@ function read_galileo_e5a_qp_codes()
 end
 
 function GalileoE5aQP()
-    codes = widen_codes_to_storage(read_galileo_e5a_qp_codes())
+    codes = read_galileo_e5a_qp_codes()
     lut = build_signal_lut(get_modulation(GalileoE5aQP), codes, NoSecondaryCode())
     GalileoE5aQP(codes, lut)
 end

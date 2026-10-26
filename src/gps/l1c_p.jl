@@ -44,7 +44,7 @@ function read_gpsl1c_p_codes()
 end
 
 function GPSL1C_P()
-    codes = widen_codes_to_storage(read_gpsl1c_p_codes())
+    codes = read_gpsl1c_p_codes()
     overlay = _l1c_build_overlay_codes()
     # The 1800-chip per-PRN overlay is far too long to bake (1800·10230·12 ≫ typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.

@@ -31,7 +31,7 @@ end
     # values.
     @testset "L1C-D PRN $prn" for prn = 1:GNSSSignals.L1C_NUM_PRNS
         sig = GPSL1C_D()
-        # Codes are stored Int16; the spec's expected chips are Int8.
+        # Codes and the spec's expected chips are both Int8.
         first_24 = Int8.(sig.codes[1:24, prn])
         last_24  = Int8.(sig.codes[end-23:end, prn])
         @test first_24 == decode_24_chips(GNSSSignals.L1C_D_INITIAL_24[prn])

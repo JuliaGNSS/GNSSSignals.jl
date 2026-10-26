@@ -11,7 +11,7 @@ end
 # of the 33-chip TMBOC pattern, so the code, its subcarrier and the pattern repeat together.
 function TestBOCSignal(modulation; code_length = 330)
     primary = rand(MersenneTwister(11), Int8[-1, 1], code_length, 2)
-    codes = GNSSSignals.widen_codes_to_storage(primary)
+    codes = primary
     lut = GNSSSignals.build_signal_lut(modulation, codes, NoSecondaryCode())
     TestBOCSignal{modulation,typeof(codes)}(codes, lut)
 end
