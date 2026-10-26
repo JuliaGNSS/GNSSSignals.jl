@@ -273,6 +273,32 @@ Not exported: bind it with `using GNSSSignals: SECONDS_PER_WEEK`.
 const SECONDS_PER_WEEK = 604_800
 
 """
+    fold_week_crossover(Δt) -> seconds
+
+Fold a difference `Δt` of two seconds-of-week counts into `[-302400, 302400]`: across a
+week crossover (IS-GPS-200's term, §20.3.3.3.3.1) the raw difference is off by ±604800 s.
+The result has the type of `Δt`, so integer seconds stay integer.
+A difference of two counts within half a week of each other passes through this; one
+meant to span whole weeks must not (a broadcast time offset adds the weeks back itself).
+
+Not exported, as [`SECONDS_PER_WEEK`](@ref GNSSSignals.SECONDS_PER_WEEK) is not: bind it
+with `using GNSSSignals: fold_week_crossover`.
+
+```julia-repl
+julia> GNSSSignals.fold_week_crossover(604799.5 - 0.5)
+-1.0
+```
+"""
+function fold_week_crossover(Δt)
+    # Integer week arithmetic, so an integer difference stays an integer and a
+    # floating-point one keeps its type.
+    half_week = SECONDS_PER_WEEK ÷ 2
+    # The week in `Δt`'s own type, so the result has that type whichever branch it takes.
+    Δt > half_week ? Δt - oftype(Δt, SECONDS_PER_WEEK) :
+    Δt < -half_week ? Δt + oftype(Δt, SECONDS_PER_WEEK) : Δt
+end
+
+"""
     get_leap_second_offset(from::TimeSystem, to::TimeSystem) -> Unitful seconds
 
 The seconds to add to a time of week counted in `from` to read the same instant in
@@ -302,6 +328,31 @@ julia> get_leap_second_offset(GST(), GPST())
 """
 @inline get_leap_second_offset(from::TimeSystem, to::TimeSystem) =
     get_tai_offset(from) - get_tai_offset(to)
+
+"""
+    get_week_start_epoch(time_system, week) -> TAITime
+
+The TAI epoch at which `week` of a GNSS time system begins: the system's origin,
+[`get_tai_system_start_time`](@ref), plus `week` whole weeks, exactly. A time of week `t`
+counted in that system dates as `get_week_start_epoch(time_system, week) + t`, with full
+`Float64` resolution in the fraction. No leap-second table is consulted, so it is safe at
+precompile time. Works on a [`TimeSystem`](@ref), or on a signal / signal type (which
+forwards through [`get_time_system`](@ref)).
+
+```julia-repl
+julia> get_week_start_epoch(GPST(), 2364)
+2025-04-27T00:00:19 TAI
+
+julia> get_week_start_epoch(BDT(), 1008) - get_week_start_epoch(GPST(), 2364)
+14.0
+```
+"""
+@inline get_week_start_epoch(time_system::TimeSystem, week::Integer) =
+    TAITime(get_tai_system_start_time(time_system)) + week * SECONDS_PER_WEEK
+@inline get_week_start_epoch(::Type{S}, week::Integer) where {S<:AbstractGNSSSignal} =
+    get_week_start_epoch(get_time_system(S), week)
+@inline get_week_start_epoch(s::AbstractGNSSSignal, week::Integer) =
+    get_week_start_epoch(get_time_system(s), week)
 
 """
 $(SIGNATURES)

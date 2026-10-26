@@ -199,3 +199,47 @@ end
         @test rem(get_epoch_offset(A(), B()), week, RoundNearest) == offset
     end
 end
+
+@testset "week start epochs" begin
+    # Week 0 is the system's TAI origin; the weeks are whole, exact seconds.
+    for T in ALL_TIME_SYSTEMS
+        @test @inferred(get_week_start_epoch(T(), 0)) == TAITime(get_tai_system_start_time(T()))
+        @test get_week_start_epoch(T(), 7) - get_week_start_epoch(T(), 5) ==
+              2 * GNSSSignals.SECONDS_PER_WEEK
+    end
+    # GST week 0 is GPS week 1024; BDT week 0 begins 14 s into GPS week 1356.
+    @test get_week_start_epoch(GST(), 0) == get_week_start_epoch(GPST(), 1024)
+    @test get_week_start_epoch(BDT(), 0) - get_week_start_epoch(GPST(), 1356) == 14
+    # A time of week keeps its fraction, and the epoch agrees with get_epoch_offset.
+    @test get_week_start_epoch(GPST(), 2364) + 0.125 ==
+          TAITime(DateTime(2025, 4, 27, 0, 0, 19)) + 0.125
+    for A in ALL_TIME_SYSTEMS, B in ALL_TIME_SYSTEMS
+        @test get_week_start_epoch(A(), 0) - get_week_start_epoch(B(), 0) ==
+              Unitful.ustrip(s, get_epoch_offset(A(), B()))
+    end
+    # Signal forwarding, type and instance.
+    @test get_week_start_epoch(GalileoE1B, 3) == get_week_start_epoch(GST(), 3)
+    @test get_week_start_epoch(BeiDouB1I(), 3) == get_week_start_epoch(BDT(), 3)
+end
+
+@testset "fold_week_crossover" begin
+    fold = GNSSSignals.fold_week_crossover
+    @test fold(0) == 0
+    @test fold(350000) == 350000 - 604800
+    @test fold(-350000) == 604800 - 350000
+    @test fold(302400) == 302400  # both ends of [-302400, 302400] stay
+    @test fold(-302400) == -302400
+    # The type of the difference is kept: integer seconds stay integer.
+    @test @inferred(fold(604797)) === -3
+    @test @inferred(fold(-604797)) === 3
+    @test @inferred(fold(1.5)) === 1.5
+    @test @inferred(fold(1.5f0)) === 1.5f0
+    # Narrow integer types keep their type in every branch.
+    @test @inferred(fold(Int32(5))) === Int32(5)
+    @test @inferred(fold(Int32(400000))) === Int32(400000 - 604800)
+    @test @inferred(fold(Int32(-400000))) === Int32(604800 - 400000)
+    # A wrap inside a transmit-time spread: 2 ms apart, not a week.
+    @test fold(604799.999 - 0.001) ≈ -0.002 atol = 1e-6
+    @test fold(0.001 - 604799.999) ≈ 0.002 atol = 1e-6
+end
+

@@ -38,5 +38,6 @@
         :get_code_spectrum_BOCsin,
         :get_code_spectrum_BOCcos,
         :SECONDS_PER_WEEK,
+        :fold_week_crossover,
     ])
 end

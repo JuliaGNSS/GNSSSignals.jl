@@ -78,6 +78,8 @@ export AbstractGNSSSignal,
     get_tai_system_start_time,
     get_epoch_offset,
     get_leap_second_offset,
+    get_week_start_epoch,
+    TAITime,
     get_tai_offset,
     get_modulation,
     get_secondary_code
@@ -243,6 +245,7 @@ include("beidou/b3i.jl")
 include("beidou/b2b.jl")
 include("beidou/b2a.jl")
 include("beidou/b1c.jl")
+include("tai_time.jl")
 include("time_systems.jl")
 include("common.jl")
 include("code_lut.jl")
