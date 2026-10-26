@@ -113,7 +113,10 @@ end
 """
 $(SIGNATURES)
 
-Get the data bit rate for Galileo E1B.
+Get the data symbol rate for Galileo E1B.
+
+The I/NAV message is broadcast at 250 symbols/s (125 bps with rate-1/2
+convolutional coding).
 
 # Returns
 - `Frequency`: 250 Hz

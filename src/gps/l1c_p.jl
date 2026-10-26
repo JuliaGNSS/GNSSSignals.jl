@@ -89,7 +89,7 @@ Get the code chipping rate for GPS L1C-P.
 """
 $(SIGNATURES)
 
-Get the data bit rate for GPS L1C-P.
+Get the data symbol rate for GPS L1C-P.
 
 The pilot component is dataless.
 

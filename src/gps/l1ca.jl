@@ -112,7 +112,9 @@ end
 """
 $(SIGNATURES)
 
-Get the data bit rate for GPS L1 C/A.
+Get the data symbol rate for GPS L1 C/A.
+
+LNAV is broadcast uncoded at 50 bps, so its symbol rate is its bit rate.
 
 # Returns
 - `Frequency`: 50 Hz

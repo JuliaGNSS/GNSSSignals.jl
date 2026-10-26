@@ -128,7 +128,7 @@ end
 """
 $(SIGNATURES)
 
-Get the data bit rate for Galileo E1C.
+Get the data symbol rate for Galileo E1C.
 
 E1C is the pilot (dataless) component, so this is `0 Hz`.
 

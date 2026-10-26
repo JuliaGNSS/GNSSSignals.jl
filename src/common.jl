@@ -200,6 +200,18 @@ julia> get_constellation_name(GalileoE1B)
 # these forward an instance to its type.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
 @inline get_code_frequency(s::AbstractGNSSSignal) = get_code_frequency(typeof(s))
+
+"""
+    get_data_frequency(signal) -> Frequency
+
+The rate of the navigation-message *symbols* a signal broadcasts, after forward
+error correction encoding: the rate at which a receiver demodulates them. Where a
+message is FEC-coded this is a multiple of its information bit rate — Galileo E1B's
+I/NAV is 125 bps at 250 symbols/s — and where it is not (GPS L1 C/A's LNAV, BeiDou
+D1) the two coincide. `0 Hz` for a dataless pilot.
+
+Defined per concrete signal type; works on an instance or a type.
+"""
 @inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
 
 """
