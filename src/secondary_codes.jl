@@ -14,19 +14,38 @@ Three concrete forms cover all currently-defined GNSS signals:
   1800 chips per PRN from a per-PRN LFSR).
 
 Receivers should query the secondary code via [`get_secondary_code`](@ref),
-which returns the appropriate `SecondaryCode` instance for the signal.
-
-The internal API for evaluating the secondary at a given secondary-chip
-index is `secondary_value`. It is typed-dispatched so the
-no-secondary case folds to the multiplicative identity at compile time.
+which returns the appropriate `SecondaryCode` instance for the signal, and read
+its chips with [`get_secondary_code_chip`](@ref GNSSSignals.get_secondary_code_chip). It is
+typed-dispatched so the no-secondary case folds to the multiplicative identity
+at compile time.
 """
 abstract type SecondaryCode end
+
+"""
+    get_secondary_code_chip(secondary_code::SecondaryCode, prn, index) -> ±1
+
+The chip of `secondary_code` at the 0-based secondary-chip `index` for satellite
+`prn`: the sign the primary code period `index` (counted from the start of the
+secondary code) is overlaid with. `index` wraps modulo the code's length, and
+`prn` is read only by a [`PerPRNSecondaryCode`](@ref). The value has the code's
+element type, and is `true` for a [`NoSecondaryCode`](@ref), so that multiplying
+by it keeps any numeric element type.
+
+```julia-repl
+julia> sec = get_secondary_code(GPSL5I());
+
+julia> [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k in 0:9]'
+1×10 adjoint(::Vector{Int8}) with eltype Int8:
+ 1  1  1  1  -1  -1  1  -1  1  -1
+```
+"""
+function get_secondary_code_chip end
 
 """
     NoSecondaryCode <: SecondaryCode
 
 Marker type for signals without a secondary code. All
-`secondary_value` lookups return `1`, which the inner code-generation
+`get_secondary_code_chip` lookups return `1`, which the inner code-generation
 loops multiply by — the compiler elides the multiplication entirely.
 """
 struct NoSecondaryCode <: SecondaryCode end
@@ -35,7 +54,7 @@ struct NoSecondaryCode <: SecondaryCode end
 # Returning `true` (not `1`) so that `x * true === x` preserves `eltype` for
 # every numeric element type — no widening to `Int64` on a code matrix of
 # `Int16` or `Float32`.
-@inline secondary_value(::NoSecondaryCode, ::Integer, ::Integer) = true
+@inline get_secondary_code_chip(::NoSecondaryCode, ::Integer, ::Integer) = true
 
 """
     SharedSecondaryCode{N, T<:Integer} <: SecondaryCode
@@ -62,7 +81,7 @@ struct SharedSecondaryCode{N, T<:Integer} <: SecondaryCode
 end
 
 @inline secondary_code_length(::SharedSecondaryCode{N}) where {N} = N
-@inline function secondary_value(s::SharedSecondaryCode{N}, ::Integer, secondary_index::Integer) where {N}
+@inline function get_secondary_code_chip(s::SharedSecondaryCode{N}, ::Integer, secondary_index::Integer) where {N}
     @inbounds s.code[mod(secondary_index, N) + 1]
 end
 
@@ -81,6 +100,6 @@ struct PerPRNSecondaryCode{T<:Integer, M<:AbstractMatrix{T}} <: SecondaryCode
 end
 
 @inline secondary_code_length(s::PerPRNSecondaryCode) = size(s.codes, 1)
-@inline function secondary_value(s::PerPRNSecondaryCode, prn::Integer, secondary_index::Integer)
+@inline function get_secondary_code_chip(s::PerPRNSecondaryCode, prn::Integer, secondary_index::Integer)
     @inbounds s.codes[mod(secondary_index, size(s.codes, 1)) + 1, prn]
 end

@@ -19,7 +19,6 @@
 
     # BPSK(10) spectrum and code/center-frequency ratio (E5a shares the L5
     # band, so the ratio is the same 1/115 as GPS L5-I).
-    @test GNSSSignals.get_code_factor(e5a_i) == 1
     @test get_code_spectrum(e5a_i, 0) ≈ 1.0Hz / get_code_frequency(e5a_i)
     @test get_code_center_frequency_ratio(e5a_i) ≈ 1 / 115
 end
@@ -37,7 +36,6 @@ end
     @test @inferred(get_modulation(e5a_q)) == GNSSSignals.LOC()
     @test get_code_type(e5a_q) === Int16
 
-    @test GNSSSignals.get_code_factor(e5a_q) == 1
     @test get_code_spectrum(e5a_q, 0) ≈ 1.0Hz / get_code_frequency(e5a_q)
     @test get_code_center_frequency_ratio(e5a_q) ≈ 1 / 115
 end
@@ -68,10 +66,10 @@ end
     sec = get_secondary_code(e5a_i)
     # CS20 = 0x842E9 -> 1000 0100 0010 1110 1001 (MSB-first), 0 -> -1, 1 -> +1.
     cs20 = Int8[1, -1, -1, -1, -1, 1, -1, -1, -1, -1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1]
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:19] == cs20
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:19] == cs20
     # Shared across SVIDs, and wraps with period 20.
-    @test [GNSSSignals.secondary_value(sec, 7, k) for k = 0:19] == cs20
-    @test GNSSSignals.secondary_value(sec, 1, 20) == cs20[1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 7, k) for k = 0:19] == cs20
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 20) == cs20[1]
 
     # The tiered code applies the secondary chip once per 1 ms primary period:
     # period 0 uses CS20[0] = +1, period 1 uses CS20[1] = -1.
@@ -86,15 +84,15 @@ end
     @test sec isa PerPRNSecondaryCode
 
     # CS100_1 = 0x83F6F69D... -> first nibble 8 = 1000 -> +1,-1,-1,-1.
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:3] == Int8[1, -1, -1, -1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:3] == Int8[1, -1, -1, -1]
     # Per-PRN: PRN 2 (CS100_2 = 0x6655...) first nibble 6 = 0110 -> -1,+1,+1,-1.
-    @test [GNSSSignals.secondary_value(sec, 2, k) for k = 0:3] == Int8[-1, 1, 1, -1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 2, k) for k = 0:3] == Int8[-1, 1, 1, -1]
     # Wraps with period 100.
-    @test GNSSSignals.secondary_value(sec, 1, 100) == GNSSSignals.secondary_value(sec, 1, 0)
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 100) == GNSSSignals.get_secondary_code_chip(sec, 1, 0)
 
     # Tiered code: period 1 multiplies the primary by CS100_1[1] = -1.
     prim = get_codes(e5a_q)[:, 1]
-    @test get_code(e5a_q, 10230, 1) == prim[1] * GNSSSignals.secondary_value(sec, 1, 1)
+    @test get_code(e5a_q, 10230, 1) == prim[1] * GNSSSignals.get_secondary_code_chip(sec, 1, 1)
 end
 
 @testset "Galileo E5a gen_code! produces a sampled BPSK(10) replica" begin

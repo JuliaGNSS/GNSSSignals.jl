@@ -10,7 +10,6 @@
     @test get_signal_name(b1i) == "BeiDou B1I"
     @test @inferred(get_modulation(b1i)) == GNSSSignals.LOC()
     @test get_code_type(b1i) === Int16
-    @test GNSSSignals.get_code_factor(b1i) == 1
 
     # The B1I chip rate is 2× the C/A rate on the 1561.098 MHz carrier.
     @test get_code_center_frequency_ratio(b1i) ≈ 2_046_000 / 1_561_098_000
@@ -36,12 +35,12 @@ end
     # NH20 = 0 0 0 0 0 1 0 0 1 1 0 1 0 1 0 0 1 1 1 0, mapped 0 → -1, 1 → +1.
     nh20 = Int8[-1, -1, -1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -1, 1, -1, -1, 1, 1, 1, -1]
     # MEO/IGSO PRNs (6-58, D1) carry NH20 and wrap with period 20.
-    @test [GNSSSignals.secondary_value(sec, 7, k) for k = 0:19] == nh20
-    @test [GNSSSignals.secondary_value(sec, 58, k) for k = 0:19] == nh20
-    @test GNSSSignals.secondary_value(sec, 7, 20) == nh20[1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 7, k) for k = 0:19] == nh20
+    @test [GNSSSignals.get_secondary_code_chip(sec, 58, k) for k = 0:19] == nh20
+    @test GNSSSignals.get_secondary_code_chip(sec, 7, 20) == nh20[1]
     # GEO PRNs (1-5, 59-63, D2) carry no overlay — all-ones column (a no-op).
     for geo in (1, 5, 59, 63)
-        @test all(GNSSSignals.secondary_value(sec, geo, k) == 1 for k = 0:19)
+        @test all(GNSSSignals.get_secondary_code_chip(sec, geo, k) == 1 for k = 0:19)
     end
 
     # Tiered code on a D1 PRN: period 0 uses NH20[0] = -1, period 1 uses NH20[1].

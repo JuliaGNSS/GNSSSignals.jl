@@ -19,7 +19,6 @@
     @test @inferred(GNSSSignals.get_code_unsafe(e5b_i, 0.0, 1)) == 1
 
     # BPSK(10) spectrum, and 10.23 MHz against the 1207.14 MHz E5b carrier.
-    @test GNSSSignals.get_code_factor(e5b_i) == 1
     @test get_code_spectrum(e5b_i, 0) ≈ 1.0Hz / get_code_frequency(e5b_i)
     @test get_code_center_frequency_ratio(e5b_i) ≈ 1 / 118
 end
@@ -37,7 +36,6 @@ end
     @test @inferred(get_modulation(e5b_q)) == GNSSSignals.LOC()
     @test get_code_type(e5b_q) === Int16
 
-    @test GNSSSignals.get_code_factor(e5b_q) == 1
     @test get_code_spectrum(e5b_q, 0) ≈ 1.0Hz / get_code_frequency(e5b_q)
     @test get_code_center_frequency_ratio(e5b_q) ≈ 1 / 118
 end
@@ -76,7 +74,7 @@ const E5B_Q_FIRST24_HEX = [
         codes = get_codes(signal)
         @test size(codes) == (10230, 50)
         for prn = 1:50
-            @test codes[1:24, prn] == GNSSSignals.read_from_documentation(table[prn])
+            @test codes[1:24, prn] == read_from_documentation(table[prn])
         end
     end
     # The two components are generated from different register-2 polynomials, so
@@ -109,10 +107,10 @@ end
     sec = get_secondary_code(e5b_i)
     # CS4 = 0xE -> 1110 (MSB-first), 0 -> -1, 1 -> +1.
     cs4 = Int8[1, 1, 1, -1]
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:3] == cs4
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:3] == cs4
     # Shared across SVIDs, and wraps with period 4.
-    @test [GNSSSignals.secondary_value(sec, 33, k) for k = 0:3] == cs4
-    @test GNSSSignals.secondary_value(sec, 1, 4) == cs4[1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 33, k) for k = 0:3] == cs4
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 4) == cs4[1]
 
     # One secondary chip per 1 ms primary period -> a 4 ms tiered code.
     prim = get_codes(e5b_i)[:, 1]
@@ -132,8 +130,8 @@ end
     @test isempty(intersect(Set(eachcol(sec.codes)), Set(eachcol(e5a_q_codes))))
     # CS100_51 = 0xCFF914EE3C6126A49FD5E5C94 -> 1100 1111 1111 ... MSB-first.
     cs100_51 = Int8[1, 1, -1, -1, 1, 1, 1, 1, 1, 1, 1, 1]
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:11] == cs100_51
-    @test GNSSSignals.secondary_value(sec, 1, 100) == cs100_51[1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:11] == cs100_51
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 100) == cs100_51[1]
 
     prim = get_codes(e5b_q)[:, 1]
     @test get_code(e5b_q, 0, 1) == prim[1] * cs100_51[1]

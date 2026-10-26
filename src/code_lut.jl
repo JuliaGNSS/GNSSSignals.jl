@@ -385,7 +385,7 @@ julia> get_code_amplitude(GalileoE1B())   # sqrt(19^2 + 6^2)
 # per-PRN/-shared ±1 chips.
 function _residual_secondary_for_prn(sec::SecondaryCode, prn::Integer)
     Ls = secondary_code_length(sec)
-    Ls == 1 ? Int8[1] : Int8[Int8(secondary_value(sec, prn, s)) for s in 0:Ls-1]
+    Ls == 1 ? Int8[1] : Int8[Int8(get_secondary_code_chip(sec, prn, s)) for s in 0:Ls-1]
 end
 
 # Build a transient, view-backed `CodeLUT.ModulatedCode` over PRN `prn`'s column of `lut.padded`

@@ -10,7 +10,6 @@
     @test get_signal_name(b3i) == "BeiDou B3I"
     @test @inferred(get_modulation(b3i)) == GNSSSignals.LOC()
     @test get_code_type(b3i) === Int16
-    @test GNSSSignals.get_code_factor(b3i) == 1
     @test get_code_spectrum(b3i, 0) ≈ 1.0Hz / get_code_frequency(b3i)
 end
 
@@ -48,9 +47,9 @@ end
 @testset "BeiDou B3I secondary code (NH20, D1 MEO/IGSO only)" begin
     sec = get_secondary_code(BeiDouB3I())
     nh20 = Int8[-1, -1, -1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -1, 1, -1, -1, 1, 1, 1, -1]
-    @test [GNSSSignals.secondary_value(sec, 6, k) for k = 0:19] == nh20   # D1 (MEO/IGSO)
+    @test [GNSSSignals.get_secondary_code_chip(sec, 6, k) for k = 0:19] == nh20   # D1 (MEO/IGSO)
     for geo in (1, 5, 59, 63)                                             # D2 (GEO): no overlay
-        @test all(GNSSSignals.secondary_value(sec, geo, k) == 1 for k = 0:19)
+        @test all(GNSSSignals.get_secondary_code_chip(sec, geo, k) == 1 for k = 0:19)
     end
 end
 

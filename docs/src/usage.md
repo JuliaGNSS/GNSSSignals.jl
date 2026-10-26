@@ -63,7 +63,7 @@ rate by at most `N · 2^-31` sub-chips over `N` samples.
 
 **Closed-loop tracking is unaffected**: integrations are short (the bound is ≈ 1e-4 chips
 for a 200k-sample epoch), and the phase is re-anchored to the exact float `start_phase` on
-every `gen_code!` call and every `code_engine` rebuild (e.g. each Doppler update).
+every `gen_code!` call and every `GNSSSignals.code_engine` rebuild (e.g. each Doppler update).
 
 For **open-loop, second-scale constant-rate fills** (simulation, snapshot processing) the
 drift reaches ~0.01–0.02 chips per second at 50 MHz, because the continuing engine never
@@ -200,7 +200,7 @@ get_code_frequency(gal_e1b)      # 1023000 Hz
 get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 ```
 
-Note that the single-chip accessor [`get_code`](@ref) returns floating-point values for Galileo E1B (the CBOC subcarrier amplitudes are irrational), and `get_code_type(GalileoE1B())` is `Float32`. [`gen_code!`](@ref), however, always outputs `Int8`: for CBOC it bakes an `Int8` integer approximation of the two sub-carrier amplitudes (default `(19, 6) → ±25, ±13`), which is sign-identical to the spec with ~0 dB correlation loss.
+Note that the single-chip accessor [`get_code`](@ref) returns floating-point values for Galileo E1B (the CBOC subcarrier amplitudes are irrational), and `GNSSSignals.get_code_type(GalileoE1B())` is `Float32`. [`gen_code!`](@ref), however, always outputs `Int8`: for CBOC it bakes an `Int8` integer approximation of the two sub-carrier amplitudes (default `(19, 6) → ±25, ±13`), which is sign-identical to the spec with ~0 dB correlation loss.
 
 ### Galileo E1B (BOC(1,1) approximation)
 
@@ -210,7 +210,7 @@ Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11
 e1b = GalileoE1B_BOC11()
 get_code_length(e1b)         # 4092
 get_modulation(e1b)          # BOCsin(1, 1)
-get_code_type(e1b)           # Int16  (the get_code accessor type; gen_code! is Int8)
+GNSSSignals.get_code_type(e1b) # Int16  (the get_code accessor type; gen_code! is Int8)
 ```
 
 [`gen_code!`](@ref) outputs `Int8` for both variants. The reason to choose [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) over [`GalileoE1B`](@ref) is the **much lower minimum sampling rate** (`fs ≥ 2 · 1.023` MHz vs `12 · 1.023` MHz) when the ~0.45 dB loss is acceptable.
@@ -235,7 +235,7 @@ A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the B
 ```julia
 e1c = GalileoE1C_BOC11()
 get_modulation(e1c)          # BOCsin(1, 1)
-get_code_type(e1c)           # Int16  (the get_code accessor type; gen_code! is Int8)
+GNSSSignals.get_code_type(e1c) # Int16  (the get_code accessor type; gen_code! is Int8)
 ```
 
 ### Galileo E5a-I
@@ -443,6 +443,7 @@ psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
    ```
 
    For repeated integrations that continue seamlessly across blocks (tracking), build a
-   [`code_engine`](@ref)`(signal, prn, fs, fc)` once, seed `st = code_state(eng)`, and call
+   [`GNSSSignals.code_engine`](@ref)`(signal, prn, fs, fc)` once, seed
+   `st = GNSSSignals.code_state(eng)`, and call
    `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
    is allocation-free, and threading the returned state continues the stream seamlessly.

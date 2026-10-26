@@ -10,7 +10,6 @@
     @test get_signal_name(b1c_d) == "BeiDou B1C data"
     # Data component is sine-phased BOC(1,1).
     @test @inferred(get_modulation(b1c_d)) == GNSSSignals.BOCsin(1, 1)
-    @test GNSSSignals.get_code_factor(b1c_d) == 1
 end
 
 @testset "BeiDou B1C pilot (P)" begin
@@ -43,8 +42,8 @@ end
     _bd_verify_octal(overlay, ICD_B1C_PILOT_SEC)
     # And via the public secondary interface (period-1800 per-PRN overlay).
     sec = get_secondary_code(b1c_p)
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:1799] == overlay[:, 1]
-    @test GNSSSignals.secondary_value(sec, 1, 1800) == overlay[1, 1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:1799] == overlay[:, 1]
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 1800) == overlay[1, 1]
 end
 
 @testset "BeiDou B1C gen_code! runs (BOC(1,1) LUT path)" begin

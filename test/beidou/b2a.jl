@@ -42,9 +42,9 @@ end
     sec = get_secondary_code(b2a_i)
     # Fixed 5-bit 00010, shared across SVIDs, mapped 0 → -1, 1 → +1.
     s5 = Int8[-1, -1, -1, 1, -1]
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:4] == s5
-    @test [GNSSSignals.secondary_value(sec, 30, k) for k = 0:4] == s5
-    @test GNSSSignals.secondary_value(sec, 1, 5) == s5[1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:4] == s5
+    @test [GNSSSignals.get_secondary_code_chip(sec, 30, k) for k = 0:4] == s5
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 5) == s5[1]
 end
 
 @testset "BeiDou B2a pilot secondary codes match the ICD" begin
@@ -54,8 +54,8 @@ end
     _bd_verify_octal(sec_mat, ICD_B2A_PILOT_SEC)
     # And via the public secondary interface (period-100 per-PRN overlay).
     sec = get_secondary_code(b2a_q)
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:99] == sec_mat[:, 1]
-    @test GNSSSignals.secondary_value(sec, 1, 100) == sec_mat[1, 1]
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:99] == sec_mat[:, 1]
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 100) == sec_mat[1, 1]
 end
 
 @testset "BeiDou B2a gen_code! produces a sampled BPSK(10) replica" begin

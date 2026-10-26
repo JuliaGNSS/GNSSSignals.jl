@@ -49,19 +49,12 @@ export AbstractGNSSSignal,
     TMBOC,
     gen_code!,
     gen_code,
-    code_engine,
-    code_state,
-    code_lookup,
-    code_advance,
-    code_width,
     get_codes,
-    get_code_type,
     get_code_length,
     get_secondary_code_length,
     get_center_frequency,
     get_code_frequency,
     get_code,
-    get_code_unsafe,
     get_code_amplitude,
     get_data_frequency,
     get_carrier_phase_offset,
@@ -86,13 +79,9 @@ export AbstractGNSSSignal,
     get_tai_system_start_time,
     get_epoch_offset,
     get_tai_offset,
-    min_bits_for_code_length,
     get_modulation,
     get_secondary_code,
-    SecondaryCode,
-    NoSecondaryCode,
-    SharedSecondaryCode,
-    PerPRNSecondaryCode
+    get_secondary_code_chip
 
 """
     AbstractGNSSSignal{C}
@@ -215,7 +204,7 @@ by `code_length` and the number of PRNs by `num_prns`.
 
 # Examples
 ```julia-repl
-julia> read_in_codes(Int8, "/data/gpsl1cacodes.bin", 32, 1023)
+julia> GNSSSignals.read_in_codes(Int8, "/data/gpsl1cacodes.bin", 32, 1023)
 ```
 """
 function read_in_codes(::Type{T}, filename, num_prns, code_length) where {T}

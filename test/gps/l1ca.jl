@@ -14,8 +14,6 @@
     @test @inferred(get_modulation(gpsl1ca)) == GNSSSignals.LOC()
     @test get_signal_name(gpsl1ca) == "GPS L1 C/A"
 
-    @test GNSSSignals.get_code_factor(gpsl1ca) == 1
-
     @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_code_frequency(gpsl1ca)
     @testset "Test $(m). zero" for m = 1:10
         @test get_code_spectrum(gpsl1ca, m * get_code_frequency(gpsl1ca)) == 0

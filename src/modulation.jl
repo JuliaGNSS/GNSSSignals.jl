@@ -159,9 +159,9 @@ this is typically `Int16`. For CBOC signals, this is a floating-point type.
 
 # Examples
 ```julia-repl
-julia> get_code_type(GPSL1CA())
+julia> GNSSSignals.get_code_type(GPSL1CA())
 Int16
-julia> get_code_type(GalileoE1B())
+julia> GNSSSignals.get_code_type(GalileoE1B())
 Float32
 ```
 """
@@ -173,12 +173,6 @@ get_code_type(signal::T) where {T<:AbstractGNSSSignal} = get_code_type(signal, g
 get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} = eltype(C)
 get_code_type(signal::AbstractGNSSSignal{C}, modulation::CBOC) where {C} =
     promote_type(eltype(C), typeof(modulation.boc1_power))
-
-get_code_factor(signal::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
-get_code_factor(modulation::LOC) = 1
-get_code_factor(modulation::BOC) = modulation.n
-get_code_factor(modulation::CBOC) = modulation.boc1.n
-get_code_factor(modulation::TMBOC) = modulation.boc1.n
 
 """
 $(SIGNATURES)
@@ -331,7 +325,7 @@ function get_code(modulation::BOC, signal::AbstractGNSSSignal, phase, prn::Integ
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
     get_code_at_index(signal, chip_idx, prn) *
-    secondary_value(sec, prn, sec_idx) *
+    get_secondary_code_chip(sec, prn, sec_idx) *
     get_subcarrier_code(modulation, phase)
 end
 
@@ -350,7 +344,7 @@ function get_code(modulation::LOC, signal::AbstractGNSSSignal, phase, prn::Integ
     absolute_chip = mod(floored_phase, primary_length * sec_len)
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
-    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    get_code_at_index(signal, chip_idx, prn) * get_secondary_code_chip(sec, prn, sec_idx)
 end
 
 Base.@propagate_inbounds function get_code_at_index(
@@ -382,7 +376,7 @@ The phase must be within `[0, code_length * secondary_code_length)`.
 
 # Examples
 ```julia-repl
-julia> get_code_unsafe(GPSL1CA(), 500.0, 1)
+julia> GNSSSignals.get_code_unsafe(GPSL1CA(), 500.0, 1)
 ```
 """
 Base.@propagate_inbounds function get_code_unsafe(
@@ -413,7 +407,7 @@ Base.@propagate_inbounds function get_code_unsafe(
     chip_idx = mod(floored_phase, primary_length)
     sec_idx = div(floored_phase, primary_length)
     get_code_at_index(signal, chip_idx, prn) *
-    secondary_value(sec, prn, sec_idx) *
+    get_secondary_code_chip(sec, prn, sec_idx) *
     get_subcarrier_code(modulation, phase)
 end
 
@@ -436,5 +430,5 @@ Base.@propagate_inbounds function get_code_unsafe(
     sec = get_secondary_code(signal)
     chip_idx = mod(floored_phase, primary_length)
     sec_idx = div(floored_phase, primary_length)
-    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    get_code_at_index(signal, chip_idx, prn) * get_secondary_code_chip(sec, prn, sec_idx)
 end

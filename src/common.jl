@@ -323,18 +323,6 @@ and folds to a compile-time constant.
 """
 @inline get_relative_power(s::AbstractGNSSSignal) = get_relative_power(typeof(s))
 
-# NOTE: the legacy fixed-point `gen_code!` and its `sample_code!` / `dispatch_sample_code_worker!`
-# / `sample_code_worker!` / `sample_code_worker_generic!` / `sample_code_tail!` /
-# `_pad_inner_iterations` machinery (plus the `SAMPLE_CODE_INNER_THRESHOLD` / `HAS_AVX512`
-# constants), and the `_select_codes_for` secondary-matrix selector (with its GPSL5I/GPSL1C_P
-# specializations and their cached `negated_codes` fields), have all been retired: the embedded
-# SIMD LUT in `code_lut.jl` is now THE `gen_code!`. The subcarrier multiply
-# (`multiply_with_subcarrier!`, the `calc_subcarrier_*` helpers, and the `_tmboc_*` /
-# `_pack_tmboc_pattern` TMBOC kernels) has now been retired too — it had no production caller
-# once the LUT became `gen_code!`. What remains here is just `get_codes` /
-# `widen_codes_to_storage`, the allocating `gen_code` wrapper, and the `get_code_spectrum_*`
-# helpers. `get_code` / `get_code_unsafe` (modulation.jl) never used any of the deleted helpers.
-
 """
 $(SIGNATURES)
 
@@ -399,32 +387,6 @@ julia> get_code_center_frequency_ratio(GPSL1CA())
 """
 @inline function get_code_center_frequency_ratio(signal::AbstractGNSSSignal)
     get_code_frequency(signal) / get_center_frequency(signal)
-end
-
-"""
-$(SIGNATURES)
-
-Get the minimum number of bits needed to represent the code length.
-
-Calculates the number of bits required to represent the full code length,
-including secondary code if present.
-
-# Arguments
-- `signal`: A GNSS signal instance
-
-# Returns
-- `Int`: Number of bits needed
-
-# Examples
-```julia-repl
-julia> min_bits_for_code_length(GPSL1CA())
-10
-julia> min_bits_for_code_length(GPSL5I())
-17
-```
-"""
-@inline function min_bits_for_code_length(signal::AbstractGNSSSignal)
-    ndigits(get_code_length(signal) * get_secondary_code_length(signal); base = 2)
 end
 
 """

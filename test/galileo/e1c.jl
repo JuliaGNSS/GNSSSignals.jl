@@ -17,7 +17,7 @@
     # is `a − b`, where E1B's would be `a + b`. The primary chip and CS25
     # secondary chip 0 multiply on top.
     prim0 = get_codes(galileo_e1c)[1, 1]
-    sec0 = GNSSSignals.secondary_value(get_secondary_code(galileo_e1c), 1, 0)
+    sec0 = GNSSSignals.get_secondary_code_chip(get_secondary_code(galileo_e1c), 1, 0)
     @test @inferred(get_code(galileo_e1c, 0, 1)) ≈ prim0 * sec0 * (a - b)
     @test @inferred(get_code(galileo_e1c, 0.0, 1)) ≈ prim0 * sec0 * (a - b)
     # phase 0.5: BOC(1,1) flips to −1, BOC(6,1) stays +1 → subcarrier −a − b.
@@ -26,8 +26,6 @@
           get_codes(galileo_e1c)[2, 1] * sec0 * (a - b)
     @test @inferred(GNSSSignals.get_code_unsafe(galileo_e1c, 0.0, 1)) ≈
           prim0 * sec0 * (a - b)
-
-    @test GNSSSignals.get_code_factor(galileo_e1c) == 1
 
     # PSD is independent of the BOC(6,1) sign, so E1C and E1B share a spectrum.
     @test get_code_spectrum(galileo_e1c, 0) == 0.0
@@ -54,11 +52,11 @@ end
     # sign convention).
     cs25_bits = "0011100000001010110110010"
     expected = [c == '1' ? Int8(1) : Int8(-1) for c in cs25_bits]
-    @test [GNSSSignals.secondary_value(sec, 1, k) for k = 0:24] == expected
+    @test [GNSSSignals.get_secondary_code_chip(sec, 1, k) for k = 0:24] == expected
 
     # Shared across PRNs and wraps modulo 25.
-    @test GNSSSignals.secondary_value(sec, 1, 0) == GNSSSignals.secondary_value(sec, 30, 0)
-    @test GNSSSignals.secondary_value(sec, 1, 25) == GNSSSignals.secondary_value(sec, 1, 0)
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 0) == GNSSSignals.get_secondary_code_chip(sec, 30, 0)
+    @test GNSSSignals.get_secondary_code_chip(sec, 1, 25) == GNSSSignals.get_secondary_code_chip(sec, 1, 0)
 
     # Tiered-code overlay: at integer chip phases the CBOC(−) subcarrier is
     # the constant `a − b`, so each 4092-chip primary period is just the
@@ -99,7 +97,6 @@ end
 
     # Modulation differs from full E1C's CBOC.
     @test @inferred(get_modulation(e1c)) == BOCsin(1, 1)
-    @test GNSSSignals.get_code_factor(e1c) == 1
 
     # Output element type stays integer (the whole point of dropping the
     # BOC(6,1) component).
@@ -107,8 +104,8 @@ end
 
     # Primary and secondary codes match the full GalileoE1C chip-for-chip.
     @test get_codes(e1c) == get_codes(GalileoE1C())
-    @test [GNSSSignals.secondary_value(get_secondary_code(e1c), 1, k) for k = 0:24] ==
-          [GNSSSignals.secondary_value(get_secondary_code(GalileoE1C()), 1, k) for k = 0:24]
+    @test [GNSSSignals.get_secondary_code_chip(get_secondary_code(e1c), 1, k) for k = 0:24] ==
+          [GNSSSignals.get_secondary_code_chip(get_secondary_code(GalileoE1C()), 1, k) for k = 0:24]
 end
 
 @testset "Galileo E1C gen_code! sign matches get_code" begin

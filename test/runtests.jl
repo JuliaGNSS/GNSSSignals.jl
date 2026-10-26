@@ -1,6 +1,11 @@
 using Test, GNSSSignals, Statistics, Aqua
 import Unitful: Hz, MHz, Frequency
-import GNSSSignals: BOCsin, BOCcos, CBOC
+import GNSSSignals: BOCsin, BOCcos, CBOC, TMBOC
+# The documented API reached qualified, which the tests name throughout.
+using GNSSSignals:
+    SecondaryCode, NoSecondaryCode, SharedSecondaryCode, PerPRNSecondaryCode,
+    code_engine, code_state, code_lookup, code_advance, code_width,
+    get_code_type, get_code_unsafe
 using CodecZlib: GzipDecompressorStream
 
 # Every concrete signal, band and time system the package defines. A type added
@@ -37,6 +42,14 @@ const ALL_SIGNALS = (
 )
 const ALL_BANDS = (L1, L2, L5, B1I, B3I, E5b, E6)
 const ALL_TIME_SYSTEMS = (GPST, GST, BDT)
+
+# The ±1 chips of a code as an ICD prints it, in hex (spaces and line breaks ignored).
+function read_from_documentation(raw_code)
+    raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
+    code_hex_array = map(x -> parse(UInt16, x; base = 16), collect(raw_code_without_spaces))
+    code_bit_string = string(string.(code_hex_array, base = 2, pad = 4)...)
+    map(x -> parse(Int8, x; base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
+end
 
 # Decode a hex-packed ±1 sample fixture (LSB-first packing into hex
 # nibbles, so 4 samples per nibble). Bit 0 of nibble `k` holds sample

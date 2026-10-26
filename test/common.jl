@@ -85,13 +85,6 @@ end
     @test get_carrier_phase_offset(GPSL1CA) == get_carrier_phase_offset(GPSL1CA())
 end
 
-@testset "min_bits_for_code_length" begin
-    @test min_bits_for_code_length(GPSL1CA()) == 10  # 1023 requires 10 bits
-    @test min_bits_for_code_length(GPSL5I()) == 17  # 10230 * 10 = 102300 requires 17 bits
-    @test min_bits_for_code_length(GalileoE1B()) == 12  # 4092 requires 12 bits
-    @test min_bits_for_code_length(GalileoE1C()) == 17  # 4092 * 25 = 102300 requires 17 bits
-end
-
 @testset "get_signal_name" begin
     @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
     @test get_signal_name(GPSL5I()) == "GPS L5-I"
@@ -206,20 +199,20 @@ end
     @test gpsl5i_sec isa SharedSecondaryCode{10}
     @test GNSSSignals.secondary_code_length(gpsl5i_sec) == 10
     # NH10 = (1, 1, 1, 1, -1, -1, 1, -1, 1, -1); prn is ignored for SharedSecondaryCode.
-    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 0) == 1
-    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 4) == -1
-    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 9) == -1
+    @test GNSSSignals.get_secondary_code_chip(gpsl5i_sec, 1, 0) == 1
+    @test GNSSSignals.get_secondary_code_chip(gpsl5i_sec, 1, 4) == -1
+    @test GNSSSignals.get_secondary_code_chip(gpsl5i_sec, 1, 9) == -1
     # Index wraps modulo length.
-    @test GNSSSignals.secondary_value(gpsl5i_sec, 1, 10) == 1
+    @test GNSSSignals.get_secondary_code_chip(gpsl5i_sec, 1, 10) == 1
 
-    # L1 C/A and E1B have NoSecondaryCode; secondary_value returns `true`
+    # L1 C/A and E1B have NoSecondaryCode; get_secondary_code_chip returns `true`
     # (so multiplication is a true no-op preserving eltype).
     for sig in (GPSL1CA(), GalileoE1B())
         sec = get_secondary_code(sig)
         @test sec isa NoSecondaryCode
         @test GNSSSignals.secondary_code_length(sec) == 1
-        @test GNSSSignals.secondary_value(sec, 1, 0) === true
-        @test GNSSSignals.secondary_value(sec, 7, 42) === true
+        @test GNSSSignals.get_secondary_code_chip(sec, 1, 0) === true
+        @test GNSSSignals.get_secondary_code_chip(sec, 7, 42) === true
     end
 end
 
@@ -477,22 +470,22 @@ end
     # GPS L1C-P (PerPRNSecondaryCode) at the chip-aligned 12.276 MHz rate.
     let signal = GPSL1C_P(), prn = 2, primary = get_code_length(signal),
         sr = 12.276e6Hz, cf = 1023e3Hz, sec = GNSSSignals.get_secondary_code(signal)
-        s0 = GNSSSignals.secondary_value(sec, prn, 0)
+        s0 = GNSSSignals.get_secondary_code_chip(sec, prn, 0)
         for sec_offset in 0:5, N in (12, 24, 100)
             buf0 = Vector{Int8}(undef, N); gen_code!(buf0, signal, prn, sr, cf, 0.0, 0)
             buf1 = Vector{Int8}(undef, N); gen_code!(buf1, signal, prn, sr, cf, Float64(sec_offset * primary), 0)
-            sk = GNSSSignals.secondary_value(sec, prn, sec_offset)
+            sk = GNSSSignals.get_secondary_code_chip(sec, prn, sec_offset)
             @test buf1 == (Int(sk) * Int(s0) > 0 ? buf0 : .-buf0)
         end
     end
     # GPS L5-I (SharedSecondaryCode = NH10).
     let signal = GPSL5I(), prn = 1, primary = get_code_length(signal),
         sr = 25e6Hz, cf = 10230e3Hz, sec = GNSSSignals.get_secondary_code(signal)
-        s0 = GNSSSignals.secondary_value(sec, prn, 0)
+        s0 = GNSSSignals.get_secondary_code_chip(sec, prn, 0)
         for sec_offset in 0:9, N in (12, 24, 100)
             buf0 = Vector{Int8}(undef, N); gen_code!(buf0, signal, prn, sr, cf, 0.0, 0)
             buf1 = Vector{Int8}(undef, N); gen_code!(buf1, signal, prn, sr, cf, Float64(sec_offset * primary), 0)
-            sk = GNSSSignals.secondary_value(sec, prn, sec_offset)
+            sk = GNSSSignals.get_secondary_code_chip(sec, prn, sec_offset)
             @test buf1 == (Int(sk) * Int(s0) > 0 ? buf0 : .-buf0)
         end
     end
