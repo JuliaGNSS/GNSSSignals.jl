@@ -1,9 +1,11 @@
-# Keeps the API reference honest: every export is documented, every documented name
-# exists, and the documented names that are not exported are exactly the ones meant to be
-# reached qualified.
+# Keeps the API reference, across its three pages, honest: every export is documented,
+# every documented name exists, and the documented names that are not exported are
+# exactly the ones meant to be reached qualified.
 @testset "API reference" begin
     documented = Set{Symbol}()
-    for line in eachline(joinpath(@__DIR__, "..", "docs", "src", "api.md"))
+    for page in ("api.md", "bands_and_time_systems.md", "codes.md"),
+        line in eachline(joinpath(@__DIR__, "..", "docs", "src", page))
+
         m = match(r"^GNSSSignals\.(\w+!?)$", strip(line))
         isnothing(m) || push!(documented, Symbol(m[1]))
     end
