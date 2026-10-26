@@ -10,7 +10,6 @@
     @test get_signal_name(b1c_d) == "BeiDou B1C data"
     # Data component is sine-phased BOC(1,1).
     @test @inferred(get_modulation(b1c_d)) == GNSSSignals.BOCsin(1, 1)
-    @test GNSSSignals.get_code_factor(b1c_d) == 1
 end
 
 @testset "BeiDou B1C pilot (P)" begin

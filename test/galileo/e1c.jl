@@ -27,8 +27,6 @@
     @test @inferred(GNSSSignals.get_code_unsafe(galileo_e1c, 0.0, 1)) ≈
           prim0 * sec0 * (a - b)
 
-    @test GNSSSignals.get_code_factor(galileo_e1c) == 1
-
     # PSD is independent of the BOC(6,1) sign, so E1C and E1B share a spectrum.
     @test get_code_spectrum(galileo_e1c, 0) == 0.0
     @test get_code_spectrum(galileo_e1c, 100e3) == get_code_spectrum(GalileoE1B(), 100e3)
@@ -99,7 +97,6 @@ end
 
     # Modulation differs from full E1C's CBOC.
     @test @inferred(get_modulation(e1c)) == BOCsin(1, 1)
-    @test GNSSSignals.get_code_factor(e1c) == 1
 
     # Output element type stays integer (the whole point of dropping the
     # BOC(6,1) component).

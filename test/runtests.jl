@@ -38,6 +38,14 @@ const ALL_SIGNALS = (
 const ALL_BANDS = (L1, L2, L5, B1I, B3I, E5b, E6)
 const ALL_TIME_SYSTEMS = (GPST, GST, BDT)
 
+# The ±1 chips of a code as an ICD prints it, in hex (spaces and line breaks ignored).
+function read_from_documentation(raw_code)
+    raw_code_without_spaces = replace(replace(raw_code, " " => ""), "\n" => "")
+    code_hex_array = map(x -> parse(UInt16, x; base = 16), collect(raw_code_without_spaces))
+    code_bit_string = string(string.(code_hex_array, base = 2, pad = 4)...)
+    map(x -> parse(Int8, x; base = 2), collect(code_bit_string)) .* Int8(2) .- Int8(1)
+end
+
 # Decode a hex-packed ±1 sample fixture (LSB-first packing into hex
 # nibbles, so 4 samples per nibble). Bit 0 of nibble `k` holds sample
 # `4k+1`, bit 3 holds sample `4k+4`. Bit value 0 → -1, 1 → +1.

@@ -176,12 +176,6 @@ get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} = eltype(C)
 get_code_type(signal::AbstractGNSSSignal{C}, modulation::CBOC) where {C} =
     promote_type(eltype(C), typeof(modulation.boc1_power))
 
-get_code_factor(signal::T) where {T<:AbstractGNSSSignal} = get_code_factor(get_modulation(T))
-get_code_factor(modulation::LOC) = 1
-get_code_factor(modulation::BOC) = modulation.n
-get_code_factor(modulation::CBOC) = modulation.boc1.n
-get_code_factor(modulation::TMBOC) = modulation.boc1.n
-
 """
 $(SIGNATURES)
 

@@ -24,8 +24,6 @@
     @test mod.pattern[30] == true   # position 29
     @test mod.pattern[2]  == false  # position 1
     @test mod.pattern[33] == false  # position 32
-
-    @test GNSSSignals.get_code_factor(sig) == 1
 end
 
 @testset "gen_code! integration: GPS L1C-D and L1C-P run without error" begin

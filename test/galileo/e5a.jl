@@ -19,7 +19,6 @@
 
     # BPSK(10) spectrum and code/center-frequency ratio (E5a shares the L5
     # band, so the ratio is the same 1/115 as GPS L5-I).
-    @test GNSSSignals.get_code_factor(e5a_i) == 1
     @test get_code_spectrum(e5a_i, 0) ≈ 1.0Hz / get_code_frequency(e5a_i)
     @test get_code_center_frequency_ratio(e5a_i) ≈ 1 / 115
 end
@@ -37,7 +36,6 @@ end
     @test @inferred(get_modulation(e5a_q)) == GNSSSignals.LOC()
     @test get_code_type(e5a_q) === Int16
 
-    @test GNSSSignals.get_code_factor(e5a_q) == 1
     @test get_code_spectrum(e5a_q, 0) ≈ 1.0Hz / get_code_frequency(e5a_q)
     @test get_code_center_frequency_ratio(e5a_q) ≈ 1 / 115
 end

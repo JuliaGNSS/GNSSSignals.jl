@@ -17,7 +17,4 @@
     @test get_code(sig, 0, 1) == sig.codes[1, 1]
     @test get_code(sig, 1, 1) == sig.codes[2, 1]
     @test get_code(sig, 10230, 1) == sig.codes[1, 1]   # phase wraps modulo code length
-
-    # get_code_factor for BOC(1,1) is n = 1.
-    @test GNSSSignals.get_code_factor(sig) == 1
 end

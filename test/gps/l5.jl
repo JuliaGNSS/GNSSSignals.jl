@@ -78,8 +78,6 @@ end
     @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.LOC()
     @test get_code_type(gpsl5i) === Int16
 
-    @test GNSSSignals.get_code_factor(gpsl5i) == 1
-
     @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_code_frequency(gpsl5i)
     @testset "Test $(m). zero" for m = 1:10
         @test get_code_spectrum(gpsl5i, m * get_code_frequency(gpsl5i)) == 0
@@ -130,7 +128,6 @@ end
 
     # BPSK(10) spectrum and code/center-frequency ratio (Q5 shares the L5
     # band, so the ratio is the same 1/115 as GPS L5-I).
-    @test GNSSSignals.get_code_factor(gpsl5q) == 1
     @test get_code_spectrum(gpsl5q, 0) ≈ 1.0Hz / get_code_frequency(gpsl5q)
     @testset "Test $(m). zero" for m = 1:10
         @test get_code_spectrum(gpsl5q, m * get_code_frequency(gpsl5q)) == 0
