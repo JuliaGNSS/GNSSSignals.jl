@@ -91,13 +91,6 @@ end
     @test get_carrier_phase_offset(GPSL1CA) == get_carrier_phase_offset(GPSL1CA())
 end
 
-@testset "min_bits_for_code_length" begin
-    @test min_bits_for_code_length(GPSL1CA()) == 10  # 1023 requires 10 bits
-    @test min_bits_for_code_length(GPSL5I()) == 17  # 10230 * 10 = 102300 requires 17 bits
-    @test min_bits_for_code_length(GalileoE1B()) == 12  # 4092 requires 12 bits
-    @test min_bits_for_code_length(GalileoE1C()) == 17  # 4092 * 25 = 102300 requires 17 bits
-end
-
 @testset "get_signal_name" begin
     @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
     @test get_signal_name(GPSL5I()) == "GPS L5-I"

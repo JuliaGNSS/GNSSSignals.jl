@@ -79,7 +79,6 @@ export AbstractGNSSSignal,
     get_epoch_offset,
     get_leap_second_offset,
     get_tai_offset,
-    min_bits_for_code_length,
     get_modulation,
     get_secondary_code
 

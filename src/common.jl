@@ -404,32 +404,6 @@ end
 """
 $(SIGNATURES)
 
-Get the minimum number of bits needed to represent the code length.
-
-Calculates the number of bits required to represent the full code length,
-including secondary code if present.
-
-# Arguments
-- `signal`: A GNSS signal instance
-
-# Returns
-- `Int`: Number of bits needed
-
-# Examples
-```julia-repl
-julia> min_bits_for_code_length(GPSL1CA())
-10
-julia> min_bits_for_code_length(GPSL5I())
-17
-```
-"""
-@inline function min_bits_for_code_length(signal::AbstractGNSSSignal)
-    ndigits(get_code_length(signal) * get_secondary_code_length(signal); base = 2)
-end
-
-"""
-$(SIGNATURES)
-
 Get the length of the secondary code.
 
 # Arguments
