@@ -5,15 +5,16 @@ Abstract supertype for a GNSS time scale.
 
 A *time system* is a continuous atomic time scale (no leap seconds) that a
 constellation references its broadcast time to: [`GPST`](@ref) for the GPS
-signals, [`GST`](@ref) for the Galileo signals. Signals that report the same
-time system share a receiver clock bias — that is the architectural reason
-this abstraction exists, mirroring [`Band`](@ref) for the RF carrier.
+signals, [`GST`](@ref) for the Galileo signals, [`BDT`](@ref) for the BeiDou
+signals. Signals that report the same time system share a receiver clock bias —
+that is the architectural reason this abstraction exists, mirroring
+[`Band`](@ref) for the RF carrier.
 
-A time scale is fixed by two constants, both queried through it:
-[`get_system_start_time`](@ref) (its epoch) and [`get_tai_offset`](@ref) (its
-offset from TAI). Cross-scale arithmetic needs the epoch on a continuous
-scale, which those two alone cannot reconstruct — see
-[`get_tai_system_start_time`](@ref) and [`get_epoch_offset`](@ref).
+A time scale is fixed by its epoch ([`get_system_start_time`](@ref) as a UTC
+label, [`get_tai_system_start_time`](@ref) on the continuous TAI scale) and its
+offset from TAI ([`get_tai_offset`](@ref)). Between two scales,
+[`get_epoch_offset`](@ref) gives the elapsed seconds between their epochs and
+[`get_leap_second_offset`](@ref) the whole seconds between their counts.
 """
 abstract type TimeSystem end
 
@@ -305,7 +306,7 @@ julia> get_leap_second_offset(GST(), GPST())
 """
 $(SIGNATURES)
 
-Get the `Symbol` identifier of a [`TimeSystem`](@ref) — `:GPST` or `:GST`.
+Get the `Symbol` identifier of a [`TimeSystem`](@ref) — `:GPST`, `:GST` or `:BDT`.
 
 The machine-readable key for a time scale: the level at which signals share a
 receiver clock bias, so every signal referenced to the same scale maps to the
@@ -335,8 +336,8 @@ julia> get_time_system_id(GalileoE1B)
 """
 $(SIGNATURES)
 
-Get the human-readable name of a [`TimeSystem`](@ref) — `"GPS Time"` or
-`"Galileo System Time"`.
+Get the human-readable name of a [`TimeSystem`](@ref) — `"GPS Time"`,
+`"Galileo System Time"` or `"BeiDou Time"`.
 
 The display counterpart to [`get_time_system_id`](@ref) — same granularity, but
 a `String` meant for log lines and user-facing output rather than a key to branch
