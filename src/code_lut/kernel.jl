@@ -62,7 +62,7 @@ end
 """
     chips_per_sample(code_frequency, sampling_frequency)
 
-Normalised chip rate `code_frequency / sampling_frequency` (chips advanced per sample).
+Normalised code frequency `code_frequency / sampling_frequency` (chips advanced per sample).
 Pass the result to [`generate_code!`](@ref) / [`generate_code`](@ref). Must be ≤ 1
 (the front-end must oversample, `sampling_frequency ≥ code_frequency`).
 """

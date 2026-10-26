@@ -24,7 +24,7 @@ const GPS_L2CM_CODE_LENGTH = 10230
 const GPS_L2CL_CODE_LENGTH = 767250
 
 # Chip rate shared by both components (IS-GPS-200N §3.2.1.4/§3.2.1.5).
-const GPS_L2C_CODE_FREQUENCY = 511_500Hz
+const GPS_L2C_CHIP_RATE = 511_500Hz
 
 # IS-GPS-200N §3.3.2.4: the maximal code generator polynomial used for both
 # the L2 CM- and L2 CL-codes is 1112225171 (octal), of degree 27.

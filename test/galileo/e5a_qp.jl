@@ -5,8 +5,8 @@
     @test @inferred(get_code_length(e5a_qp)) == 330
     @test @inferred(get_secondary_code_length(e5a_qp)) == 1
     @test @inferred(get_secondary_code(e5a_qp)) isa NoSecondaryCode
-    @test @inferred(get_data_frequency(e5a_qp)) == 0Hz      # no user data
-    @test @inferred(get_code_frequency(e5a_qp)) == 5115e3Hz
+    @test @inferred(get_bit_rate(e5a_qp)) == 0Hz      # no user data
+    @test @inferred(get_chip_rate(e5a_qp)) == 5115e3Hz
     @test get_signal_name(e5a_qp) == "Galileo E5a-QP"
     @test @inferred(get_modulation(e5a_qp)) == GNSSSignals.LOC()
     @test get_code_type(e5a_qp) === Int16
@@ -21,8 +21,8 @@
     @test get_code(e5a_qp, 330, 1) == get_code(e5a_qp, 0, 1)
 
     # BPSK(5) spectrum, and 5.115 MHz against the 1176.45 MHz E5a carrier.
-    @test get_code_spectrum(e5a_qp, 0) ≈ 1.0Hz / get_code_frequency(e5a_qp)
-    @test get_code_center_frequency_ratio(e5a_qp) ≈ 1 / 230
+    @test get_code_spectrum(e5a_qp, 0) ≈ 1.0Hz / get_chip_rate(e5a_qp)
+    @test get_chip_rate_to_center_frequency_ratio(e5a_qp) ≈ 1 / 230
 end
 
 @testset "Galileo E5a-QP primary codes match the ICD electronic annex" begin

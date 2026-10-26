@@ -8,8 +8,8 @@
     @test @inferred(get_code_length(galileo_e1c)) == 4092
     @test @inferred(get_secondary_code_length(galileo_e1c)) == 25
     @test @inferred(get_secondary_code(galileo_e1c)) isa SharedSecondaryCode{25}
-    @test @inferred(get_data_frequency(galileo_e1c)) == 0Hz
-    @test @inferred(get_code_frequency(galileo_e1c)) == 1023e3Hz
+    @test @inferred(get_bit_rate(galileo_e1c)) == 0Hz
+    @test @inferred(get_chip_rate(galileo_e1c)) == 1023e3Hz
     @test get_signal_name(galileo_e1c) == "Galileo E1C"
 
     # E1C uses CBOC(−): the BOC(6,1) component is in anti-phase, so at chip
@@ -30,10 +30,10 @@
     # PSD is independent of the BOC(6,1) sign, so E1C and E1B share a spectrum.
     @test get_code_spectrum(galileo_e1c, 0) == 0.0
     @test get_code_spectrum(galileo_e1c, 100e3) == get_code_spectrum(GalileoE1B(), 100e3)
-    @test get_code_spectrum(galileo_e1c, 2 * get_code_frequency(galileo_e1c)) == 0.0
-    @test get_code_spectrum(galileo_e1c, -2 * get_code_frequency(galileo_e1c)) == 0.0
+    @test get_code_spectrum(galileo_e1c, 2 * get_chip_rate(galileo_e1c)) == 0.0
+    @test get_code_spectrum(galileo_e1c, -2 * get_chip_rate(galileo_e1c)) == 0.0
 
-    @test get_code_center_frequency_ratio(galileo_e1c) ≈ 1 / 1540
+    @test get_chip_rate_to_center_frequency_ratio(galileo_e1c) ≈ 1 / 1540
 
     # CBOC output is floating point (the BOC1/BOC2 amplitudes are irrational).
     @test get_code_type(galileo_e1c) === Float32
@@ -91,8 +91,8 @@ end
     @test @inferred(get_code_length(e1c)) == 4092
     @test @inferred(get_secondary_code(e1c)) isa SharedSecondaryCode{25}
     @test @inferred(get_secondary_code_length(e1c)) == 25
-    @test @inferred(get_data_frequency(e1c)) == 0Hz
-    @test @inferred(get_code_frequency(e1c)) == 1023e3Hz
+    @test @inferred(get_bit_rate(e1c)) == 0Hz
+    @test @inferred(get_chip_rate(e1c)) == 1023e3Hz
     @test get_signal_name(e1c) == "Galileo E1C (BOC(1,1) approximation)"
 
     # Modulation differs from full E1C's CBOC.
@@ -116,7 +116,7 @@ end
     # P=12, 2.046 MHz for the BOC(1,1) P=2) so every sample lands on a sub-chip
     # start and the drift-free DDA agrees with `get_code`'s exact floor bit-for-bit.
     for sig in (GalileoE1C(), GalileoE1C_BOC11())
-        cf = get_code_frequency(sig)
+        cf = get_chip_rate(sig)
         fs = cf * sig.lut.subchip_factor
         # Span several primary periods to cross CS25 secondary boundaries,
         # and start past the first period so the secondary index offset is

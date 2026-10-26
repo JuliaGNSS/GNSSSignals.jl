@@ -91,7 +91,7 @@ end
 A primary code with its subcarrier (and, if short enough, its secondary code) baked into
 a register-resident ±1 `CodeTable`. Build with [`code_replica`](@ref); resample with
 `generate_code!(out, mc; code_frequency, sampling_frequency, …)` (a single windowed-
-permute pass). `code_frequency` is the **primary chip rate**; the table is resampled at
+permute pass). `code_frequency` is the replica's **primary code frequency**; the table is resampled at
 `code_frequency · subchip_factor`.
 """
 struct ModulatedCode{T<:CodeTable,S<:AbstractVector{Int8}}

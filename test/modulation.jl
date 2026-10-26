@@ -208,8 +208,8 @@ end
     gal_e1b = GalileoE1B()
 
     # BPSK signals should have peak at DC
-    @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_code_frequency(gpsl1ca)
-    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_code_frequency(gpsl5i)
+    @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_chip_rate(gpsl1ca)
+    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_chip_rate(gpsl5i)
 
     # CBOC has zero at DC
     @test get_code_spectrum(gal_e1b, 0) == 0.0
