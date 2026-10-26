@@ -335,18 +335,6 @@ and folds to a compile-time constant.
 """
 @inline get_relative_power(s::AbstractGNSSSignal) = get_relative_power(typeof(s))
 
-# NOTE: the legacy fixed-point `gen_code!` and its `sample_code!` / `dispatch_sample_code_worker!`
-# / `sample_code_worker!` / `sample_code_worker_generic!` / `sample_code_tail!` /
-# `_pad_inner_iterations` machinery (plus the `SAMPLE_CODE_INNER_THRESHOLD` / `HAS_AVX512`
-# constants), and the `_select_codes_for` secondary-matrix selector (with its GPSL5I/GPSL1C_P
-# specializations and their cached `negated_codes` fields), have all been retired: the embedded
-# SIMD LUT in `code_lut.jl` is now THE `gen_code!`. The subcarrier multiply
-# (`multiply_with_subcarrier!`, the `calc_subcarrier_*` helpers, and the `_tmboc_*` /
-# `_pack_tmboc_pattern` TMBOC kernels) has now been retired too — it had no production caller
-# once the LUT became `gen_code!`. What remains here is just `get_codes` /
-# `widen_codes_to_storage`, the allocating `gen_code` wrapper, and the `get_code_spectrum_*`
-# helpers. `get_code` / `get_code_unsafe` (modulation.jl) never used any of the deleted helpers.
-
 """
 $(SIGNATURES)
 
