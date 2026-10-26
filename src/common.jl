@@ -64,8 +64,8 @@ This is the finest identity level: the same PRN measured on two bands of one
 constellation (e.g. GPS L1 and L5) has two distinct signal ids.
 
 Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
-to pin a specific symbol (e.g. so an approximation type reports the id of the
-signal it approximates). Works on an instance or a type and folds to a
+to pin a different symbol. The BOC(1,1) approximation types keep their own ids
+(`:GalileoE1B_BOC11`), distinct from the signals they approximate. Works on an instance or a type and folds to a
 compile-time constant.
 
 Distinct from [`get_signal_name`](@ref), which is a human-readable display
@@ -120,7 +120,7 @@ function get_signal_name end
 $(SIGNATURES)
 
 Get the `Symbol` identifier of the GNSS constellation a signal belongs to —
-`:GPS` or `:Galileo`.
+`:GPS`, `:Galileo` or `:BeiDou`.
 
 This is the coarsest identity level: every signal of one constellation, across
 all bands and PRNs, maps to the same id (GPS L1 C/A, GPS L5I and GPS L1C are all
