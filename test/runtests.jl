@@ -81,6 +81,7 @@ if !SIMD_ONLY
 
     include("test_codes.jl")
     include("bands.jl")
+    include("tai_time.jl")
     include("time_systems.jl")
     include("modulation.jl")
     include("gps/l1ca.jl")

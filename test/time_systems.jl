@@ -1,6 +1,7 @@
 using Dates: Dates, DateTime
 import Unitful
 import Unitful: s, Time
+import Random
 
 @testset "Time systems" begin
     gps_signals = filter(S -> S <: AbstractGPSSignal, ALL_SIGNALS)
@@ -45,29 +46,25 @@ import Unitful: s, Time
     @test get_time_system(GalileoE1B()) === get_time_system(GalileoE1B) === GST()
     @test get_time_system(BeiDouB1I()) === get_time_system(BeiDouB1I) === BDT()
 
-    # Epoch / offset defined on the time system (IS-GPS-200 / Galileo OS SIS
-    # ICD 2.2 §5.1.2). The Galileo epoch is not a UTC minute boundary.
-    @test @inferred(get_system_start_time(GPST())) == DateTime(1980, 1, 6, 0, 0, 0)
-    @test @inferred(get_system_start_time(GST())) == DateTime(1999, 8, 21, 23, 59, 47)
-    @test @inferred(get_system_start_time(BDT())) == DateTime(2006, 1, 1, 0, 0, 0)
+    # The offset is defined on the time system.
     @test @inferred(get_tai_offset(GPST())) == 19s
     @test @inferred(get_tai_offset(GST())) == 19s
     @test @inferred(get_tai_offset(BDT())) == 33s
 
     # Signal-level access forwards through the time system, on type or instance.
     for S in gps_signals
-        @test get_system_start_time(S) == DateTime(1980, 1, 6, 0, 0, 0)
-        @test get_system_start_time(S()) == get_system_start_time(S)
+        @test get_week_start_epoch(S, 0) == get_week_start_epoch(GPST(), 0)
+        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 19s
     end
     for S in galileo_signals
-        @test get_system_start_time(S) == DateTime(1999, 8, 21, 23, 59, 47)
-        @test get_system_start_time(S()) == get_system_start_time(S)
+        @test get_week_start_epoch(S, 0) == get_week_start_epoch(GST(), 0)
+        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 19s
     end
     for S in beidou_signals
-        @test get_system_start_time(S) == DateTime(2006, 1, 1, 0, 0, 0)
-        @test get_system_start_time(S()) == get_system_start_time(S)
+        @test get_week_start_epoch(S, 0) == get_week_start_epoch(BDT(), 0)
+        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 33s
     end
 
@@ -77,7 +74,7 @@ import Unitful: s, Time
 
     # GPS and Galileo share the offset but differ in epoch / time system.
     @test get_tai_offset(GPSL1CA) == get_tai_offset(GalileoE1B)
-    @test get_system_start_time(GPSL1CA) != get_system_start_time(GalileoE1B)
+    @test get_week_start_epoch(GPSL1CA, 0) != get_week_start_epoch(GalileoE1B, 0)
     @test get_time_system(GPSL1CA) !== get_time_system(GalileoE1B)
 
     # BeiDou differs from both GPS and Galileo in offset, epoch and time system.
@@ -132,7 +129,7 @@ end
         @test get_time_system_name(T) isa String
         @test get_time_system_name(T) != String(get_time_system_id(T))
         # The two constants a time scale is fixed by.
-        @test get_system_start_time(T()) isa DateTime
+        @test get_week_start_epoch(T(), 0) isa TAITime
         @test get_tai_offset(T()) isa Time
     end
 end
@@ -148,39 +145,123 @@ end
     end
 end
 
-@testset "TAI epochs make cross-scale arithmetic exact" begin
-    # The values themselves: UTC label + (TAI − UTC at the epoch). GPST and BDT
-    # were set equal to UTC at their epochs, so their TAI labels are the UTC
-    # label plus their own TAI offset; GST's is not — its epoch is anchored to
-    # GPS Time at the week-1024 rollover (OS SIS ICD §5.1.2), 13 s after the
-    # naive derivation, which is the whole reason this accessor exists.
-    @test get_tai_system_start_time(GPST()) == DateTime(1980, 1, 6, 0, 0, 19)
-    @test get_tai_system_start_time(GST()) == DateTime(1999, 8, 22, 0, 0, 19)
-    @test get_tai_system_start_time(BDT()) == DateTime(2006, 1, 1, 0, 0, 33)
-    for T in ALL_TIME_SYSTEMS
-        naive =
-            get_system_start_time(T()) +
-            Dates.Second(Int(Unitful.ustrip(s, get_tai_offset(T()))))
-        if T === GST
-            @test get_tai_system_start_time(T()) == naive + Dates.Second(13)
-        else
-            @test get_tai_system_start_time(T()) == naive
-        end
-        @test @inferred(get_tai_system_start_time(T())) isa DateTime
-    end
-    # Signal forwarding, type and instance, like the other epoch accessors.
-    @test @inferred(get_tai_system_start_time(GalileoE1B)) ==
-          get_tai_system_start_time(GST())
-    @test get_tai_system_start_time(GPSL1CA()) == get_tai_system_start_time(GPST())
-
-    # The one number cross-scale (WN, TOW) conversion needs. GST week 0 IS GPS
-    # week 1024 (the rollover instant); BDT week 0 begins 14 s into GPS week
-    # 1356 — the same 14 s that separates the two scales' counts.
-    @test get_epoch_offset(GST(), GPST()) == 1024 * 604800 * s
-    @test get_epoch_offset(BDT(), GPST()) == (1356 * 604800 + 14) * s
-    @test get_epoch_offset(BDT(), GST()) == (332 * 604800 + 14) * s
+@testset "fixed offsets between the time scales" begin
+    @test GNSSSignals.SECONDS_PER_WEEK == 7 * 24 * 60 * 60
+    @test get_time_system_offset(BDT(), GPST()) == 14s
+    @test get_time_system_offset(BDT(), GST()) == 14s
+    @test get_time_system_offset(GST(), GPST()) == 0s
+    week = GNSSSignals.SECONDS_PER_WEEK
     for A in ALL_TIME_SYSTEMS, B in ALL_TIME_SYSTEMS
-        @test @inferred(get_epoch_offset(A(), B())) == -get_epoch_offset(B(), A())
-        A === B && @test get_epoch_offset(A(), B()) == 0s
+        offset = @inferred get_time_system_offset(A(), B())
+        @test offset == -get_time_system_offset(B(), A())
+        A === B && @test offset == 0s
+        # The difference of the week starts less its whole weeks.
+        Δ = get_week_start_epoch(A(), 0) - get_week_start_epoch(B(), 0)
+        @test rem(Δ, week, RoundNearest) == Unitful.ustrip(s, offset)
     end
+end
+
+@testset "week start epochs make cross-scale arithmetic exact" begin
+    # Week 0 is the system's TAI origin: UTC label + (TAI − UTC at the epoch). GPST and
+    # BDT were set equal to UTC at their epochs, so their origins are the UTC label plus
+    # their own TAI offset; GST's is not — its epoch is anchored to GPS Time at the
+    # week-1024 rollover (OS SIS ICD §5.1.2), 13 s after the naive derivation (#157).
+    @test get_week_start_epoch(GPST(), 0) == TAITime(DateTime(1980, 1, 6, 0, 0, 19))
+    @test get_week_start_epoch(GST(), 0) == TAITime(DateTime(1999, 8, 22, 0, 0, 19))
+    @test get_week_start_epoch(BDT(), 0) == TAITime(DateTime(2006, 1, 1, 0, 0, 33))
+    # The epochs as the ICDs state them, in UTC (IS-GPS-200, Galileo OS SIS ICD 2.2
+    # §5.1.2, BDS-SIS-ICD); the Galileo one is not on a UTC minute.
+    utc_label = Dict(
+        GPST => DateTime(1980, 1, 6),
+        GST => DateTime(1999, 8, 21, 23, 59, 47),
+        BDT => DateTime(2006, 1, 1),
+    )
+    for T in ALL_TIME_SYSTEMS
+        naive = TAITime(utc_label[T]) + Unitful.ustrip(s, get_tai_offset(T()))
+        @test get_week_start_epoch(T(), 0) - naive == (T === GST ? 13 : 0)
+        @test @inferred(get_week_start_epoch(T(), 0)) isa TAITime
+        # The weeks are whole, exact seconds.
+        @test get_week_start_epoch(T(), 7) - get_week_start_epoch(T(), 5) ==
+              2 * GNSSSignals.SECONDS_PER_WEEK
+    end
+    # The cross-scale week identities: GST week 0 IS GPS week 1024 (the rollover
+    # instant); BDT week 0 begins 14 s into GPS week 1356 — the same 14 s that separates
+    # the two scales' counts.
+    @test get_week_start_epoch(GST(), 0) == get_week_start_epoch(GPST(), 1024)
+    @test get_week_start_epoch(BDT(), 0) - get_week_start_epoch(GPST(), 1356) == 14
+    @test get_week_start_epoch(BDT(), 0) - get_week_start_epoch(GST(), 332) == 14
+    # A time of week keeps its fraction.
+    @test get_week_start_epoch(GPST(), 2364) + 0.125 ==
+          TAITime(DateTime(2025, 4, 27, 0, 0, 19)) + 0.125
+    # Signal forwarding, type and instance.
+    @test get_week_start_epoch(GalileoE1B, 3) == get_week_start_epoch(GST(), 3)
+    @test get_week_start_epoch(BeiDouB1I(), 3) == get_week_start_epoch(BDT(), 3)
+end
+
+@testset "fold_week_crossover" begin
+    fold = GNSSSignals.fold_week_crossover
+    @test fold(0) == 0
+    @test fold(350000) == 350000 - 604800
+    @test fold(-350000) == 604800 - 350000
+    @test fold(302400) == 302400  # both ends of [-302400, 302400] stay
+    @test fold(-302400) == -302400
+    # The type of the difference is kept: integer seconds stay integer.
+    @test @inferred(fold(604797)) === -3
+    @test @inferred(fold(-604797)) === 3
+    @test @inferred(fold(1.5)) === 1.5
+    @test @inferred(fold(1.5f0)) === 1.5f0
+    # Narrow integer types keep their type in every branch.
+    @test @inferred(fold(Int32(5))) === Int32(5)
+    @test @inferred(fold(Int32(400000))) === Int32(400000 - 604800)
+    @test @inferred(fold(Int32(-400000))) === Int32(604800 - 400000)
+    # A wrap inside a transmit-time spread: 2 ms apart, not a week.
+    @test fold(604799.999 - 0.001) ≈ -0.002 atol = 1e-6
+    @test fold(0.001 - 604799.999) ≈ 0.002 atol = 1e-6
+end
+
+@testset "week and time of week of an epoch" begin
+    week_seconds = GNSSSignals.SECONDS_PER_WEEK
+    # The inverse of get_week_start_epoch, exactly, across systems, weeks and fractions.
+    for T in ALL_TIME_SYSTEMS, week in (0, 1, 1007, 2364), tow in (0.0, 3.5, 0.125, 604799.75)
+        epoch = get_week_start_epoch(T(), week) + tow
+        @test @inferred(get_week_and_time_of_week(T(), epoch)) === (week, tow)
+        @test @inferred(get_week(T(), epoch)) === week
+        @test @inferred(get_time_of_week(T(), epoch)) === tow
+        @test get_week_start_epoch(T(), get_week(T(), epoch)) + get_time_of_week(T(), epoch) ==
+              epoch
+    end
+    # The same instant on two counts: BDT reads 14 s and 1356 weeks behind GPST.
+    epoch = get_week_start_epoch(GPST(), 2364) + 3.5
+    @test (get_week(BDT(), epoch), get_time_of_week(BDT(), epoch)) == (1007, 604789.5)
+    @test (get_week(GST(), epoch), get_time_of_week(GST(), epoch)) == (1340, 3.5)
+    # Before the origin the week is negative and the time of week still in [0, 604800).
+    before = get_week_start_epoch(GPST(), 0) - 1.25
+    @test (get_week(GPST(), before), get_time_of_week(GPST(), before)) ==
+          (-1, week_seconds - 1.25)
+    # The time of week keeps the epoch's resolution far from J2000.
+    epoch = get_week_start_epoch(GPST(), 3000) + 1e-9
+    @test get_time_of_week(GPST(), epoch) == 1e-9
+    # Random fractions round-trip to half a Float64 step at a time of week near 604800 s.
+    rng = Random.Xoshiro(157)
+    for _ in 1:10_000
+        epoch = TAITime(rand(rng, 6 * 10^8:9 * 10^8), rand(rng))
+        for T in ALL_TIME_SYSTEMS
+            back = get_week_start_epoch(T(), get_week(T(), epoch)) +
+                   get_time_of_week(T(), epoch)
+            @test abs(back - epoch) <= eps(Float64(week_seconds)) / 2
+            @test 0 <= get_time_of_week(T(), epoch) <= week_seconds
+        end
+    end
+    # An epoch a hair below the end of a week rounds up to 604800.0 rather than carrying
+    # into the next week: the same instant, kept so (see `get_week_and_time_of_week`).
+    last_instant = TAITime(get_week_start_epoch(GPST(), 2364).second + week_seconds - 1,
+        prevfloat(1.0))
+    @test get_week_and_time_of_week(GPST(), last_instant) === (2364, 604800.0)
+    @test get_time_of_week(GPST(), last_instant) === 604800.0
+    @test get_week(GPST(), last_instant) == 2364
+    @test get_week_and_time_of_week(GPSL1CA, last_instant) == (2364, 604800.0)
+    @test get_week_and_time_of_week(GPSL1CA(), last_instant) == (2364, 604800.0)
+    # Signal forwarding, type and instance.
+    @test get_week(GalileoE1B, epoch) == get_week(GST(), epoch)
+    @test get_time_of_week(BeiDouB1I(), epoch) == get_time_of_week(BDT(), epoch)
 end
