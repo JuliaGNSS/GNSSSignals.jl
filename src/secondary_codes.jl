@@ -14,13 +14,32 @@ Three concrete forms cover all currently-defined GNSS signals:
   1800 chips per PRN from a per-PRN LFSR).
 
 Receivers should query the secondary code via [`get_secondary_code`](@ref),
-which returns the appropriate `SecondaryCode` instance for the signal.
-
-The internal API for evaluating the secondary at a given secondary-chip
-index is `secondary_value`. It is typed-dispatched so the
-no-secondary case folds to the multiplicative identity at compile time.
+which returns the appropriate `SecondaryCode` instance for the signal, and read
+its chips with [`secondary_value`](@ref GNSSSignals.secondary_value). It is
+typed-dispatched so the no-secondary case folds to the multiplicative identity
+at compile time.
 """
 abstract type SecondaryCode end
+
+"""
+    secondary_value(secondary_code::SecondaryCode, prn, index) -> ±1
+
+The chip of `secondary_code` at the 0-based secondary-chip `index` for satellite
+`prn`: the sign the primary code period `index` (counted from the start of the
+secondary code) is overlaid with. `index` wraps modulo the code's length, and
+`prn` is read only by a [`PerPRNSecondaryCode`](@ref). The value has the code's
+element type, and is `true` for a [`NoSecondaryCode`](@ref), so that multiplying
+by it keeps any numeric element type.
+
+```julia-repl
+julia> sec = get_secondary_code(GPSL5I());
+
+julia> [GNSSSignals.secondary_value(sec, 1, k) for k in 0:9]'
+1×10 adjoint(::Vector{Int8}) with eltype Int8:
+ 1  1  1  1  -1  -1  1  -1  1  -1
+```
+"""
+function secondary_value end
 
 """
     NoSecondaryCode <: SecondaryCode

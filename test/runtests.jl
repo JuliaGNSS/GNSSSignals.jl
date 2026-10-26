@@ -1,6 +1,11 @@
 using Test, GNSSSignals, Statistics, Aqua
 import Unitful: Hz, MHz, Frequency
-import GNSSSignals: BOCsin, BOCcos, CBOC
+import GNSSSignals: BOCsin, BOCcos, CBOC, TMBOC
+# The documented API reached qualified, which the tests name throughout.
+using GNSSSignals:
+    SecondaryCode, NoSecondaryCode, SharedSecondaryCode, PerPRNSecondaryCode,
+    code_engine, code_state, code_lookup, code_advance, code_width,
+    get_code_type, get_code_unsafe
 using CodecZlib: GzipDecompressorStream
 
 # Every concrete signal, band and time system the package defines. A type added
