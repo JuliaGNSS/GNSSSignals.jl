@@ -122,3 +122,6 @@ The pilot component is dataless, so its bit rate is 0 Hz.
 - `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL1C_P}) = 0Hz
+
+@inline get_supported_prns(::Type{<:GPSL1C_P}) = 1:63
+@inline get_secondary_code_length(::Type{<:GPSL1C_P}) = 1800

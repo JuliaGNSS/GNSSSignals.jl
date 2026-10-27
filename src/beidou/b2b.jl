@@ -120,3 +120,6 @@ B2b_I has no secondary code.
 - [`NoSecondaryCode`](@ref)
 """
 @inline get_secondary_code(::BeiDouB2bI) = NoSecondaryCode()
+
+@inline get_supported_prns(::Type{<:BeiDouB2bI}) = 6:58
+@inline get_secondary_code_length(::Type{<:BeiDouB2bI}) = 1

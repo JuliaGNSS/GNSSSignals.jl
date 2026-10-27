@@ -178,3 +178,6 @@ without any overlay (Galileo OS SIS ICD v2.2, Table 15).
 - [`NoSecondaryCode`](@ref)
 """
 @inline get_secondary_code(::GalileoE5aQP) = NoSecondaryCode()
+
+@inline get_supported_prns(::Type{<:GalileoE5aQP}) = 1:40
+@inline get_secondary_code_length(::Type{<:GalileoE5aQP}) = 1

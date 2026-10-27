@@ -34,5 +34,6 @@
         :get_code_spectrum_BOCsin,
         :get_code_spectrum_BOCcos,
         :SECONDS_PER_WEEK,
+        :is_beidou_geo,
     ])
 end
