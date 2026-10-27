@@ -15,6 +15,9 @@ label, [`get_tai_system_start_time`](@ref) on the continuous TAI scale) and its
 offset from TAI ([`get_tai_offset`](@ref)). Between two scales,
 [`get_epoch_offset`](@ref) gives the elapsed seconds between their epochs and
 [`get_leap_second_offset`](@ref) the whole seconds between their counts.
+
+Those offsets are Unitful seconds; instants ([`TAITime`](@ref)) and times of week
+([`get_time_of_week`](@ref)) are plain seconds, for full `Float64` resolution.
 """
 abstract type TimeSystem end
 
