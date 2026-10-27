@@ -92,3 +92,6 @@ carries just under 50 bit/s.
 - `Frequency`: 100 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL1C_D}) = 100Hz
+
+@inline get_supported_prns(::Type{<:GPSL1C_D}) = 1:63
+@inline get_secondary_code_length(::Type{<:GPSL1C_D}) = 1

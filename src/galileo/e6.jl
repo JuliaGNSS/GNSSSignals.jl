@@ -195,3 +195,9 @@ tiered code.
 - [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 CS100 matrix
 """
 @inline get_secondary_code(s::GalileoE6C) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:GalileoE6B}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE6B}) = 1
+
+@inline get_supported_prns(::Type{<:GalileoE6C}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE6C}) = 100

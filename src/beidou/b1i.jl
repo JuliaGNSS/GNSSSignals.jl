@@ -118,12 +118,15 @@ $(SIGNATURES)
 Get the bit rate, as tracked, of BeiDou B1I.
 
 The D1 navigation message (MEO/IGSO satellites) is broadcast at 50 bit/s; the GEO
-satellites broadcast the D2 message at 500 bit/s. This returns the D1 rate.
+satellites broadcast the D2 message at 500 bit/s. This returns the D1 rate;
+`get_bit_rate(signal, prn)` returns the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB1I}) = 50Hz
+@inline get_bit_rate(::Type{<:BeiDouB1I}, prn::Integer) =
+    is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """
 $(SIGNATURES)
@@ -140,3 +143,10 @@ GEO PRN's tiered code equals its primary code).
 - [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 overlay matrix
 """
 @inline get_secondary_code(s::BeiDouB1I) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB1I}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB1I}) = 20
+@inline get_secondary_code_length(::Type{<:BeiDouB1I}, prn::Integer) =
+    is_beidou_geo(prn) ? 1 : 20
+@inline get_secondary_code_length(signal::BeiDouB1I, prn::Integer) =
+    get_secondary_code_length(typeof(signal), prn)
