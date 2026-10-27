@@ -31,6 +31,8 @@ GNSSSignals.get_tai_system_start_time
 GNSSSignals.get_epoch_offset
 GNSSSignals.get_leap_second_offset
 GNSSSignals.get_week_start_epoch
+GNSSSignals.get_week
+GNSSSignals.get_time_of_week
 GNSSSignals.TAITime
 GNSSSignals.get_tai_offset
 GNSSSignals.SECONDS_PER_WEEK

@@ -1,6 +1,7 @@
 using Dates: Dates, DateTime
 import Unitful
 import Unitful: s, Time
+import Random
 
 @testset "Time systems" begin
     gps_signals = filter(S -> S <: AbstractGPSSignal, ALL_SIGNALS)
@@ -243,3 +244,45 @@ end
     @test fold(0.001 - 604799.999) ≈ 0.002 atol = 1e-6
 end
 
+@testset "week and time of week of an epoch" begin
+    week_seconds = GNSSSignals.SECONDS_PER_WEEK
+    # The inverse of get_week_start_epoch, exactly, across systems, weeks and fractions.
+    for T in ALL_TIME_SYSTEMS, week in (0, 1, 1007, 2364), tow in (0.0, 3.5, 0.125, 604799.75)
+        epoch = get_week_start_epoch(T(), week) + tow
+        @test @inferred(get_week(T(), epoch)) === week
+        @test @inferred(get_time_of_week(T(), epoch)) === tow
+        @test get_week_start_epoch(T(), get_week(T(), epoch)) + get_time_of_week(T(), epoch) ==
+              epoch
+    end
+    # The same instant on two counts: BDT reads 14 s and 1356 weeks behind GPST.
+    epoch = get_week_start_epoch(GPST(), 2364) + 3.5
+    @test (get_week(BDT(), epoch), get_time_of_week(BDT(), epoch)) == (1007, 604789.5)
+    @test (get_week(GST(), epoch), get_time_of_week(GST(), epoch)) == (1340, 3.5)
+    # Before the origin the week is negative and the time of week still in [0, 604800).
+    before = get_week_start_epoch(GPST(), 0) - 1.25
+    @test (get_week(GPST(), before), get_time_of_week(GPST(), before)) ==
+          (-1, week_seconds - 1.25)
+    # The time of week keeps the epoch's resolution far from J2000.
+    epoch = get_week_start_epoch(GPST(), 3000) + 1e-9
+    @test get_time_of_week(GPST(), epoch) == 1e-9
+    # Random fractions round-trip to half a Float64 step at a time of week near 604800 s.
+    rng = Random.Xoshiro(157)
+    for _ in 1:10_000
+        epoch = TAITime(rand(rng, 6 * 10^8:9 * 10^8), rand(rng))
+        for T in ALL_TIME_SYSTEMS
+            back = get_week_start_epoch(T(), get_week(T(), epoch)) +
+                   get_time_of_week(T(), epoch)
+            @test abs(back - epoch) <= eps(Float64(week_seconds)) / 2
+            @test 0 <= get_time_of_week(T(), epoch) <= week_seconds
+        end
+    end
+    # An epoch a hair below the end of a week rounds up to 604800.0 rather than carrying
+    # into the next week: the same instant, kept so (see `_week_and_time_of_week`).
+    last_instant = TAITime(get_week_start_epoch(GPST(), 2364).second + week_seconds - 1,
+        prevfloat(1.0))
+    @test get_time_of_week(GPST(), last_instant) === 604800.0
+    @test get_week(GPST(), last_instant) == 2364
+    # Signal forwarding, type and instance.
+    @test get_week(GalileoE1B, epoch) == get_week(GST(), epoch)
+    @test get_time_of_week(BeiDouB1I(), epoch) == get_time_of_week(BDT(), epoch)
+end

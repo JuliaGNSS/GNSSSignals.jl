@@ -354,6 +354,83 @@ julia> get_week_start_epoch(BDT(), 1008) - get_week_start_epoch(GPST(), 2364)
 @inline get_week_start_epoch(s::AbstractGNSSSignal, week::Integer) =
     get_week_start_epoch(get_time_system(s), week)
 
+# The week and time of week of `epoch` on `time_system`'s count, the inverse of
+# `get_week_start_epoch`. The whole weeks come off in integer seconds before any floating
+# point, so the time of week is good to half a `Float64` step at up to 604800 s, about
+# 6e-11 s (an absolute count of about 1.2e9 s would leave only 0.2 µs). The origins fall
+# on whole TAI seconds, so the fraction is the epoch's own.
+function _week_and_time_of_week(time_system::TimeSystem, epoch::TAITime)
+    origin = get_week_start_epoch(time_system, 0)
+    elapsed_seconds = epoch.second - origin.second
+    week = fld(elapsed_seconds, SECONDS_PER_WEEK)
+    # An epoch in the last ~6e-11 s of a week rounds up to exactly 604800.0 here, the same
+    # instant as week + 1 at 0.0. Left as is: every consumer reduces a time of week modulo
+    # a day or the week, or folds differences of it (`fold_week_crossover`), all of which
+    # treat 604800.0 as 0.0, so carrying it would only serve the stated range.
+    time_of_week = Float64(
+        (elapsed_seconds - week * SECONDS_PER_WEEK) + (epoch.fraction - origin.fraction),
+    )
+    Int(week), time_of_week
+end
+
+"""
+    get_week(time_system, epoch::TAITime) -> Int
+
+The week, counted from the system's origin, that the TAI `epoch` falls in on the count
+of a GNSS time system; with [`get_time_of_week`](@ref) the inverse of
+[`get_week_start_epoch`](@ref):
+
+    get_week_start_epoch(time_system, get_week(time_system, epoch)) +
+        get_time_of_week(time_system, epoch) ≈ epoch
+
+to within about 6e-11 s, the resolution of a `Float64` time of week near the end of a
+week, a sub-millimetre range; it is exact where that resolution holds the fraction.
+
+Works on a [`TimeSystem`](@ref), or on a signal / signal type (which forwards through
+[`get_time_system`](@ref)).
+
+```julia-repl
+julia> get_week(GPST(), get_week_start_epoch(GPST(), 2364) + 3.5)
+2364
+
+julia> get_week(BDT(), get_week_start_epoch(GPST(), 2364) + 3.5)
+1007
+```
+"""
+@inline get_week(time_system::TimeSystem, epoch::TAITime) =
+    first(_week_and_time_of_week(time_system, epoch))
+@inline get_week(::Type{S}, epoch::TAITime) where {S<:AbstractGNSSSignal} =
+    get_week(get_time_system(S), epoch)
+@inline get_week(s::AbstractGNSSSignal, epoch::TAITime) = get_week(get_time_system(s), epoch)
+
+"""
+    get_time_of_week(time_system, epoch::TAITime) -> Float64
+
+The time of week (s), in `[0, 604800]`, of the TAI `epoch` on the count of a GNSS time
+system; with [`get_week`](@ref) the inverse of [`get_week_start_epoch`](@ref). The whole
+weeks come off in integer seconds before any floating point, so the time of week is good
+to half a `Float64` step at its magnitude, at most about 6e-11 s, where the absolute count
+since the origin would leave only 0.2 µs. An epoch in the last ~6e-11 s of a week rounds
+up to 604800.0, the same instant as the next week's 0.0.
+
+Works on a [`TimeSystem`](@ref), or on a signal / signal type (which forwards through
+[`get_time_system`](@ref)).
+
+```julia-repl
+julia> get_time_of_week(GPST(), get_week_start_epoch(GPST(), 2364) + 3.5)
+3.5
+
+julia> get_time_of_week(BDT(), get_week_start_epoch(GPST(), 2364) + 3.5)
+604789.5
+```
+"""
+@inline get_time_of_week(time_system::TimeSystem, epoch::TAITime) =
+    last(_week_and_time_of_week(time_system, epoch))
+@inline get_time_of_week(::Type{S}, epoch::TAITime) where {S<:AbstractGNSSSignal} =
+    get_time_of_week(get_time_system(S), epoch)
+@inline get_time_of_week(s::AbstractGNSSSignal, epoch::TAITime) =
+    get_time_of_week(get_time_system(s), epoch)
+
 """
 $(SIGNATURES)
 
