@@ -31,6 +31,17 @@ function get_codes(signal::AbstractGNSSSignal)
 end
 
 """
+    get_supported_prns(signal)
+
+Return the PRN numbers for which primary codes are implemented. `signal` may be
+an instance or a signal type; the type form does not construct code tables.
+This describes the static code definitions, not the satellites currently in
+service. For example, BeiDou B2b-I has codes for PRNs 6–58 even though its
+storage has 63 columns.
+"""
+@inline get_supported_prns(signal::AbstractGNSSSignal) = get_supported_prns(typeof(signal))
+
+"""
 $(SIGNATURES)
 
 Get the `Symbol` identifier of a GNSS signal — the machine-readable per-signal
@@ -192,6 +203,7 @@ this one). Defined per concrete signal type; works on an instance or a type.
 
 """
     get_bit_rate(signal) -> Frequency
+    get_bit_rate(signal, prn) -> Frequency
 
 The rate of navigation bits **as tracked**: the binary signs a tracking loop recovers
 after spreading-code and secondary-code removal, before error-correction decoding. On a
@@ -203,9 +215,80 @@ LNAV, BeiDou D1 and D2), the tracked bits are the transmitted message bits thems
 their parity bits (LNAV's Hamming code, D1's and D2's BCH(15,11) code) are counted in this
 rate, so the information rate is lower still. `0 Hz` for a dataless pilot.
 
+With a `prn`, the rate that satellite broadcasts. It differs from the signal's only on
+BeiDou B1I and B3I, whose GEO satellites ([`is_beidou_geo`](@ref GNSSSignals.is_beidou_geo))
+broadcast the D2 message at 500 Hz where the signal's rate is D1's 50 Hz. Pass the PRN
+wherever the satellite is known.
+
 Defined per concrete signal type; works on an instance or a type.
+
+```julia-repl
+julia> get_bit_rate(BeiDouB1I(), 6), get_bit_rate(BeiDouB1I(), 1)
+(50 Hz, 500 Hz)
+```
 """
 @inline get_bit_rate(s::AbstractGNSSSignal) = get_bit_rate(typeof(s))
+@inline get_bit_rate(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_bit_rate(S)
+@inline get_bit_rate(s::AbstractGNSSSignal, prn::Integer) =
+    get_bit_rate(typeof(s), prn)
+
+"""
+    get_code_periods_per_bit(signal) -> Int
+    get_code_periods_per_bit(signal, prn) -> Int
+
+The number of primary code periods a navigation bit **as tracked**
+([`get_bit_rate`](@ref)) spans; on a signal with an FEC-encoded message, one tracked bit is
+one transmitted channel symbol. The count is `get_chip_rate / (get_code_length ·
+get_bit_rate)`, a whole number for every data signal — 20 for GPS L1 C/A and Galileo
+E5a-I, 10 for GPS L5-I, 5 for BeiDou B2a-I, 4 for Galileo E5b-I, 1 where a tracked bit
+spans one code period (Galileo E1B, GPS L1C-D, …). With a `prn`, that satellite's ([`get_bit_rate`](@ref)`(signal, prn)`): 2 on a
+BeiDou B1I or B3I GEO satellite, whose D2 bits are ten times shorter.
+
+`0` for a dataless pilot, which broadcasts no navigation bits, as its bit rate is `0 Hz`:
+`iszero` tells a pilot apart on either, and a caller that needs no bit constraint for a
+pilot gets none (`max(get_secondary_code_length(signal), periods)`). Works on an instance or
+a type.
+
+```julia-repl
+julia> get_code_periods_per_bit(GPSL1CA())
+20
+
+julia> get_code_periods_per_bit(BeiDouB1I(), 6), get_code_periods_per_bit(BeiDouB1I(), 1)
+(20, 2)
+```
+"""
+@inline get_code_periods_per_bit(::Type{S}) where {S<:AbstractGNSSSignal} =
+    _code_periods_per_bit(S, get_bit_rate(S))
+@inline get_code_periods_per_bit(::Type{S}, prn::Integer) where {S<:AbstractGNSSSignal} =
+    _code_periods_per_bit(S, get_bit_rate(S, prn))
+@inline get_code_periods_per_bit(s::AbstractGNSSSignal) =
+    get_code_periods_per_bit(typeof(s))
+@inline get_code_periods_per_bit(s::AbstractGNSSSignal, prn::Integer) =
+    get_code_periods_per_bit(typeof(s), prn)
+
+# In integer Hz, so that a tracked bit rate that does not divide the chip rate into whole
+# periods fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
+# for a non-integer n; it is converted to an `Int` first, and one that is no whole number of
+# Hz is an error.
+function _code_periods_per_bit(::Type{S}, bit_rate) where {S<:AbstractGNSSSignal}
+    iszero(bit_rate) && return 0
+    periods, remainder = divrem(
+        _whole_hertz(S, "chip rate", get_chip_rate(S)),
+        get_code_length(S) * _whole_hertz(S, "tracked bit rate", bit_rate),
+    )
+    iszero(remainder) || throw(
+        ArgumentError(get_signal_name(S) * "'s tracked bits span no whole number of code periods"),
+    )
+    periods
+end
+
+function _whole_hertz(::Type{S}, what, rate) where {S<:AbstractGNSSSignal}
+    hertz = ustrip(Hz, rate)
+    isinteger(hertz) || throw(ArgumentError(
+        get_signal_name(S) * "'s " * what * " of " * string(hertz) * " Hz is no whole number of Hz"))
+    Int(hertz)
+end
 
 """
 $(SIGNATURES)
@@ -399,13 +482,20 @@ end
 """
 $(SIGNATURES)
 
-Get the length of the secondary code.
+Get the secondary-code length in primary code periods. Works on a signal instance
+or, for built-in signals, its type without constructing the code tables.
 
-# Arguments
-- `signal`: A GNSS signal instance
+With no PRN, this describes the stored secondary-code structure: `1` when no
+secondary code is stored. With a PRN, it describes that satellite's effective
+overlay. BeiDou B1I and B3I store NH20, but GEO PRNs 1–5 and 59–63
+carry no overlay and return `1`; the other supported PRNs return `20`.
 
-# Returns
-- `Int`: Secondary code length (1 if no secondary code)
+    get_secondary_code_length(signal)
+    get_secondary_code_length(signal, prn)
+
+This query does not validate the PRN; [`get_supported_prns`](@ref) gives the
+supported code domain. It does not change how [`get_secondary_code`](@ref)
+stores the shared or per-PRN chips.
 
 # Examples
 ```julia-repl
@@ -418,3 +508,8 @@ julia> get_secondary_code_length(GPSL5I())
 @inline function get_secondary_code_length(signal::AbstractGNSSSignal)
     secondary_code_length(get_secondary_code(signal))
 end
+
+@inline get_secondary_code_length(signal::AbstractGNSSSignal, ::Integer) =
+    get_secondary_code_length(signal)
+@inline get_secondary_code_length(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_secondary_code_length(S)

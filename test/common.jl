@@ -675,3 +675,108 @@ const POWER_GROUPS = (
         end
     end
 end
+
+@testset "get_bit_rate of a satellite" begin
+    # The GEO PRNs, named once: the ones whose NH20 column is the all-ones no-op.
+    geo = [prn for prn in 1:63 if GNSSSignals.is_beidou_geo(prn)]
+    @test geo == [1:5; 59:63]
+    @test geo == [prn for prn in 1:63 if all(==(1), get_secondary_code(BeiDouB1I()).codes[:, prn])]
+    for S in (BeiDouB1I, BeiDouB3I), prn in 1:63
+        @test @inferred(get_bit_rate(S, prn)) ==
+              (GNSSSignals.is_beidou_geo(prn) ? 500Hz : 50Hz)
+        @test get_bit_rate(make_signal(S), prn) == get_bit_rate(S, prn)
+    end
+    # Every other signal broadcasts at its signal's rate on every satellite.
+    for S in ALL_SIGNALS
+        S in (BeiDouB1I, BeiDouB3I) && continue
+        @test @inferred(get_bit_rate(S, 1)) == get_bit_rate(S)
+        @test get_bit_rate(make_signal(S), 1) == get_bit_rate(S)
+    end
+end
+
+@testset "get_code_periods_per_bit" begin
+    expected = Dict(
+        GPSL1CA => 20, GPSL1C_D => 1, GPSL2CM => 1, GPSL5I => 10,
+        E1B_CBOC => 1, GalileoE1B => 1, GalileoE5aI => 20, GalileoE5bI => 4,
+        GalileoE6B => 1, BeiDouB1I => 20, BeiDouB3I => 20, BeiDouB2bI => 1,
+        BeiDouB2aI => 5, BeiDouB1C_D => 1,
+    )
+    for S in ALL_SIGNALS
+        if iszero(get_bit_rate(S))
+            # A pilot broadcasts no bits: 0, as its bit rate is 0 Hz.
+            @test @inferred(get_code_periods_per_bit(S)) === 0
+            @test get_code_periods_per_bit(make_signal(S), 1) === 0
+        else
+            periods = @inferred get_code_periods_per_bit(S)
+            @test periods == expected[S]
+            # The symbol period, in code periods, recovered from the rates themselves.
+            @test periods * get_code_length(S) / get_chip_rate(S) ≈
+                  1 / get_bit_rate(S)
+            @test get_code_periods_per_bit(make_signal(S)) == periods
+        end
+    end
+    # A BeiDou GEO satellite's D2 symbols span two 1 ms code periods, its D1 ones twenty.
+    for S in (BeiDouB1I, BeiDouB3I)
+        @test @inferred(get_code_periods_per_bit(S, 6)) == 20
+        @test get_code_periods_per_bit(S, 1) == 2
+        @test get_code_periods_per_bit(make_signal(S), 60) == 2
+    end
+    @test get_code_periods_per_bit(GPSL1CA, 3) == 20
+end
+
+# Test-only signals stating their rates as floats, as a BOC(m, n) with a non-integer n does.
+struct FloatRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
+GNSSSignals.get_chip_rate(::Type{FloatRateSignal}) = 1.023e6Hz
+GNSSSignals.get_bit_rate(::Type{FloatRateSignal}) = 50.0Hz
+GNSSSignals.get_code_length(::Type{FloatRateSignal}) = 1023
+GNSSSignals.get_signal_name(::Type{FloatRateSignal}) = "float-rate test signal"
+struct FractionalRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
+GNSSSignals.get_chip_rate(::Type{FractionalRateSignal}) = 1_023_000.5Hz
+GNSSSignals.get_bit_rate(::Type{FractionalRateSignal}) = 50Hz
+GNSSSignals.get_code_length(::Type{FractionalRateSignal}) = 1023
+GNSSSignals.get_signal_name(::Type{FractionalRateSignal}) = "fractional-rate test signal"
+
+@testset "get_code_periods_per_bit counts in integer Hz" begin
+    # Rates stated as floats are converted to whole Hz before dividing.
+    @test @inferred(get_code_periods_per_bit(FloatRateSignal)) === 20
+    # A rate that is no whole number of Hz cannot be counted in integer Hz.
+    @test_throws ArgumentError get_code_periods_per_bit(FractionalRateSignal)
+end
+
+@testset "Supported PRNs and effective secondary codes" begin
+    expected_ranges = (
+        1:37 => (GPSL1CA, GPSL5I, GPSL5Q),
+        1:63 => (GPSL1C_D, GPSL1C_P, L1C_P_TMBOC, GPSL2CM, GPSL2CL,
+                 BeiDouB1I, BeiDouB3I, BeiDouB2aI, BeiDouB2aQ, BeiDouB1C_D, BeiDouB1C_P),
+        1:50 => (GalileoE1B, E1B_CBOC, GalileoE1C, E1C_CBOC,
+                 GalileoE5aI, GalileoE5aQ, GalileoE5bI, GalileoE5bQ, GalileoE6B, GalileoE6C),
+        1:40 => (GalileoE5aQP,),
+        6:58 => (BeiDouB2bI,),
+    )
+    @test Set(Iterators.flatten(last(pair) for pair in expected_ranges)) == Set(ALL_SIGNALS)
+    for (expected, signal_types) in expected_ranges, S in signal_types
+        @test @inferred(get_supported_prns(S)) == expected
+        signal = make_signal(S)
+        @test @inferred(get_supported_prns(signal)) == expected
+        @test last(expected) <= size(get_codes(signal), 2)
+        @test @inferred(get_secondary_code_length(S)) == get_secondary_code_length(signal)
+        for prn in (first(expected), last(expected))
+            @test @inferred(get_secondary_code_length(S, prn)) == get_secondary_code_length(signal, prn)
+        end
+    end
+
+    b2b_codes = get_codes(BeiDouB2bI())
+    @test [prn for prn in axes(b2b_codes, 2) if any(!iszero, @view b2b_codes[:, prn])] == collect(6:58)
+
+    for S in (BeiDouB1I, BeiDouB3I)
+        signal = S()
+        @test get_secondary_code_length(signal) == get_secondary_code_length(S) == 20
+        for prn in get_supported_prns(S)
+            geo = prn in 1:5 || prn in 59:63
+            @test @inferred(get_secondary_code_length(S, prn)) == (geo ? 1 : 20)
+            @test get_secondary_code_length(signal, prn) == (geo ? 1 : 20)
+            @test get_bit_rate(S, prn) == (geo ? 500Hz : 50Hz)
+            @test get_code_periods_per_bit(S, prn) == (geo ? 2 : 20)
+        end
+    end
+end

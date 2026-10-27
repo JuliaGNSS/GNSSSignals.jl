@@ -221,3 +221,9 @@ giving a 100 ms tiered code.
 - [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 63 secondary matrix
 """
 @inline get_secondary_code(s::BeiDouB2aQ) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB2aI}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB2aI}) = 5
+
+@inline get_supported_prns(::Type{<:BeiDouB2aQ}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB2aQ}) = 100

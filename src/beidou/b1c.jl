@@ -221,3 +221,9 @@ truncated Weil code (BDS-SIS-ICD-B1C-1.0 §5.2.2), giving an 18 s tiered code.
 - [`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix
 """
 @inline get_secondary_code(s::BeiDouB1C_P) = PerPRNSecondaryCode(s.overlay_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB1C_D}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB1C_D}) = 1
+
+@inline get_supported_prns(::Type{<:BeiDouB1C_P}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB1C_P}) = 1800

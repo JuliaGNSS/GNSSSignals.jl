@@ -99,12 +99,16 @@ Get the nominal chip rate of BeiDou B3I (10.23 MHz).
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B3I (D1 navigation message, 50 bit/s).
+Get the bit rate, as tracked, of BeiDou B3I (D1 navigation message, 50 bit/s). The GEO
+satellites broadcast the D2 message at 500 bit/s; `get_bit_rate(signal, prn)` returns
+the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB3I}) = 50Hz
+@inline get_bit_rate(::Type{<:BeiDouB3I}, prn::Integer) =
+    is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """
 $(SIGNATURES)
@@ -119,3 +123,10 @@ NH20 on the MEO/IGSO PRNs (6-58, D1) for a 20 ms tiered code, and no overlay
 - [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 overlay matrix
 """
 @inline get_secondary_code(s::BeiDouB3I) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB3I}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB3I}) = 20
+@inline get_secondary_code_length(::Type{<:BeiDouB3I}, prn::Integer) =
+    is_beidou_geo(prn) ? 1 : 20
+@inline get_secondary_code_length(signal::BeiDouB3I, prn::Integer) =
+    get_secondary_code_length(typeof(signal), prn)

@@ -157,3 +157,6 @@ julia> get_bit_rate(GalileoE1B())
 @inline function get_bit_rate(::Type{<:GalileoE1B})
     250Hz
 end
+
+@inline get_supported_prns(::Type{<:GalileoE1B}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE1B}) = 1

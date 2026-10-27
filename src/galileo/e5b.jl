@@ -214,3 +214,9 @@ Each SVID overlays its primary code with the 100-chip CS100₍ₙ₊₅₀₎ se
 - [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 secondary matrix
 """
 @inline get_secondary_code(s::GalileoE5bQ) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:GalileoE5bI}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE5bI}) = 4
+
+@inline get_supported_prns(::Type{<:GalileoE5bQ}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE5bQ}) = 100
