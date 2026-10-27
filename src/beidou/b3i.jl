@@ -99,12 +99,16 @@ Get the code chipping rate for BeiDou B3I (10.23 MHz).
 """
 $(SIGNATURES)
 
-Get the data symbol rate for BeiDou B3I (D1 navigation message, 50 bps).
+Get the data symbol rate for BeiDou B3I (D1 navigation message, 50 bps). The GEO
+satellites broadcast the D2 message at 500 bps; `get_data_frequency(signal, prn)` returns
+the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
 @inline get_data_frequency(::Type{<:BeiDouB3I}) = 50Hz
+@inline get_data_frequency(::Type{<:BeiDouB3I}, prn::Integer) =
+    is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """
 $(SIGNATURES)

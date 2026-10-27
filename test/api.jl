@@ -39,5 +39,6 @@
         :get_code_spectrum_BOCcos,
         :SECONDS_PER_WEEK,
         :fold_week_crossover,
+        :is_beidou_geo,
     ])
 end

@@ -118,12 +118,15 @@ $(SIGNATURES)
 Get the data symbol rate for BeiDou B1I.
 
 The D1 navigation message (MEO/IGSO satellites) is broadcast at 50 bps; the GEO
-satellites broadcast the D2 message at 500 bps. This returns the D1 rate.
+satellites broadcast the D2 message at 500 bps. This returns the D1 rate;
+`get_data_frequency(signal, prn)` returns the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
 @inline get_data_frequency(::Type{<:BeiDouB1I}) = 50Hz
+@inline get_data_frequency(::Type{<:BeiDouB1I}, prn::Integer) =
+    is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """
 $(SIGNATURES)

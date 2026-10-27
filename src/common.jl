@@ -203,6 +203,7 @@ julia> get_constellation_name(GalileoE1B)
 
 """
     get_data_frequency(signal) -> Frequency
+    get_data_frequency(signal, prn) -> Frequency
 
 The rate of the navigation-message *symbols* a signal broadcasts, after forward
 error correction encoding: the rate at which a receiver demodulates them. Where a
@@ -210,9 +211,23 @@ message is FEC-coded this is a multiple of its information bit rate — Galileo 
 I/NAV is 125 bps at 250 symbols/s — and where it is not (GPS L1 C/A's LNAV, BeiDou
 D1) the two coincide. `0 Hz` for a dataless pilot.
 
+With a `prn`, the rate that satellite broadcasts. It differs from the signal's only on
+BeiDou B1I and B3I, whose GEO satellites ([`is_beidou_geo`](@ref GNSSSignals.is_beidou_geo))
+broadcast the D2 message at 500 Hz where the signal's rate is D1's 50 Hz. Pass the PRN
+wherever the satellite is known.
+
 Defined per concrete signal type; works on an instance or a type.
+
+```julia-repl
+julia> get_data_frequency(BeiDouB1I(), 6), get_data_frequency(BeiDouB1I(), 1)
+(50 Hz, 500 Hz)
+```
 """
 @inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
+@inline get_data_frequency(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_data_frequency(S)
+@inline get_data_frequency(s::AbstractGNSSSignal, prn::Integer) =
+    get_data_frequency(typeof(s), prn)
 
 """
 $(SIGNATURES)

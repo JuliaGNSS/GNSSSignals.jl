@@ -126,13 +126,19 @@ end
 # tiered code.
 const BEIDOU_NH20_BITS = (0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0)
 
-# NH20 overlay is per satellite type (BDS-SIS-ICD B1I/B3I Table 4-1): the
-# MEO/IGSO satellites broadcast the D1 message with the NH20 overlay, while the
-# GEO satellites broadcast the faster D2 message with NO secondary code. The two
-# ICDs assign the same PRN ranges — GEO: PRN 1-5 and 59-63; MEO/IGSO: PRN 6-58.
-const BEIDOU_D1_PRNS = 6:58   # MEO/IGSO satellites (D1 message, NH20 overlay)
+"""
+    is_beidou_geo(prn::Integer) -> Bool
 
-@inline _beidou_is_d1_prn(prn::Integer) = prn in BEIDOU_D1_PRNS
+Whether BeiDou PRN `prn` is a geostationary (GEO) satellite: PRN 1-5 and 59-63, the
+same ranges in the B1I and B3I ICDs (BDS-SIS-ICD-B1I-3.0 / BDS-SIS-ICD-B3I-1.0
+§5.1.1, Table 4-1). On B1I and B3I a GEO satellite broadcasts the D2 navigation message
+at 500 symbols/s with no secondary code, where the MEO and IGSO satellites (PRN 6-58)
+broadcast D1 at 50 symbols/s under the NH20 overlay; [`get_data_frequency`](@ref)`(signal,
+prn)` and [`get_secondary_code`](@ref) follow it.
+
+Not exported: write `GNSSSignals.is_beidou_geo`.
+"""
+@inline is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63
 
 # Build the (20 × num_prns) NH20 overlay matrix exposed via `PerPRNSecondaryCode`:
 # the NH20 sequence (±1) for the MEO/IGSO (D1) PRNs, and an all-ones (no-op)
@@ -142,7 +148,7 @@ function _beidou_nh20_matrix(num_prns::Integer)
     nh = ntuple(i -> Int8(2 * BEIDOU_NH20_BITS[i] - 1), Val(20))
     m = ones(Int8, 20, num_prns)          # GEO (D2) PRNs: all-ones ⇒ no overlay
     for prn = 1:num_prns
-        _beidou_is_d1_prn(prn) && (@inbounds m[:, prn] .= nh)
+        is_beidou_geo(prn) || (@inbounds m[:, prn] .= nh)
     end
     m
 end

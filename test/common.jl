@@ -660,3 +660,22 @@ const POWER_GROUPS = (
         end
     end
 end
+
+@testset "get_data_frequency of a satellite" begin
+    # The GEO PRNs, named once: the ones whose NH20 column is the all-ones no-op.
+    geo = [prn for prn in 1:63 if GNSSSignals.is_beidou_geo(prn)]
+    @test geo == [1:5; 59:63]
+    @test geo == [prn for prn in 1:63 if all(==(1), get_secondary_code(BeiDouB1I()).codes[:, prn])]
+    for S in (BeiDouB1I, BeiDouB3I), prn in 1:63
+        @test @inferred(get_data_frequency(S, prn)) ==
+              (GNSSSignals.is_beidou_geo(prn) ? 500Hz : 50Hz)
+        @test get_data_frequency(S(), prn) == get_data_frequency(S, prn)
+    end
+    # Every other signal broadcasts at its signal's rate on every satellite.
+    for S in ALL_SIGNALS
+        S in (BeiDouB1I, BeiDouB3I) && continue
+        @test @inferred(get_data_frequency(S, 1)) == get_data_frequency(S)
+        @test get_data_frequency(S(), 1) == get_data_frequency(S)
+    end
+end
+
