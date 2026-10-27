@@ -230,6 +230,62 @@ julia> get_data_frequency(BeiDouB1I(), 6), get_data_frequency(BeiDouB1I(), 1)
     get_data_frequency(typeof(s), prn)
 
 """
+    get_code_blocks_per_bit(signal) -> Int
+    get_code_blocks_per_bit(signal, prn) -> Int
+
+The number of primary code periods (code blocks) a navigation bit spans, as tracked:
+`get_code_frequency / (get_code_length · get_data_frequency)`, a whole number for every
+data signal — 20 for GPS L1 C/A and Galileo E5a-I, 10 for GPS L5-I, 5 for BeiDou B2a-I,
+4 for Galileo E5b-I, 1 where a bit spans one code period (Galileo E1B, GPS L1C-D, …).
+With a `prn`, that satellite's ([`get_data_frequency`](@ref)`(signal, prn)`): 2 on a
+BeiDou B1I or B3I GEO satellite, whose D2 bits are ten times shorter.
+
+`0` for a dataless pilot, which broadcasts no bits, as its data frequency is `0 Hz`:
+`iszero` tells a pilot apart on either, and a caller that needs no bit constraint for a
+pilot gets none (`max(get_secondary_code_length(signal), blocks)`). Works on an instance
+or a type.
+
+```julia-repl
+julia> get_code_blocks_per_bit(GPSL1CA())
+20
+
+julia> get_code_blocks_per_bit(BeiDouB1I(), 6), get_code_blocks_per_bit(BeiDouB1I(), 1)
+(20, 2)
+```
+"""
+@inline get_code_blocks_per_bit(::Type{S}) where {S<:AbstractGNSSSignal} =
+    _code_blocks_per_bit(S, get_data_frequency(S))
+@inline get_code_blocks_per_bit(::Type{S}, prn::Integer) where {S<:AbstractGNSSSignal} =
+    _code_blocks_per_bit(S, get_data_frequency(S, prn))
+@inline get_code_blocks_per_bit(s::AbstractGNSSSignal) =
+    get_code_blocks_per_bit(typeof(s))
+@inline get_code_blocks_per_bit(s::AbstractGNSSSignal, prn::Integer) =
+    get_code_blocks_per_bit(typeof(s), prn)
+
+# In integer Hz, so that a bit rate that does not divide the chip rate into whole blocks
+# fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
+# for a non-integer n; it is converted to an `Int` first, and one that is no whole number of
+# Hz is an error.
+function _code_blocks_per_bit(::Type{S}, data_frequency) where {S<:AbstractGNSSSignal}
+    iszero(data_frequency) && return 0
+    blocks, remainder = divrem(
+        _whole_hertz(S, "chip rate", get_code_frequency(S)),
+        get_code_length(S) * _whole_hertz(S, "bit rate", data_frequency),
+    )
+    iszero(remainder) || throw(
+        ArgumentError(get_signal_name(S) * "'s bits span no whole number of code blocks"),
+    )
+    blocks
+end
+
+function _whole_hertz(::Type{S}, what, rate) where {S<:AbstractGNSSSignal}
+    hertz = ustrip(Hz, rate)
+    isinteger(hertz) || throw(ArgumentError(
+        get_signal_name(S) * "'s " * what * " of " * string(hertz) * " Hz is no whole number of Hz"))
+    Int(hertz)
+end
+
+"""
 $(SIGNATURES)
 
 Carrier phase, in **radians**, of the signal's component relative to its band's

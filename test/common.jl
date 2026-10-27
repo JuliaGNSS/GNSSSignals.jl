@@ -679,3 +679,51 @@ end
     end
 end
 
+@testset "get_code_blocks_per_bit" begin
+    expected = Dict(
+        GPSL1CA => 20, GPSL1C_D => 1, GPSL2CM => 1, GPSL5I => 10,
+        GalileoE1B => 1, GalileoE1B_BOC11 => 1, GalileoE5aI => 20, GalileoE5bI => 4,
+        GalileoE6B => 1, BeiDouB1I => 20, BeiDouB3I => 20, BeiDouB2bI => 1,
+        BeiDouB2aI => 5, BeiDouB1C_D => 1,
+    )
+    for S in ALL_SIGNALS
+        if iszero(get_data_frequency(S))
+            # A pilot broadcasts no bits: 0, as its data frequency is 0 Hz.
+            @test @inferred(get_code_blocks_per_bit(S)) === 0
+            @test get_code_blocks_per_bit(S(), 1) === 0
+        else
+            blocks = @inferred get_code_blocks_per_bit(S)
+            @test blocks == expected[S]
+            # The bit period, in code periods, recovered from the rates themselves.
+            @test blocks * get_code_length(S) / get_code_frequency(S) ≈ 1 / get_data_frequency(S)
+            @test get_code_blocks_per_bit(S()) == blocks
+        end
+    end
+    # A BeiDou GEO satellite's D2 bits span two 1 ms blocks, its D1 ones twenty.
+    for S in (BeiDouB1I, BeiDouB3I)
+        @test @inferred(get_code_blocks_per_bit(S, 6)) == 20
+        @test get_code_blocks_per_bit(S, 1) == 2
+        @test get_code_blocks_per_bit(S(), 60) == 2
+    end
+    @test get_code_blocks_per_bit(GPSL1CA, 3) == 20
+end
+
+# Test-only signals stating their rates as floats, as a BOC(m, n) with a non-integer n does.
+struct FloatRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
+GNSSSignals.get_code_frequency(::Type{FloatRateSignal}) = 1.023e6Hz
+GNSSSignals.get_data_frequency(::Type{FloatRateSignal}) = 50.0Hz
+GNSSSignals.get_code_length(::Type{FloatRateSignal}) = 1023
+GNSSSignals.get_signal_name(::Type{FloatRateSignal}) = "float-rate test signal"
+struct FractionalRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
+GNSSSignals.get_code_frequency(::Type{FractionalRateSignal}) = 1_023_000.5Hz
+GNSSSignals.get_data_frequency(::Type{FractionalRateSignal}) = 50Hz
+GNSSSignals.get_code_length(::Type{FractionalRateSignal}) = 1023
+GNSSSignals.get_signal_name(::Type{FractionalRateSignal}) = "fractional-rate test signal"
+
+@testset "get_code_blocks_per_bit counts in integer Hz" begin
+    # Rates stated as floats are converted to whole Hz before dividing.
+    @test @inferred(get_code_blocks_per_bit(FloatRateSignal)) === 20
+    # A rate that is no whole number of Hz cannot be counted in integer Hz.
+    @test_throws ArgumentError get_code_blocks_per_bit(FractionalRateSignal)
+end
+
