@@ -9,8 +9,8 @@
 #
 #   LOC (BPSK):   P = 1,  sub-chip sign = +1
 #   BOC(m,1) sin: P = 2m, sub-chip k sign = iseven(k) ? +1 : -1
-#   BOC(m,1) cos: P = 4m, sub-chip k sign = iseven((k+m)÷2) ? +1 : -1 (sine shifted a ¼ cycle;
-#                 the shift straddles the sine grid, so quarter-sub-chips align every boundary)
+#   BOC(m,1) cos: P = 4m, sub-chip k sign = iseven((k+1)÷2) ? +1 : -1 (sine shifted a quarter
+#                 subcarrier period, one quarter-sub-chip, so quarter-sub-chips align every boundary)
 #   TMBOC(m2):    P = 2·m2, BOC(1,1) at most chip positions, BOC(m2,1) at `pattern`
 #                 positions (the high-rate component sets the resolution)
 #   CBOC(m1,m2):  P = 2·lcm(m1,m2), sub-chip value = a1·BOC(m1,1) ± a2·BOC(m2,1) — a multi-
@@ -63,11 +63,12 @@ subchip_factor(c::CBOC) = 2 * lcm(c.m1, c.m2)
 # ±1 for BPSK/BOC/TMBOC; a multi-level integer for CBOC (see below).
 @inline _sc_sign(::LOC, k, pos, P)  = Int8(1)
 @inline _sc_sign(b::BOC, k, pos, P) = iseven(k) ? Int8(1) : Int8(-1)
-# Cosine BOC(m,1) at P = 4m: the sub-carrier is the sine BOC shifted by a quarter cycle
-# (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin, φ+¼)`). At the sub-chip
-# midpoint φ = pos + (k+½)/(4m), `floor((φ+¼)·2m)` reduces to `pos·2m + (k+m)÷2`; `pos·2m` is
-# even, so the sign is position-independent: `iseven((k+m)÷2)`. Matches the float spec exactly.
-@inline _sc_sign(b::BOCcos, k, pos, P) = iseven((k + b.m) ÷ 2) ? Int8(1) : Int8(-1)
+# Cosine BOC(m,1) at P = 4m: the sub-carrier is the sine BOC shifted by a quarter subcarrier
+# period, 1/(4m) chips (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin,
+# φ + 1/(4m))`), one quarter-sub-chip. At the sub-chip midpoint φ = pos + (k+½)/(4m),
+# `floor((φ + 1/(4m))·2m)` reduces to `pos·2m + (k+1)÷2`; `pos·2m` is even, so the sign is
+# position-independent: `iseven((k+1)÷2)`. Matches the float spec exactly.
+@inline _sc_sign(b::BOCcos, k, pos, P) = iseven((k + 1) ÷ 2) ? Int8(1) : Int8(-1)
 @inline function _sc_sign(t::TMBOC, k, pos, P)
     if @inbounds t.pattern[mod(pos, length(t.pattern)) + 1]   # BOC(m2,1): flips every sub-chip
         iseven(k) ? Int8(1) : Int8(-1)
