@@ -1087,12 +1087,13 @@ end
     primary = rand(rng, Int8[-1, 1], Lp)
     codes = reshape(Int16.(primary), Lp, 1)             # single-PRN code matrix for build_signal_lut
 
-    @testset "_codelut_modulation maps BOCcos(m,1); n != 1 errors" begin
+    @testset "_codelut_modulation maps BOCcos(m,n)" begin
         for m in (1, 2, 6)
             @test GNSSSignals._codelut_modulation(BOCcos(m, 1)) == CL.BOCcos(m)
         end
         @test CL.BOCcos() == CL.BOCcos(1)                # zero-arg defaults to m == 1
-        @test_throws ErrorException GNSSSignals._codelut_modulation(BOCcos(2, 2))
+        @test GNSSSignals._codelut_modulation(BOCcos(2, 2)) == CL.BOCcos(2, 2)
+        @test CL.subchip_factor(CL.BOCcos(2, 2)) == 4    # 4m/n quarter periods per chip
     end
 
     @testset "baked table = P = 4m quarter-sub-chips, signs match float get_subcarrier_code" for m in (1, 2, 3, 6)
