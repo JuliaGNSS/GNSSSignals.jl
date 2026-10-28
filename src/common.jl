@@ -199,17 +199,29 @@ julia> get_constellation_name(GalileoE1B)
 # Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
 # these forward an instance to its type.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
-@inline get_code_frequency(s::AbstractGNSSSignal) = get_code_frequency(typeof(s))
 
 """
-    get_data_frequency(signal) -> Frequency
-    get_data_frequency(signal, prn) -> Frequency
+    get_chip_rate(signal) -> Frequency
 
-The rate of the navigation-message *symbols* a signal broadcasts, after forward
-error correction encoding: the rate at which a receiver demodulates them. Where a
-message is FEC-coded this is a multiple of its information bit rate — Galileo E1B's
-I/NAV is 125 bps at 250 symbols/s — and where it is not (GPS L1 C/A's LNAV, BeiDou
-D1) the two coincide. `0 Hz` for a dataless pilot.
+The nominal chip rate of a signal's primary ranging code: the chips per second the
+satellite broadcasts, as its ICD states it (1.023 MHz for GPS L1 C/A, 10.23 MHz for GPS
+L5). It is a property of the signal; the rate a receiver's replica runs at is its *code
+frequency*, this rate shifted by the code Doppler, which [`gen_code!`](@ref) and
+[`GNSSSignals.code_engine`](@ref) take as their `code_frequency` argument (defaulting to
+this one). Defined per concrete signal type; works on an instance or a type.
+"""
+@inline get_chip_rate(s::AbstractGNSSSignal) = get_chip_rate(typeof(s))
+
+"""
+    get_bit_rate(signal) -> Frequency
+    get_bit_rate(signal, prn) -> Frequency
+
+The bit rate of a signal's navigation message as tracked: the rate of the navigation
+bits a tracking loop demodulates, one sign each. On a signal with forward error
+correction that is the symbol rate of the code, not the bit rate of the message it
+carries: GPS L5-I is tracked at 100 bit/s while its CNAV message carries 50 bit/s. Where
+the message is not FEC-coded (GPS L1 C/A's LNAV, BeiDou D1) the two coincide. `0 Hz` for
+a dataless pilot.
 
 With a `prn`, the rate that satellite broadcasts. It differs from the signal's only on
 BeiDou B1I and B3I, whose GEO satellites ([`is_beidou_geo`](@ref GNSSSignals.is_beidou_geo))
@@ -219,31 +231,30 @@ wherever the satellite is known.
 Defined per concrete signal type; works on an instance or a type.
 
 ```julia-repl
-julia> get_data_frequency(BeiDouB1I(), 6), get_data_frequency(BeiDouB1I(), 1)
+julia> get_bit_rate(BeiDouB1I(), 6), get_bit_rate(BeiDouB1I(), 1)
 (50 Hz, 500 Hz)
 ```
 """
-@inline get_data_frequency(s::AbstractGNSSSignal) = get_data_frequency(typeof(s))
-@inline get_data_frequency(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
-    get_data_frequency(S)
-@inline get_data_frequency(s::AbstractGNSSSignal, prn::Integer) =
-    get_data_frequency(typeof(s), prn)
+@inline get_bit_rate(s::AbstractGNSSSignal) = get_bit_rate(typeof(s))
+@inline get_bit_rate(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_bit_rate(S)
+@inline get_bit_rate(s::AbstractGNSSSignal, prn::Integer) =
+    get_bit_rate(typeof(s), prn)
 
 """
     get_code_blocks_per_bit(signal) -> Int
     get_code_blocks_per_bit(signal, prn) -> Int
 
-The number of primary code periods (code blocks) a navigation bit spans, as tracked:
-`get_code_frequency / (get_code_length · get_data_frequency)`, a whole number for every
-data signal — 20 for GPS L1 C/A and Galileo E5a-I, 10 for GPS L5-I, 5 for BeiDou B2a-I,
-4 for Galileo E5b-I, 1 where a bit spans one code period (Galileo E1B, GPS L1C-D, …).
-With a `prn`, that satellite's ([`get_data_frequency`](@ref)`(signal, prn)`): 2 on a
+The number of primary code periods (code blocks) a navigation bit spans, as tracked
+([`get_bit_rate`](@ref)): `get_chip_rate / (get_code_length · get_bit_rate)`, a whole
+number for every data signal — 20 for GPS L1 C/A and Galileo E5a-I, 10 for GPS L5-I, 5 for
+BeiDou B2a-I, 4 for Galileo E5b-I, 1 where a bit spans one code period (Galileo E1B, GPS
+L1C-D, …). With a `prn`, that satellite's ([`get_bit_rate`](@ref)`(signal, prn)`): 2 on a
 BeiDou B1I or B3I GEO satellite, whose D2 bits are ten times shorter.
 
-`0` for a dataless pilot, which broadcasts no bits, as its data frequency is `0 Hz`:
-`iszero` tells a pilot apart on either, and a caller that needs no bit constraint for a
-pilot gets none (`max(get_secondary_code_length(signal), blocks)`). Works on an instance
-or a type.
+`0` for a dataless pilot, which broadcasts no bits, as its bit rate is `0 Hz`: `iszero`
+tells a pilot apart on either, and a caller that needs no bit constraint for a pilot gets
+none (`max(get_secondary_code_length(signal), blocks)`). Works on an instance or a type.
 
 ```julia-repl
 julia> get_code_blocks_per_bit(GPSL1CA())
@@ -254,9 +265,9 @@ julia> get_code_blocks_per_bit(BeiDouB1I(), 6), get_code_blocks_per_bit(BeiDouB1
 ```
 """
 @inline get_code_blocks_per_bit(::Type{S}) where {S<:AbstractGNSSSignal} =
-    _code_blocks_per_bit(S, get_data_frequency(S))
+    _code_blocks_per_bit(S, get_bit_rate(S))
 @inline get_code_blocks_per_bit(::Type{S}, prn::Integer) where {S<:AbstractGNSSSignal} =
-    _code_blocks_per_bit(S, get_data_frequency(S, prn))
+    _code_blocks_per_bit(S, get_bit_rate(S, prn))
 @inline get_code_blocks_per_bit(s::AbstractGNSSSignal) =
     get_code_blocks_per_bit(typeof(s))
 @inline get_code_blocks_per_bit(s::AbstractGNSSSignal, prn::Integer) =
@@ -266,11 +277,11 @@ julia> get_code_blocks_per_bit(BeiDouB1I(), 6), get_code_blocks_per_bit(BeiDouB1
 # fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
 # for a non-integer n; it is converted to an `Int` first, and one that is no whole number of
 # Hz is an error.
-function _code_blocks_per_bit(::Type{S}, data_frequency) where {S<:AbstractGNSSSignal}
-    iszero(data_frequency) && return 0
+function _code_blocks_per_bit(::Type{S}, bit_rate) where {S<:AbstractGNSSSignal}
+    iszero(bit_rate) && return 0
     blocks, remainder = divrem(
-        _whole_hertz(S, "chip rate", get_code_frequency(S)),
-        get_code_length(S) * _whole_hertz(S, "bit rate", data_frequency),
+        _whole_hertz(S, "chip rate", get_chip_rate(S)),
+        get_code_length(S) * _whole_hertz(S, "bit rate", bit_rate),
     )
     iszero(remainder) || throw(
         ArgumentError(get_signal_name(S) * "'s bits span no whole number of code blocks"),
@@ -421,7 +432,8 @@ and the `sampling_frequency ≥ code_frequency · subchip_factor` requirement.
 - `signal`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be ≥ code frequency · subchip_factor)
-- `code_frequency`: Code chipping rate (default: signal's nominal code frequency)
+- `code_frequency`: Code frequency the replica runs at (default: the signal's nominal chip
+  rate, [`get_chip_rate`](@ref))
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index`: Index offset (default: 0)
 
@@ -441,7 +453,7 @@ function gen_code(
     signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(signal),
+    code_frequency::Frequency = get_chip_rate(signal),
     start_phase = 0.0,
     start_index::Integer = 0,
 )
@@ -452,7 +464,7 @@ end
 """
 $(SIGNATURES)
 
-Get the ratio of code frequency to center frequency.
+Get the ratio of chip rate to center frequency.
 
 This ratio is used to compute the code Doppler from the carrier Doppler.
 
@@ -464,12 +476,12 @@ This ratio is used to compute the code Doppler from the carrier Doppler.
 
 # Examples
 ```julia-repl
-julia> get_code_center_frequency_ratio(GPSL1CA())
+julia> get_chip_rate_to_center_frequency_ratio(GPSL1CA())
 0.0006493506493506494
 ```
 """
-@inline function get_code_center_frequency_ratio(signal::AbstractGNSSSignal)
-    get_code_frequency(signal) / get_center_frequency(signal)
+@inline function get_chip_rate_to_center_frequency_ratio(signal::AbstractGNSSSignal)
+    get_chip_rate(signal) / get_center_frequency(signal)
 end
 
 """

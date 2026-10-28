@@ -9,8 +9,8 @@ BeiDou B1I signal — the legacy open-service signal on the BeiDou B1 frequency
 BPSK-modulated 2046-chip ranging code at 2.046 Mcps (a balanced Gold code). The
 20-bit Neuman-Hoffman secondary code (NH20, at 1 kHz) overlays the ranging code
 on the **MEO/IGSO** satellites (PRN 6-58), which broadcast the D1 navigation
-message (50 bps), giving a 20 ms tiered code. The **GEO** satellites (PRN 1-5
-and 59-63) broadcast the faster D2 message (500 bps) with **no** NH overlay, so
+message (50 bit/s), giving a 20 ms tiered code. The **GEO** satellites (PRN 1-5
+and 59-63) broadcast the faster D2 message (500 bit/s) with **no** NH overlay, so
 [`get_secondary_code`](@ref) returns a per-SVID overlay that is NH20 for the
 MEO/IGSO PRNs and a no-op (all-ones) column for the GEO PRNs (BDS-SIS-ICD-B1I-3.0
 Table 4-1 / §5.2.1).
@@ -27,7 +27,7 @@ b1i = BeiDouB1I()
 get_code_length(b1i)            # 2046
 get_secondary_code_length(b1i)  # 20
 get_band(b1i)                   # B1I()
-get_code_frequency(b1i)         # 2046000 Hz
+get_chip_rate(b1i)              # 2046000 Hz
 ```
 """
 struct BeiDouB1I{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractBeiDouSignal{C}
@@ -110,22 +110,22 @@ $(SIGNATURES)
 
 Get the code chipping rate for BeiDou B1I (2.046 MHz).
 """
-@inline get_code_frequency(::Type{<:BeiDouB1I}) = 2_046_000Hz
+@inline get_chip_rate(::Type{<:BeiDouB1I}) = 2_046_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for BeiDou B1I.
+Get the bit rate, as tracked, of BeiDou B1I.
 
-The D1 navigation message (MEO/IGSO satellites) is broadcast at 50 bps; the GEO
-satellites broadcast the D2 message at 500 bps. This returns the D1 rate;
-`get_data_frequency(signal, prn)` returns the rate of a given satellite.
+The D1 navigation message (MEO/IGSO satellites) is broadcast at 50 bit/s; the GEO
+satellites broadcast the D2 message at 500 bit/s. This returns the D1 rate;
+`get_bit_rate(signal, prn)` returns the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::Type{<:BeiDouB1I}) = 50Hz
-@inline get_data_frequency(::Type{<:BeiDouB1I}, prn::Integer) =
+@inline get_bit_rate(::Type{<:BeiDouB1I}) = 50Hz
+@inline get_bit_rate(::Type{<:BeiDouB1I}, prn::Integer) =
     is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """

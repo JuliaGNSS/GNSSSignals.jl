@@ -7,10 +7,9 @@ Block III/IIIF satellites alongside the legacy L1 C/A).
 BOC(1,1) sine-phased on the L1 band (1575.42 MHz). 10230-chip primary
 code at 1.023 Mcps, derived from a Weil-code construction with a 7-chip
 expansion inserted at a PRN-specific point (IS-GPS-800G §3.2.2.1.1).
-No secondary code; carries the CNAV-2 message at 100 sps (50 bps after
-rate-½ LDPC decoding, per IS-GPS-800G §3.2.3 — `get_data_frequency`
-exposes the broadcast symbol rate, matching the convention used for all
-other GPS / Galileo signals in this package).
+No secondary code; carries the CNAV-2 message, tracked at 100 bit/s: the
+symbol rate of its rate-½ LDPC code, the message carrying 50 bit/s
+(IS-GPS-800G §3.2.3; see [`get_bit_rate`](@ref)).
 
 # Example
 ```julia
@@ -77,21 +76,18 @@ Get the code chipping rate for GPS L1C-D.
 # Returns
 - `Frequency`: 1.023 MHz
 """
-@inline get_code_frequency(::Type{<:GPSL1C_D}) = 1_023_000Hz
+@inline get_chip_rate(::Type{<:GPSL1C_D}) = 1_023_000Hz
 
 """
 $(SIGNATURES)
 
-Get the symbol rate of the CNAV-2 message broadcast on GPS L1C-D.
+Get the bit rate, as tracked, of GPS L1C-D.
 
-Per IS-GPS-800G §3.2.3, each frame of 9 + 1200 + 548 + 24 + 24 - 5 = 1800
-LDPC-encoded symbols is broadcast at 100 sps. The post-decode
-information bit rate is 50 bps (rate-½ LDPC), but `get_data_frequency`
-returns the broadcast symbol rate to stay consistent with the other
-signals in this package — e.g. GPS L5I and Galileo E1B both report the
-post-FEC channel symbol rate, not the pre-FEC information rate.
+Per IS-GPS-800G §3.2.3, each 18 s frame of 9 + 1200 + 548 + 24 + 24 - 5 = 1800
+LDPC-encoded symbols is broadcast at 100 per second. That symbol rate is the bit rate as
+tracked; the CNAV-2 message itself carries 50 bit/s (rate-½ LDPC).
 
 # Returns
 - `Frequency`: 100 Hz
 """
-@inline get_data_frequency(::Type{<:GPSL1C_D}) = 100Hz
+@inline get_bit_rate(::Type{<:GPSL1C_D}) = 100Hz

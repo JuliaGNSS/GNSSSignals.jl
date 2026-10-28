@@ -6,7 +6,7 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 
 ### Supported GNSS Signals
 
-| Signal | Band | Carrier Frequency | Code Frequency | Code Length | Secondary Code | Modulation |
+| Signal | Band | Carrier Frequency | Chip Rate | Code Length | Secondary Code | Modulation |
 |--------|------|-------------------|----------------|-------------|----------------|------------|
 | GPS L1 C/A | L1 | 1575.42 MHz | 1.023 MHz | 1023 chips | — | BPSK |
 | GPS L1C-D | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | — | BOC(1,1) |

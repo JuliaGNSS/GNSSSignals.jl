@@ -132,8 +132,8 @@ const BEIDOU_NH20_BITS = (0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 
 Whether BeiDou PRN `prn` is a geostationary (GEO) satellite: PRN 1-5 and 59-63, the
 same ranges in the B1I and B3I ICDs (BDS-SIS-ICD-B1I-3.0 / BDS-SIS-ICD-B3I-1.0
 §5.1.1, Table 4-1). On B1I and B3I a GEO satellite broadcasts the D2 navigation message
-at 500 symbols/s with no secondary code, where the MEO and IGSO satellites (PRN 6-58)
-broadcast D1 at 50 symbols/s under the NH20 overlay; [`get_data_frequency`](@ref)`(signal,
+at 500 bit/s with no secondary code, where the MEO and IGSO satellites (PRN 6-58)
+broadcast D1 at 50 bit/s under the NH20 overlay; [`get_bit_rate`](@ref)`(signal,
 prn)` and [`get_secondary_code`](@ref) follow it.
 
 Not exported: write `GNSSSignals.is_beidou_geo`.

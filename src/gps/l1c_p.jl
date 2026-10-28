@@ -84,16 +84,16 @@ Get the code chipping rate for GPS L1C-P.
 # Returns
 - `Frequency`: 1.023 MHz
 """
-@inline get_code_frequency(::Type{<:GPSL1C_P}) = 1_023_000Hz
+@inline get_chip_rate(::Type{<:GPSL1C_P}) = 1_023_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L1C-P.
+Get the bit rate, as tracked, of GPS L1C-P.
 
-The pilot component is dataless.
+The pilot component is dataless, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::Type{<:GPSL1C_P}) = 0Hz
+@inline get_bit_rate(::Type{<:GPSL1C_P}) = 0Hz

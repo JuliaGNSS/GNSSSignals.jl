@@ -5,12 +5,12 @@
     @test @inferred(get_code_length(b2b)) == 10230
     @test @inferred(get_secondary_code_length(b2b)) == 1
     @test @inferred(get_secondary_code(b2b)) isa NoSecondaryCode
-    @test @inferred(get_data_frequency(b2b)) == 1000Hz
-    @test @inferred(get_code_frequency(b2b)) == 10_230_000Hz
+    @test @inferred(get_bit_rate(b2b)) == 1000Hz
+    @test @inferred(get_chip_rate(b2b)) == 10_230_000Hz
     @test get_signal_name(b2b) == "BeiDou B2b-I"
     @test @inferred(get_modulation(b2b)) == GNSSSignals.LOC()
     @test get_code_type(b2b) === Int16
-    @test get_code_spectrum(b2b, 0) ≈ 1.0Hz / get_code_frequency(b2b)
+    @test get_code_spectrum(b2b, 0) ≈ 1.0Hz / get_chip_rate(b2b)
 end
 
 @testset "BeiDou B2b-I ranging codes match the ICD (PRN 6-58)" begin
@@ -44,7 +44,7 @@ end
 @testset "BeiDou B2b-I gen_code! produces a sampled BPSK(10) replica" begin
     b2b = BeiDouB2bI()
     samples_per_chip = 2
-    code_freq = get_code_frequency(b2b)
+    code_freq = get_chip_rate(b2b)
     n_samples = samples_per_chip * 2 * get_code_length(b2b)
     buf = zeros(Int8, n_samples)
     gen_code!(buf, b2b, 6, samples_per_chip * code_freq, code_freq, 0.0, 0)

@@ -695,7 +695,7 @@ end
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         # A couple of rates, all satisfying fs ≥ fc·P.
         for fs in (fc * P, fc * P * 2.5)
             eng = code_engine(signal, prn, fs, fc, Val(1))
@@ -743,7 +743,7 @@ end
     @testset "allocation-free steady iteration" begin
         signal = GPSL1CA(); prn = 1
         P = signal.lut.subchip_factor
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         fs = fc * P
         eng = code_engine(signal, prn, fs, fc, Val(1))
         # Drive the value-based loop inside a barrier so the engine type is concrete at
@@ -767,13 +767,13 @@ end
     @testset "errors" begin
         # Non-baked secondary (GPS L5I NH10) → error at engine construction.
         l5i = GPSL5I()
-        fc5 = get_code_frequency(l5i)
+        fc5 = get_chip_rate(l5i)
         @test_throws ErrorException code_engine(l5i, 1, fc5 * l5i.lut.subchip_factor, fc5, Val(1))
         # fs < fc·subchip_factor → error.
         l1cd = GPSL1C_D()   # BOC(1,1) → subchip_factor 2
         P = l1cd.lut.subchip_factor
         @test P > 1
-        fc1c = get_code_frequency(l1cd)
+        fc1c = get_chip_rate(l1cd)
         @test_throws ErrorException code_engine(l1cd, 1, fc1c * P / 2, fc1c, Val(1))
     end
 
@@ -786,7 +786,7 @@ end
     @testset "fill-engine run-fill at high oversampling (L1CA + L5I secondary)" begin
         for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
             prn = 1
-            fc = get_code_frequency(signal)
+            fc = get_chip_rate(signal)
             fs = fc * osr * signal.lut.subchip_factor
             N = 7000
             # one-shot embedded gen_code! (builds + run-fills from phase 0)
@@ -819,7 +819,7 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "engine construction is zero-copy (issue #107)" begin
     sig = GPSL2CL(); prn = 1                    # 767250-chip code → ~750 KB padded column
-    fc = get_code_frequency(sig)
+    fc = get_chip_rate(sig)
     coltot = size(sig.lut.padded, 1)            # bytes copied if the field is concrete
     # Barriers so the built engine type is concrete at the @allocated site.
     build_fill(s, p, fsx, fcx) = code_engine(s, p, fsx, fcx)
@@ -846,7 +846,7 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "Galileo E1B CBOC (LUT integer approximation)" begin
     signal = GalileoE1B(); prn = 1
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     P = 12                                            # 2·lcm(1,6)
     Lp = get_code_length(signal)
     # Primary ±1 chips for this PRN (sign of the stored Int16 chips), as the embedded bake uses.
@@ -971,7 +971,7 @@ end
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         @test length(signal.lut.secondary) > 1                # residual (non-baked) secondary
         for osr in (1.5, 1.75)                                 # windowed permute regime on every backend
             fs = Float64(fc) * P * osr
@@ -1028,7 +1028,7 @@ end
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1) — all baked
     for signal in sigs
         prn = 1
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         P = signal.lut.subchip_factor
         for fs in (fc * P, fc * P * 2.5)                 # boundary (fs == fc·P) and permute regime
             for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
@@ -1056,7 +1056,7 @@ end
     # points: fine at exactly fc·P, an error for any fs below it.
     @testset "shared oversampling guard fires identically" begin
         signal = GPSL1C_D(); prn = 1                     # BOC(1,1) → P = 2, so fc·P > fc
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         P = signal.lut.subchip_factor
         @test P > 1
         ok  = fc * P                                     # exactly at the threshold — allowed
@@ -1172,7 +1172,7 @@ end
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1)
     for signal in sigs
         prn = 1
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         P = signal.lut.subchip_factor
         fs = fc * P * 2.5                         # permute regime (sub-chip oversampled), Unitful Hz
         N = 20000
@@ -1207,7 +1207,7 @@ end
         # Portable adapter paths over the zero-copy column view are covered regardless of the
         # CI host CPU. Forcing a backend the CPU lacks would SIGILL, so we only sweep _BACKENDS.
         signal = GPSL1CA(); prn = 1
-        fc = get_code_frequency(signal)
+        fc = get_chip_rate(signal)
         fs = fc * 2.5                                     # permute regime (sub-chip oversampled)
         oneshot = Vector{Int8}(undef, 20000); gen_code!(oneshot, signal, prn, fs, fc)
         # Function barrier for the @allocated site so the engine/state types are concrete and
@@ -1234,7 +1234,7 @@ end
         # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
         # indices 4,5,7,9) and require byte-exact agreement with the one-shot gen_code!.
         sig = GPSL5I(); prn = 1
-        fc = get_code_frequency(sig); fs = fc * 2
+        fc = get_chip_rate(sig); fs = fc * 2
         N = 230_000                       # > 10 NH10 periods (period = 10230·osr samples)
         oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, sig, prn, fs, fc)
         @test any(==(Int8(-1)), GNSSSignals._signal_lut_secondary(sig.lut, prn))   # negate branch can fire

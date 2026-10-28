@@ -5,14 +5,14 @@
     @test @inferred(get_code_length(b2a_i)) == 10230
     @test @inferred(get_secondary_code_length(b2a_i)) == 5
     @test @inferred(get_secondary_code(b2a_i)) isa SharedSecondaryCode{5}
-    @test @inferred(get_data_frequency(b2a_i)) == 200Hz
-    @test @inferred(get_code_frequency(b2a_i)) == 10_230_000Hz
+    @test @inferred(get_bit_rate(b2a_i)) == 200Hz
+    @test @inferred(get_chip_rate(b2a_i)) == 10_230_000Hz
     @test get_signal_name(b2a_i) == "BeiDou B2a data"
     @test @inferred(get_modulation(b2a_i)) == GNSSSignals.LOC()
     @test get_code_type(b2a_i) === Int16
     # Shares the L5 band, so the code/center ratio is the same 1/115 as GPS L5.
-    @test get_code_center_frequency_ratio(b2a_i) ≈ 1 / 115
-    @test get_code_spectrum(b2a_i, 0) ≈ 1.0Hz / get_code_frequency(b2a_i)
+    @test get_chip_rate_to_center_frequency_ratio(b2a_i) ≈ 1 / 115
+    @test get_code_spectrum(b2a_i, 0) ≈ 1.0Hz / get_chip_rate(b2a_i)
 end
 
 @testset "BeiDou B2a pilot (Q)" begin
@@ -22,8 +22,8 @@ end
     @test @inferred(get_code_length(b2a_q)) == 10230
     @test @inferred(get_secondary_code_length(b2a_q)) == 100
     @test @inferred(get_secondary_code(b2a_q)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(b2a_q)) == 0Hz   # dataless pilot
-    @test @inferred(get_code_frequency(b2a_q)) == 10_230_000Hz
+    @test @inferred(get_bit_rate(b2a_q)) == 0Hz   # dataless pilot
+    @test @inferred(get_chip_rate(b2a_q)) == 10_230_000Hz
     @test get_signal_name(b2a_q) == "BeiDou B2a pilot"
     @test @inferred(get_modulation(b2a_q)) == GNSSSignals.LOC()
 end
@@ -61,7 +61,7 @@ end
 @testset "BeiDou B2a gen_code! produces a sampled BPSK(10) replica" begin
     for signal in (BeiDouB2aI(), BeiDouB2aQ())
         samples_per_chip = 2
-        code_freq = get_code_frequency(signal)
+        code_freq = get_chip_rate(signal)
         n_samples = samples_per_chip * 2 * get_code_length(signal)
         buf = zeros(Int8, n_samples)
         gen_code!(buf, signal, 1, samples_per_chip * code_freq, code_freq, 0.0, 0)

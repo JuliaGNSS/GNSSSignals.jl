@@ -7,8 +7,8 @@ Galileo E5b-I signal (the in-phase, data-carrying component of Galileo E5b).
 [`get_band`](@ref) returns [`E5b`](@ref) — a carrier Galileo shares exactly with
 BeiDou B2b. A 4-bit
 secondary code (CS4, the same for every SVID) overlays the data channel, giving
-a 4 ms tiered code, and the component carries the I/NAV message at 250
-symbols/s.
+a 4 ms tiered code, and the component carries the I/NAV message, tracked at 250
+bit/s (the symbol rate of its rate-½ convolutional code).
 
 Galileo E5b is one half of the wideband E5 AltBOC(15,10) signal. The ICD notes
 that "E5a and E5b signals can be processed independently by the user receiver as
@@ -42,7 +42,7 @@ Galileo E5b-Q signal (the quadrature, dataless pilot component of Galileo E5b).
 10230-chip primary code at 10.23 Mcps on the E5b sideband (1207.14 MHz, reported
 as [`E5b`](@ref)), overlaid with a 100-bit per-SVID secondary code for a 100 ms
 tiered code. As the pilot component it carries no navigation data, so
-[`get_data_frequency`](@ref) returns 0 Hz.
+[`get_bit_rate`](@ref) returns 0 Hz.
 
 Like [`GalileoE5bI`](@ref) the E5b sideband is modelled on its own as BPSK(10)
 ([`LOC`](@ref)). The primary code uses the E5b base register 1 (feedback
@@ -56,7 +56,7 @@ CS100₍ₙ₊₅₀₎ to SVID `n` (OS SIS ICD v2.2 §3.5.2) — the other half
 e5b_q = GalileoE5bQ()
 get_code_length(e5b_q)            # 10230
 get_secondary_code_length(e5b_q)  # 100
-get_data_frequency(e5b_q)         # 0 Hz
+get_bit_rate(e5b_q)               # 0 Hz
 ```
 """
 struct GalileoE5bQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSignal{C}
@@ -153,34 +153,34 @@ $(SIGNATURES)
 
 Get the code chipping rate for Galileo E5b (10.23 MHz, both components).
 """
-@inline get_code_frequency(::Type{<:GalileoE5bI}) = 10_230_000Hz
-@inline get_code_frequency(::Type{<:GalileoE5bQ}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GalileoE5bI}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GalileoE5bQ}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E5b-I.
+Get the bit rate, as tracked, of Galileo E5b-I.
 
-The E5b-I channel carries the Galileo I/NAV navigation message at 250 symbols/s
-(Galileo OS SIS ICD v2.2, Table 5) — the same message E1-B carries, at the same
-rate.
+The E5b-I channel carries the Galileo I/NAV navigation message, tracked at 250 bit/s
+(Galileo OS SIS ICD v2.2, Table 5): the symbol rate of its rate-½ convolutional code, the
+message carrying 125 bit/s — the same message E1-B carries, at the same rate.
 
 # Returns
 - `Frequency`: 250 Hz
 """
-@inline get_data_frequency(::Type{<:GalileoE5bI}) = 250Hz
+@inline get_bit_rate(::Type{<:GalileoE5bI}) = 250Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E5b-Q.
+Get the bit rate, as tracked, of Galileo E5b-Q.
 
-The E5b-Q component is a dataless pilot.
+The E5b-Q component is a dataless pilot, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::Type{<:GalileoE5bQ}) = 0Hz
+@inline get_bit_rate(::Type{<:GalileoE5bQ}) = 0Hz
 
 """
 $(SIGNATURES)

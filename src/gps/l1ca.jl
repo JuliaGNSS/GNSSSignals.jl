@@ -4,7 +4,7 @@
 GPS L1 C/A signal.
 
 The legacy civil GPS signal on the L1 band (1575.42 MHz). BPSK-modulated
-1023-chip C/A code at 1.023 Mcps, fully modulated by the 50 bps navigation
+1023-chip C/A code at 1.023 Mcps, fully modulated by the 50 bit/s navigation
 message (no pilot component).
 
 # Example
@@ -101,30 +101,30 @@ Get the code chipping rate for GPS L1 C/A.
 
 # Examples
 ```julia-repl
-julia> get_code_frequency(GPSL1CA())
+julia> get_chip_rate(GPSL1CA())
 1023000 Hz
 ```
 """
-@inline function get_code_frequency(::Type{<:GPSL1CA})
+@inline function get_chip_rate(::Type{<:GPSL1CA})
     1_023_000Hz
 end
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L1 C/A.
+Get the bit rate, as tracked, of GPS L1 C/A.
 
-LNAV is broadcast uncoded at 50 bps, so its symbol rate is its bit rate.
+The LNAV message is broadcast uncoded at 50 bit/s.
 
 # Returns
 - `Frequency`: 50 Hz
 
 # Examples
 ```julia-repl
-julia> get_data_frequency(GPSL1CA())
+julia> get_bit_rate(GPSL1CA())
 50 Hz
 ```
 """
-@inline function get_data_frequency(::Type{<:GPSL1CA})
+@inline function get_bit_rate(::Type{<:GPSL1CA})
     50Hz
 end

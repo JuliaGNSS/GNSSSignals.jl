@@ -405,7 +405,7 @@ end
 
 """
     gen_code!(sampled_code::AbstractVector{Int8}, signal, prn, sampling_frequency,
-              code_frequency = get_code_frequency(signal),
+              code_frequency = get_chip_rate(signal),
               start_phase = 0.0, start_index_shift = 0) -> sampled_code
 
 Generate the sampled spreading code for PRN `prn` of `signal` in-place, by resampling PRN
@@ -452,7 +452,7 @@ function gen_code!(
     signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(signal),
+    code_frequency::Frequency = get_chip_rate(signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
 )
@@ -504,8 +504,8 @@ end
     CodeFillEngine
 
 Immutable, loop-invariant LUT code-fill engine built from a `(signal, prn)` (reading
-`signal.lut`) and a sampling/code rate via [`code_engine`](@ref)`(signal, prn, fs, fc)`. It
-holds the chosen backend's resampler config (precomputed step ratio + DDA deltas), the
+`signal.lut`) and a sampling and code frequency via
+[`code_engine`](@ref)`(signal, prn, fs, fc)`. It holds the chosen backend's resampler config (precomputed step ratio + DDA deltas), the
 residual (non-baked) secondary (e.g. GPS L5I's NH10), and the initial phase used to seed
 [`code_state`](@ref).
 
@@ -541,7 +541,7 @@ end
 
 """
     code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
-                code_frequency = get_code_frequency(signal);
+                code_frequency = get_chip_rate(signal);
                 start_phase = 0.0, start_index_shift = 0,
                 backend = default_backend()) -> CodeFillEngine
 
@@ -568,7 +568,7 @@ function code_engine(
     signal::AbstractGNSSSignal,
     prn::Integer,
     sampling_frequency::Frequency,
-    code_frequency::Frequency = get_code_frequency(signal);
+    code_frequency::Frequency = get_chip_rate(signal);
     start_phase = 0.0,
     start_index_shift::Integer = 0,
     backend::CodeLUT.Backend = CodeLUT.default_backend(),
@@ -661,7 +661,7 @@ Initial isbits fill state for `eng` (DDA seeded at the engine's start phase, abs
 
 """
     code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
-                code_frequency = get_code_frequency(signal), Val(K);
+                code_frequency = get_chip_rate(signal), Val(K);
                 start_phase = 0.0, start_index_shift = 0) -> CodeLUT.CodeEngine
 
 Build a loop-invariant, value-based code engine over PRN `prn` of `signal` (reading
@@ -692,4 +692,4 @@ function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequenc
 end
 
 code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency::Frequency, vk::Val; kwargs...) =
-    code_engine(signal, prn, sampling_frequency, get_code_frequency(signal), vk; kwargs...)
+    code_engine(signal, prn, sampling_frequency, get_chip_rate(signal), vk; kwargs...)

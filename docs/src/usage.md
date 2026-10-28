@@ -37,8 +37,8 @@ sampling_frequency = 4MHz
 carrier_doppler = 1000Hz
 
 # Calculate code Doppler from carrier Doppler
-code_doppler = carrier_doppler * get_code_center_frequency_ratio(gpsl1ca)
-code_frequency = get_code_frequency(gpsl1ca) + code_doppler
+code_doppler = carrier_doppler * get_chip_rate_to_center_frequency_ratio(gpsl1ca)
+code_frequency = get_chip_rate(gpsl1ca) + code_doppler
 
 # Generate Doppler-shifted code
 sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, code_frequency)
@@ -52,7 +52,7 @@ You can specify a starting code phase:
 start_phase = 100.5  # Start at chip 100.5
 prn = 1
 sampling_frequency = 4MHz
-sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, get_code_frequency(gpsl1ca), start_phase)
+sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, get_chip_rate(gpsl1ca), start_phase)
 ```
 
 ### Long Constant-Rate Fills (Rate Quantization)
@@ -78,7 +78,7 @@ using Unitful: Hz, MHz, upreferred
 gpsl1ca = GPSL1CA()
 prn = 1
 sampling_frequency = 50MHz
-code_frequency = get_code_frequency(gpsl1ca)
+code_frequency = get_chip_rate(gpsl1ca)
 chips_per_sample = upreferred(code_frequency / sampling_frequency)  # plain Float64
 
 segment_length = 10^7
@@ -103,7 +103,7 @@ gpsl1ca = GPSL1CA()
 get_code_length(gpsl1ca)           # 1023
 get_band(gpsl1ca)                  # L1()
 get_center_frequency(gpsl1ca)      # 1575420000 Hz
-get_code_frequency(gpsl1ca)        # 1023000 Hz
+get_chip_rate(gpsl1ca)             # 1023000 Hz
 get_secondary_code_length(gpsl1ca) # 1 (no secondary code)
 get_modulation(gpsl1ca)            # LOC()
 get_signal_name(gpsl1ca)           # "GPS L1 C/A"
@@ -118,22 +118,22 @@ gpsl5i = GPSL5I()
 get_code_length(gpsl5i)           # 10230
 get_band(gpsl5i)                  # L5()
 get_center_frequency(gpsl5i)      # 1176450000 Hz
-get_code_frequency(gpsl5i)        # 10230000 Hz
+get_chip_rate(gpsl5i)             # 10230000 Hz
 get_secondary_code_length(gpsl5i) # 10
 get_secondary_code(gpsl5i)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 ```
 
 ### GPS L1C-D
 
-GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and broadcasts the CNAV-2 message at 100 sps (post-LDPC channel symbol rate; the information bit rate after rate-½ decoding is 50 bps). It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
+GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and broadcasts the CNAV-2 message, tracked at 100 bit/s (the symbol rate of its rate-½ LDPC code; the message carries 50 bit/s). It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
 
 ```julia
 gpsl1c_d = GPSL1C_D()
 get_code_length(gpsl1c_d)           # 10230
 get_band(gpsl1c_d)                  # L1()
 get_center_frequency(gpsl1c_d)      # 1575420000 Hz
-get_code_frequency(gpsl1c_d)        # 1023000 Hz
-get_data_frequency(gpsl1c_d)        # 100 Hz
+get_chip_rate(gpsl1c_d)             # 1023000 Hz
+get_bit_rate(gpsl1c_d)              # 100 Hz
 get_secondary_code_length(gpsl1c_d) # 1 (no secondary code)
 get_modulation(gpsl1c_d)            # BOCsin(1, 1)
 ```
@@ -147,8 +147,8 @@ gpsl1c_p = GPSL1C_P()
 get_code_length(gpsl1c_p)           # 10230
 get_band(gpsl1c_p)                  # L1()
 get_center_frequency(gpsl1c_p)      # 1575420000 Hz
-get_code_frequency(gpsl1c_p)        # 1023000 Hz
-get_data_frequency(gpsl1c_p)        # 0 Hz (dataless)
+get_chip_rate(gpsl1c_p)             # 1023000 Hz
+get_bit_rate(gpsl1c_p)              # 0 Hz (dataless)
 get_secondary_code_length(gpsl1c_p) # 1800
 get_modulation(gpsl1c_p)            # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
 ```
@@ -157,15 +157,15 @@ The overlay code is per-PRN, so [`get_secondary_code`](@ref) returns a [`PerPRNS
 
 ### GPS L2 CM
 
-GPS L2 CM is the moderate-length, data-carrying component of the GPS L2 civil signal (L2C), on the L2 band (1227.6 MHz). It is a BPSK 10230-chip code at 511.5 kcps (a 20 ms period) carrying the CNAV message at 50 sps, with no secondary code (IS-GPS-200N §3.2.1.4). In the broadcast signal it is time-multiplexed chip-by-chip with the [`GPSL2CL`](@ref GNSSSignals.GPSL2CL) pilot; like GNSS-SDR and PocketSDR this implementation models the CM component on its own at its native chip rate. PRNs 1-63 are supported:
+GPS L2 CM is the moderate-length, data-carrying component of the GPS L2 civil signal (L2C), on the L2 band (1227.6 MHz). It is a BPSK 10230-chip code at 511.5 kcps (a 20 ms period) carrying the CNAV message, tracked at 50 bit/s (the symbol rate of its rate-½ convolutional code; the message carries 25 bit/s), with no secondary code (IS-GPS-200N §3.2.1.4). In the broadcast signal it is time-multiplexed chip-by-chip with the [`GPSL2CL`](@ref GNSSSignals.GPSL2CL) pilot; like GNSS-SDR and PocketSDR this implementation models the CM component on its own at its native chip rate. PRNs 1-63 are supported:
 
 ```julia
 gpsl2cm = GPSL2CM()
 get_code_length(gpsl2cm)            # 10230
 get_band(gpsl2cm)                   # L2()
 get_center_frequency(gpsl2cm)       # 1227600000 Hz
-get_code_frequency(gpsl2cm)         # 511500 Hz
-get_data_frequency(gpsl2cm)         # 50 Hz (CNAV symbol rate)
+get_chip_rate(gpsl2cm)              # 511500 Hz
+get_bit_rate(gpsl2cm)               # 50 Hz (CNAV, as tracked)
 get_secondary_code_length(gpsl2cm)  # 1 (no secondary code)
 get_modulation(gpsl2cm)             # LOC()
 ```
@@ -179,8 +179,8 @@ gpsl2cl = GPSL2CL()
 get_code_length(gpsl2cl)            # 767250
 get_band(gpsl2cl)                   # L2()
 get_center_frequency(gpsl2cl)       # 1227600000 Hz
-get_code_frequency(gpsl2cl)         # 511500 Hz
-get_data_frequency(gpsl2cl)         # 0 Hz (dataless)
+get_chip_rate(gpsl2cl)              # 511500 Hz
+get_bit_rate(gpsl2cl)               # 0 Hz (dataless)
 get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
 get_modulation(gpsl2cl)             # LOC()
 ```
@@ -196,7 +196,7 @@ gal_e1b = GalileoE1B()
 get_code_length(gal_e1b)         # 4092
 get_band(gal_e1b)                # L1()
 get_center_frequency(gal_e1b)    # 1575420000 Hz
-get_code_frequency(gal_e1b)      # 1023000 Hz
+get_chip_rate(gal_e1b)           # 1023000 Hz
 get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
 ```
 
@@ -204,7 +204,7 @@ Note that the single-chip accessor [`get_code`](@ref) returns floating-point val
 
 ### Galileo E1B (BOC(1,1) approximation)
 
-Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, code rate, data rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation:
+Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, chip rate, bit rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation:
 
 ```julia
 e1b = GalileoE1B_BOC11()
@@ -224,7 +224,7 @@ gal_e1c = GalileoE1C()
 get_code_length(gal_e1c)           # 4092
 get_secondary_code_length(gal_e1c) # 25 (CS25)
 get_band(gal_e1c)                  # L1()
-get_data_frequency(gal_e1c)        # 0 Hz (pilot)
+get_bit_rate(gal_e1c)              # 0 Hz (pilot)
 get_modulation(gal_e1c)            # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
 ```
 
@@ -247,8 +247,8 @@ e5a_i = GalileoE5aI()
 get_code_length(e5a_i)           # 10230
 get_band(e5a_i)                  # L5()
 get_center_frequency(e5a_i)      # 1176450000 Hz
-get_code_frequency(e5a_i)        # 10230000 Hz
-get_data_frequency(e5a_i)        # 50 Hz (F/NAV symbol rate)
+get_chip_rate(e5a_i)             # 10230000 Hz
+get_bit_rate(e5a_i)              # 50 Hz (F/NAV, as tracked)
 get_secondary_code_length(e5a_i) # 20
 get_modulation(e5a_i)            # LOC()
 ```
@@ -262,8 +262,8 @@ e5a_q = GalileoE5aQ()
 get_code_length(e5a_q)           # 10230
 get_band(e5a_q)                  # L5()
 get_center_frequency(e5a_q)      # 1176450000 Hz
-get_code_frequency(e5a_q)        # 10230000 Hz
-get_data_frequency(e5a_q)        # 0 Hz (dataless)
+get_chip_rate(e5a_q)             # 10230000 Hz
+get_bit_rate(e5a_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5a_q) # 100
 get_modulation(e5a_q)            # LOC()
 ```
@@ -275,9 +275,9 @@ Galileo E5a-QP (E5a Quasi-Pilot) is new in OS SIS ICD Issue 2.2: a dataless BPSK
 ```julia
 e5a_qp = GalileoE5aQP()
 get_code_length(e5a_qp)          # 330
-get_code_frequency(e5a_qp)       # 5115000 Hz
+get_chip_rate(e5a_qp)            # 5115000 Hz
 get_band(e5a_qp)                 # L5()
-get_data_frequency(e5a_qp)       # 0 Hz (no user data)
+get_bit_rate(e5a_qp)             # 0 Hz (no user data)
 get_secondary_code_length(e5a_qp)# 1 (no secondary code)
 get_relative_power(e5a_qp)       # 0.282 — 5.5 dB below the E5a composite
 ```
@@ -286,7 +286,7 @@ Two caveats from the ICD: E5a-QP is transmitted by a [subset of the constellatio
 
 ### Galileo E5b-I
 
-Galileo E5b-I is the data component of the E5b sideband, at 1207.14 MHz. It uses a 10230-chip primary code at 10.23 Mcps with the 4-bit CS4 secondary code (shared by all SVIDs, a 4 ms tiered code) and carries I/NAV at 250 symbols/s — the same message E1-B carries. E5b is one half of the wideband E5 AltBOC(15,10) signal; the ICD notes that E5a and E5b "can be processed independently by the user receiver as though they were two separate QPSK signals", which is what this implementation models (BPSK(10) per sideband).
+Galileo E5b-I is the data component of the E5b sideband, at 1207.14 MHz. It uses a 10230-chip primary code at 10.23 Mcps with the 4-bit CS4 secondary code (shared by all SVIDs, a 4 ms tiered code) and carries I/NAV, tracked at 250 bit/s — the same message E1-B carries. E5b is one half of the wideband E5 AltBOC(15,10) signal; the ICD notes that E5a and E5b "can be processed independently by the user receiver as though they were two separate QPSK signals", which is what this implementation models (BPSK(10) per sideband).
 
 Note that 1207.14 MHz is also the BeiDou B2b carrier — exactly the same frequency — so [`get_band`](@ref GNSSSignals.get_band) returns [`E5b`](@ref GNSSSignals.E5b) for both constellations' signals there. Band identity is by RF frequency, not by ICD label, the same reason Galileo E1 reports `L1()`:
 
@@ -295,7 +295,7 @@ e5b_i = GalileoE5bI()
 get_code_length(e5b_i)           # 10230
 get_band(e5b_i)                  # E5b()
 get_center_frequency(e5b_i)      # 1207140000 Hz
-get_data_frequency(e5b_i)        # 250 Hz (I/NAV symbol rate)
+get_bit_rate(e5b_i)              # 250 Hz (I/NAV, as tracked)
 get_secondary_code_length(e5b_i) # 4 (CS4)
 get_modulation(e5b_i)            # LOC()
 ```
@@ -308,22 +308,22 @@ Galileo E5b-Q is the dataless pilot of the E5b sideband. It shares the E5b-I bas
 e5b_q = GalileoE5bQ()
 get_code_length(e5b_q)           # 10230
 get_band(e5b_q)                  # E5b()
-get_data_frequency(e5b_q)        # 0 Hz (dataless)
+get_bit_rate(e5b_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5b_q) # 100
 get_carrier_phase_offset(e5b_q)  # π/2 (leads the E5b-I reference, as E5a-Q does)
 ```
 
 ### Galileo E6-B
 
-Galileo E6-B is the data component of Galileo E6, on its own carrier at 1278.75 MHz ([`E6`](@ref GNSSSignals.E6)). It is BPSK(5): a 5115-chip primary code at 5.115 Mcps, repeating every 1 ms with no secondary code. The component carries the C/NAV message at 1000 symbols/s — the channel the Galileo High Accuracy Service (HAS) corrections ride on. Unlike the E1 and E5a codes, the E6 primary codes are optimised *memory* codes (no LFSR definition), taken from the Galileo E6-B/C Codes Technical Note; codes 1-50 are defined:
+Galileo E6-B is the data component of Galileo E6, on its own carrier at 1278.75 MHz ([`E6`](@ref GNSSSignals.E6)). It is BPSK(5): a 5115-chip primary code at 5.115 Mcps, repeating every 1 ms with no secondary code. The component carries the C/NAV message, tracked at 1000 bit/s — the channel the Galileo High Accuracy Service (HAS) corrections ride on. Unlike the E1 and E5a codes, the E6 primary codes are optimised *memory* codes (no LFSR definition), taken from the Galileo E6-B/C Codes Technical Note; codes 1-50 are defined:
 
 ```julia
 e6b = GalileoE6B()
 get_code_length(e6b)             # 5115
 get_band(e6b)                    # E6()
 get_center_frequency(e6b)        # 1278750000 Hz
-get_code_frequency(e6b)          # 5115000 Hz
-get_data_frequency(e6b)          # 1000 Hz (C/NAV symbol rate)
+get_chip_rate(e6b)               # 5115000 Hz
+get_bit_rate(e6b)                # 1000 Hz (C/NAV, as tracked)
 get_secondary_code_length(e6b)   # 1 (no secondary code)
 get_modulation(e6b)              # LOC()
 ```
@@ -336,7 +336,7 @@ Galileo E6-C is the dataless pilot of Galileo E6. It uses its own set of 5115-ch
 e6c = GalileoE6C()
 get_code_length(e6c)             # 5115
 get_band(e6c)                    # E6()
-get_data_frequency(e6c)          # 0 Hz (dataless)
+get_bit_rate(e6c)                # 0 Hz (dataless)
 get_secondary_code_length(e6c)   # 100
 get_carrier_phase_offset(e6c)    # π  (OS SIS ICD Eq. 10 subtracts the pilot)
 get_modulation(e6c)              # LOC()

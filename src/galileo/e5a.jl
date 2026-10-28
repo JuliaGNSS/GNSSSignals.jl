@@ -39,7 +39,7 @@ Galileo E5a-Q signal (the quadrature, dataless pilot component of Galileo E5a).
 10230-chip primary code at 10.23 Mcps on the E5 band (1176.45 MHz, reported as
 [`L5`](@ref)), overlaid with a 100-bit per-SVID secondary code (CS100) for a
 100 ms tiered code. As the pilot component it carries no navigation data, so
-[`get_data_frequency`](@ref) returns 0 Hz.
+[`get_bit_rate`](@ref) returns 0 Hz.
 
 Like [`GalileoE5aI`](@ref) the E5a sideband is modelled on its own as
 BPSK(10) ([`LOC`](@ref)). The primary code uses the same generator as E5a-I
@@ -55,7 +55,7 @@ The struct stores the CS100 overlay matrix, exposed via
 e5a_q = GalileoE5aQ()
 get_code_length(e5a_q)            # 10230
 get_secondary_code_length(e5a_q)  # 100
-get_data_frequency(e5a_q)         # 0 Hz
+get_bit_rate(e5a_q)               # 0 Hz
 ```
 """
 struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSignal{C}
@@ -151,33 +151,33 @@ $(SIGNATURES)
 
 Get the code chipping rate for Galileo E5a (10.23 MHz, both components).
 """
-@inline get_code_frequency(::Type{<:GalileoE5aI}) = 10_230_000Hz
-@inline get_code_frequency(::Type{<:GalileoE5aQ}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GalileoE5aI}) = 10_230_000Hz
+@inline get_chip_rate(::Type{<:GalileoE5aQ}) = 10_230_000Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E5a-I.
+Get the bit rate, as tracked, of Galileo E5a-I.
 
-The E5a-I channel carries the Galileo F/NAV navigation message at a 50
-symbols/s rate (25 bps with rate-1/2 convolutional coding).
+The E5a-I channel carries the Galileo F/NAV navigation message, tracked at 50 bit/s: the
+symbol rate of its rate-½ convolutional code, the message carrying 25 bit/s.
 
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::Type{<:GalileoE5aI}) = 50Hz
+@inline get_bit_rate(::Type{<:GalileoE5aI}) = 50Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E5a-Q.
+Get the bit rate, as tracked, of Galileo E5a-Q.
 
-The E5a-Q component is a dataless pilot.
+The E5a-Q component is a dataless pilot, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::Type{<:GalileoE5aQ}) = 0Hz
+@inline get_bit_rate(::Type{<:GalileoE5aQ}) = 0Hz
 
 """
 $(SIGNATURES)

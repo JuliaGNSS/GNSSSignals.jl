@@ -5,12 +5,12 @@
     @test @inferred(get_code_length(b3i)) == 10230
     @test @inferred(get_secondary_code_length(b3i)) == 20
     @test @inferred(get_secondary_code(b3i)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(b3i)) == 50Hz
-    @test @inferred(get_code_frequency(b3i)) == 10_230_000Hz
+    @test @inferred(get_bit_rate(b3i)) == 50Hz
+    @test @inferred(get_chip_rate(b3i)) == 10_230_000Hz
     @test get_signal_name(b3i) == "BeiDou B3I"
     @test @inferred(get_modulation(b3i)) == GNSSSignals.LOC()
     @test get_code_type(b3i) === Int16
-    @test get_code_spectrum(b3i, 0) ≈ 1.0Hz / get_code_frequency(b3i)
+    @test get_code_spectrum(b3i, 0) ≈ 1.0Hz / get_chip_rate(b3i)
 end
 
 @testset "BeiDou B3I G2 initial phases match the ICD shift table" begin
@@ -56,7 +56,7 @@ end
 @testset "BeiDou B3I gen_code! produces a sampled BPSK(10) replica" begin
     b3i = BeiDouB3I()
     samples_per_chip = 2
-    code_freq = get_code_frequency(b3i)
+    code_freq = get_chip_rate(b3i)
     n_samples = samples_per_chip * 2 * get_code_length(b3i)
     prn = 6                                      # a D1 (MEO/IGSO) PRN, so NH20 applies
     buf = zeros(Int8, n_samples)

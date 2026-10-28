@@ -331,7 +331,7 @@ end
     # Sampling frequency below code frequency · subchip_factor errors.
     code = zeros(Int8, 100)
     @test_throws ErrorException gen_code!(
-        code, gpsl1ca, 1, 500e3Hz, get_code_frequency(gpsl1ca),
+        code, gpsl1ca, 1, 500e3Hz, get_chip_rate(gpsl1ca),
     )
 end
 
@@ -340,14 +340,14 @@ end
     signal = GPSL1CA()
     sampling_rate = 200e6Hz   # ≈ 195× oversampling → run-fill regime
     samples = 2000
-    _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 0.0, 0, samples)
+    _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 0.0, 0, samples)
 end
 
 @testset "Code generation $(get_signal_name(signal))" for signal in
                                                           [GalileoE1B(), GalileoE1C(), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
     @test eltype(out) === Int8
     # gen_code (non-bang) allocates Int8 and matches the in-place fill.
@@ -363,7 +363,7 @@ end
 ]
     sampling_rate = 25e6Hz
     samples = 100
-    _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 3.5, 0, samples)
+    _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 3.5, 0, samples)
 end
 
 # Very short outputs (chip-boundary / tail edge cases) must still match the oracle.
@@ -375,7 +375,7 @@ end
 ]
     sampling_rate = 25e6Hz
     for samples in (1, 2, 3, 5, 7, 63, 65, 127, 129)
-        @test_nowarn _check_gen_code(signal, 1, sampling_rate, get_code_frequency(signal), 3.5, 0, samples)
+        @test_nowarn _check_gen_code(signal, 1, sampling_rate, get_chip_rate(signal), 3.5, 0, samples)
     end
 end
 
@@ -390,7 +390,7 @@ end
     GPSL5I(),
     GPSL1C_P(),
 ]
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     P = signal.lut.subchip_factor
     per = signal.lut.period_subchips
     sampling_rate = fc * P * 5 // 2                       # permute regime, sub-chip oversampled
@@ -420,7 +420,7 @@ end
     sampling_rate = 25MHz
     signal = GPSL1CA()
     samples = 1000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
     @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0)
 end
@@ -429,7 +429,7 @@ end
     signal = GPSL1CA()
     sampling_rate = 2.5e6Hz
     num_samples = 4000
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 2065.0, 0, num_samples)
     @test out == gen_code(num_samples, signal, 1, sampling_rate, fc, 2065.0)
 end
@@ -442,7 +442,7 @@ end
 ]
     sampling_rate = 25e6Hz
     samples = 4002
-    fc = get_code_frequency(signal)
+    fc = get_chip_rate(signal)
     out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, -1, samples)
     @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0, -1)
 end
@@ -461,7 +461,7 @@ end
 @testset "Code generation with negative start_phase (no overflow / BoundsError)" begin
     signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
-    code_frequency = get_code_frequency(signal) + 4000Hz * get_code_center_frequency_ratio(signal)
+    code_frequency = get_chip_rate(signal) + 4000Hz * get_chip_rate_to_center_frequency_ratio(signal)
     start_phase = -1000.0
     start_index_shift = 0
     @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_frequency, start_phase, start_index_shift, 1023)
@@ -661,21 +661,21 @@ const POWER_GROUPS = (
     end
 end
 
-@testset "get_data_frequency of a satellite" begin
+@testset "get_bit_rate of a satellite" begin
     # The GEO PRNs, named once: the ones whose NH20 column is the all-ones no-op.
     geo = [prn for prn in 1:63 if GNSSSignals.is_beidou_geo(prn)]
     @test geo == [1:5; 59:63]
     @test geo == [prn for prn in 1:63 if all(==(1), get_secondary_code(BeiDouB1I()).codes[:, prn])]
     for S in (BeiDouB1I, BeiDouB3I), prn in 1:63
-        @test @inferred(get_data_frequency(S, prn)) ==
+        @test @inferred(get_bit_rate(S, prn)) ==
               (GNSSSignals.is_beidou_geo(prn) ? 500Hz : 50Hz)
-        @test get_data_frequency(S(), prn) == get_data_frequency(S, prn)
+        @test get_bit_rate(S(), prn) == get_bit_rate(S, prn)
     end
     # Every other signal broadcasts at its signal's rate on every satellite.
     for S in ALL_SIGNALS
         S in (BeiDouB1I, BeiDouB3I) && continue
-        @test @inferred(get_data_frequency(S, 1)) == get_data_frequency(S)
-        @test get_data_frequency(S(), 1) == get_data_frequency(S)
+        @test @inferred(get_bit_rate(S, 1)) == get_bit_rate(S)
+        @test get_bit_rate(S(), 1) == get_bit_rate(S)
     end
 end
 
@@ -687,19 +687,20 @@ end
         BeiDouB2aI => 5, BeiDouB1C_D => 1,
     )
     for S in ALL_SIGNALS
-        if iszero(get_data_frequency(S))
-            # A pilot broadcasts no bits: 0, as its data frequency is 0 Hz.
+        if iszero(get_bit_rate(S))
+            # A pilot broadcasts no bits: 0, as its bit rate is 0 Hz.
             @test @inferred(get_code_blocks_per_bit(S)) === 0
             @test get_code_blocks_per_bit(S(), 1) === 0
         else
             blocks = @inferred get_code_blocks_per_bit(S)
             @test blocks == expected[S]
-            # The bit period, in code periods, recovered from the rates themselves.
-            @test blocks * get_code_length(S) / get_code_frequency(S) ≈ 1 / get_data_frequency(S)
+            # The symbol period, in code periods, recovered from the rates themselves.
+            @test blocks * get_code_length(S) / get_chip_rate(S) ≈
+                  1 / get_bit_rate(S)
             @test get_code_blocks_per_bit(S()) == blocks
         end
     end
-    # A BeiDou GEO satellite's D2 bits span two 1 ms blocks, its D1 ones twenty.
+    # A BeiDou GEO satellite's D2 symbols span two 1 ms blocks, its D1 ones twenty.
     for S in (BeiDouB1I, BeiDouB3I)
         @test @inferred(get_code_blocks_per_bit(S, 6)) == 20
         @test get_code_blocks_per_bit(S, 1) == 2
@@ -710,13 +711,13 @@ end
 
 # Test-only signals stating their rates as floats, as a BOC(m, n) with a non-integer n does.
 struct FloatRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
-GNSSSignals.get_code_frequency(::Type{FloatRateSignal}) = 1.023e6Hz
-GNSSSignals.get_data_frequency(::Type{FloatRateSignal}) = 50.0Hz
+GNSSSignals.get_chip_rate(::Type{FloatRateSignal}) = 1.023e6Hz
+GNSSSignals.get_bit_rate(::Type{FloatRateSignal}) = 50.0Hz
 GNSSSignals.get_code_length(::Type{FloatRateSignal}) = 1023
 GNSSSignals.get_signal_name(::Type{FloatRateSignal}) = "float-rate test signal"
 struct FractionalRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
-GNSSSignals.get_code_frequency(::Type{FractionalRateSignal}) = 1_023_000.5Hz
-GNSSSignals.get_data_frequency(::Type{FractionalRateSignal}) = 50Hz
+GNSSSignals.get_chip_rate(::Type{FractionalRateSignal}) = 1_023_000.5Hz
+GNSSSignals.get_bit_rate(::Type{FractionalRateSignal}) = 50Hz
 GNSSSignals.get_code_length(::Type{FractionalRateSignal}) = 1023
 GNSSSignals.get_signal_name(::Type{FractionalRateSignal}) = "fractional-rate test signal"
 

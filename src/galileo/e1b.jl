@@ -95,32 +95,32 @@ Get the code chipping rate for Galileo E1B.
 
 # Examples
 ```julia-repl
-julia> get_code_frequency(GalileoE1B())
+julia> get_chip_rate(GalileoE1B())
 1023000 Hz
 ```
 """
-@inline function get_code_frequency(::Type{<:GalileoE1B})
+@inline function get_chip_rate(::Type{<:GalileoE1B})
     1023_000Hz
 end
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for Galileo E1B.
+Get the bit rate, as tracked, of Galileo E1B.
 
-The I/NAV message is broadcast at 250 symbols/s (125 bps with rate-1/2
-convolutional coding).
+The I/NAV message is tracked at 250 bit/s: the symbol rate of its rate-½ convolutional
+code, the message carrying 125 bit/s.
 
 # Returns
 - `Frequency`: 250 Hz
 
 # Examples
 ```julia-repl
-julia> get_data_frequency(GalileoE1B())
+julia> get_bit_rate(GalileoE1B())
 250 Hz
 ```
 """
-@inline function get_data_frequency(::Type{<:GalileoE1B})
+@inline function get_bit_rate(::Type{<:GalileoE1B})
     250Hz
 end
 
@@ -144,7 +144,7 @@ Use this type when you want the lower sampling-rate variant; use
 `gen_code!` emits `Int8` — only the single-chip [`get_code`](@ref)
 accessor returns `Float32` (`get_code_type` is `Int16` here).
 
-Primary code, code length, code frequency, data rate, and band are
+Primary code, code length, chip rate, bit rate, and band are
 identical to [`GalileoE1B`](@ref); only `get_modulation` differs.
 
 # Example
@@ -178,5 +178,5 @@ end
 
 @inline get_code_length(::Type{<:GalileoE1B_BOC11}) = 4092
 @inline get_secondary_code(::GalileoE1B_BOC11) = NoSecondaryCode()
-@inline get_code_frequency(::Type{<:GalileoE1B_BOC11}) = 1023_000Hz
-@inline get_data_frequency(::Type{<:GalileoE1B_BOC11}) = 250Hz
+@inline get_chip_rate(::Type{<:GalileoE1B_BOC11}) = 1023_000Hz
+@inline get_bit_rate(::Type{<:GalileoE1B_BOC11}) = 250Hz

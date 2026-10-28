@@ -6,10 +6,8 @@ civil signal L2C).
 
 BPSK-modulated 10230-chip code at 511.5 kcps on the L2 band (1227.6 MHz),
 giving a 20 ms code period (IS-GPS-200N §3.2.1.4). It carries the CNAV
-message: a 25 bps data stream, rate-½ convolutionally encoded to a 50 sps
-symbol stream (IS-GPS-200N §3.2.2); `get_data_frequency` returns the broadcast
-symbol rate, matching the convention used across this package (see
-[`GPSL5I`](@ref), [`GPSL1C_D`](@ref)).
+message, tracked at 50 bit/s: the symbol rate of its rate-½ convolutional code,
+the message carrying 25 bit/s (IS-GPS-200N §3.2.2; see [`get_bit_rate`](@ref)).
 
 In the broadcast L2C signal the L2 CM-code is time-division multiplexed
 chip-by-chip with the dataless [`GPSL2CL`](@ref) pilot at 1.023 MHz; like
@@ -26,7 +24,7 @@ register state (`GPS_L2CM_INITIAL_STATES`) and the short-cycle period. PRNs
 ```julia
 gpsl2cm = GPSL2CM()
 get_code_length(gpsl2cm)      # 10230
-get_code_frequency(gpsl2cm)   # 511500 Hz
+get_chip_rate(gpsl2cm)        # 511500 Hz
 get_band(gpsl2cm)             # L2()
 ```
 """
@@ -43,7 +41,7 @@ signal L2C).
 
 BPSK-modulated 767250-chip code at 511.5 kcps on the L2 band (1227.6 MHz),
 giving a 1.5 s code period (IS-GPS-200N §3.2.1.5). As the pilot component it
-carries no navigation data, so [`get_data_frequency`](@ref) returns 0 Hz, and
+carries no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz, and
 it has no secondary/overlay code (the 1.5 s code is itself the long code).
 
 In the broadcast L2C signal the dataless CL-code is time-division multiplexed
@@ -60,7 +58,7 @@ the per-PRN initial register state (`GPS_L2CL_INITIAL_STATES`) and the longer
 ```julia
 gpsl2cl = GPSL2CL()
 get_code_length(gpsl2cl)      # 767250
-get_data_frequency(gpsl2cl)   # 0 Hz
+get_bit_rate(gpsl2cl)         # 0 Hz
 get_band(gpsl2cl)             # L2()
 ```
 """
@@ -214,36 +212,34 @@ components).
 
 # Examples
 ```julia-repl
-julia> get_code_frequency(GPSL2CM())
+julia> get_chip_rate(GPSL2CM())
 511500 Hz
 ```
 """
-@inline get_code_frequency(::Type{<:GPSL2CM}) = GPS_L2C_CODE_FREQUENCY
-@inline get_code_frequency(::Type{<:GPSL2CL}) = GPS_L2C_CODE_FREQUENCY
+@inline get_chip_rate(::Type{<:GPSL2CM}) = GPS_L2C_CODE_FREQUENCY
+@inline get_chip_rate(::Type{<:GPSL2CL}) = GPS_L2C_CODE_FREQUENCY
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L2 CM.
+Get the bit rate, as tracked, of GPS L2 CM.
 
-The L2 CM-code carries the CNAV message at 50 sps (25 bps with rate-½
-convolutional coding, IS-GPS-200N §3.2.2); `get_data_frequency` returns the
-broadcast symbol rate, matching the convention used across this package (see
-[`GPSL5I`](@ref)).
+The L2 CM-code carries the CNAV message, tracked at 50 bit/s: the symbol rate of its
+rate-½ convolutional code, the message carrying 25 bit/s (IS-GPS-200N §3.2.2).
 
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_data_frequency(::Type{<:GPSL2CM}) = 50Hz
+@inline get_bit_rate(::Type{<:GPSL2CM}) = 50Hz
 
 """
 $(SIGNATURES)
 
-Get the data symbol rate for GPS L2 CL.
+Get the bit rate, as tracked, of GPS L2 CL.
 
-The L2 CL-code is a dataless pilot, so its data frequency is 0 Hz.
+The L2 CL-code is a dataless pilot, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_data_frequency(::Type{<:GPSL2CL}) = 0Hz
+@inline get_bit_rate(::Type{<:GPSL2CL}) = 0Hz

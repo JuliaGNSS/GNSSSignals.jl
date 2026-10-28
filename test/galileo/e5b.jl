@@ -5,8 +5,8 @@
     @test @inferred(get_code_length(e5b_i)) == 10230
     @test @inferred(get_secondary_code_length(e5b_i)) == 4
     @test @inferred(get_secondary_code(e5b_i)) isa SharedSecondaryCode{4}
-    @test @inferred(get_data_frequency(e5b_i)) == 250Hz     # I/NAV symbol rate
-    @test @inferred(get_code_frequency(e5b_i)) == 10230e3Hz
+    @test @inferred(get_bit_rate(e5b_i)) == 250Hz     # I/NAV, as tracked
+    @test @inferred(get_chip_rate(e5b_i)) == 10230e3Hz
     @test get_signal_name(e5b_i) == "Galileo E5b-I"
     @test @inferred(get_modulation(e5b_i)) == GNSSSignals.LOC()
     @test get_code_type(e5b_i) === Int16
@@ -19,8 +19,8 @@
     @test @inferred(GNSSSignals.get_code_unsafe(e5b_i, 0.0, 1)) == 1
 
     # BPSK(10) spectrum, and 10.23 MHz against the 1207.14 MHz E5b carrier.
-    @test get_code_spectrum(e5b_i, 0) ≈ 1.0Hz / get_code_frequency(e5b_i)
-    @test get_code_center_frequency_ratio(e5b_i) ≈ 1 / 118
+    @test get_code_spectrum(e5b_i, 0) ≈ 1.0Hz / get_chip_rate(e5b_i)
+    @test get_chip_rate_to_center_frequency_ratio(e5b_i) ≈ 1 / 118
 end
 
 @testset "Galileo E5b-Q" begin
@@ -30,14 +30,14 @@ end
     @test @inferred(get_code_length(e5b_q)) == 10230
     @test @inferred(get_secondary_code_length(e5b_q)) == 100
     @test @inferred(get_secondary_code(e5b_q)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(e5b_q)) == 0Hz       # dataless pilot
-    @test @inferred(get_code_frequency(e5b_q)) == 10230e3Hz
+    @test @inferred(get_bit_rate(e5b_q)) == 0Hz       # dataless pilot
+    @test @inferred(get_chip_rate(e5b_q)) == 10230e3Hz
     @test get_signal_name(e5b_q) == "Galileo E5b-Q"
     @test @inferred(get_modulation(e5b_q)) == GNSSSignals.LOC()
     @test get_code_type(e5b_q) === Int16
 
-    @test get_code_spectrum(e5b_q, 0) ≈ 1.0Hz / get_code_frequency(e5b_q)
-    @test get_code_center_frequency_ratio(e5b_q) ≈ 1 / 118
+    @test get_code_spectrum(e5b_q, 0) ≈ 1.0Hz / get_chip_rate(e5b_q)
+    @test get_chip_rate_to_center_frequency_ratio(e5b_q) ≈ 1 / 118
 end
 
 # The hexadecimal "Initial Sequence" column of Galileo OS SIS ICD v2.2 Tables 19

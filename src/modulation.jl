@@ -13,11 +13,11 @@ abstract type BOC <: Modulation end
 
 Sine-phased Binary Offset Carrier modulation.
 
-BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a code rate of `n * 1.023 Mcps`.
+BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a chip rate of `n * 1.023 Mcps`.
 
 # Arguments
 - `m`: Subcarrier frequency multiplier (must be ≥ 1)
-- `n`: Code rate multiplier (must be ≥ 1)
+- `n`: Chip rate multiplier (must be ≥ 1)
 
 # Example
 ```julia
@@ -36,11 +36,11 @@ end
 
 Cosine-phased Binary Offset Carrier modulation.
 
-BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a code rate of `n * 1.023 Mcps`.
+BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a chip rate of `n * 1.023 Mcps`.
 
 # Arguments
 - `m`: Subcarrier frequency multiplier (must be ≥ 1)
-- `n`: Code rate multiplier (must be ≥ 1)
+- `n`: Chip rate multiplier (must be ≥ 1)
 
 # Example
 ```julia
@@ -225,15 +225,15 @@ julia> get_code_spectrum(GPSL1CA(), 0kHz)
 """
 get_code_spectrum(signal, f) = get_code_spectrum(get_modulation(signal), signal, f)
 get_code_spectrum(modulation::LOC, signal, f) =
-    get_code_spectrum_BPSK(get_code_frequency(signal), f)
+    get_code_spectrum_BPSK(get_chip_rate(signal), f)
 get_code_spectrum(modulation::BOCsin, signal, f) = get_code_spectrum_BOCsin(
-    modulation.n * get_code_frequency(signal),
-    modulation.m * get_code_frequency(signal),
+    modulation.n * get_chip_rate(signal),
+    modulation.m * get_chip_rate(signal),
     f,
 )
 get_code_spectrum(modulation::BOCcos, signal, f) = get_code_spectrum_BOCcos(
-    modulation.n * get_code_frequency(signal),
-    modulation.m * get_code_frequency(signal),
+    modulation.n * get_chip_rate(signal),
+    modulation.m * get_chip_rate(signal),
     f,
 )
 function get_code_spectrum(modulation::CBOC, signal, f)

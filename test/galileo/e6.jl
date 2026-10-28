@@ -5,8 +5,8 @@
     @test @inferred(get_code_length(e6b)) == 5115
     @test @inferred(get_secondary_code_length(e6b)) == 1
     @test @inferred(get_secondary_code(e6b)) isa NoSecondaryCode
-    @test @inferred(get_data_frequency(e6b)) == 1000Hz     # C/NAV symbol rate
-    @test @inferred(get_code_frequency(e6b)) == 5115e3Hz
+    @test @inferred(get_bit_rate(e6b)) == 1000Hz     # C/NAV, as tracked
+    @test @inferred(get_chip_rate(e6b)) == 5115e3Hz
     @test get_signal_name(e6b) == "Galileo E6-B"
     @test @inferred(get_modulation(e6b)) == GNSSSignals.LOC()
     @test get_code_type(e6b) === Int16
@@ -20,8 +20,8 @@
     @test get_code(e6b, 5115, 1) == get_code(e6b, 0, 1)
 
     # BPSK(5) spectrum, and 5.115 MHz against the 1278.75 MHz E6 carrier.
-    @test get_code_spectrum(e6b, 0) ≈ 1.0Hz / get_code_frequency(e6b)
-    @test get_code_center_frequency_ratio(e6b) ≈ 1 / 250
+    @test get_code_spectrum(e6b, 0) ≈ 1.0Hz / get_chip_rate(e6b)
+    @test get_chip_rate_to_center_frequency_ratio(e6b) ≈ 1 / 250
 end
 
 @testset "Galileo E6-C" begin
@@ -31,14 +31,14 @@ end
     @test @inferred(get_code_length(e6c)) == 5115
     @test @inferred(get_secondary_code_length(e6c)) == 100
     @test @inferred(get_secondary_code(e6c)) isa PerPRNSecondaryCode
-    @test @inferred(get_data_frequency(e6c)) == 0Hz        # dataless pilot
-    @test @inferred(get_code_frequency(e6c)) == 5115e3Hz
+    @test @inferred(get_bit_rate(e6c)) == 0Hz        # dataless pilot
+    @test @inferred(get_chip_rate(e6c)) == 5115e3Hz
     @test get_signal_name(e6c) == "Galileo E6-C"
     @test @inferred(get_modulation(e6c)) == GNSSSignals.LOC()
     @test get_code_type(e6c) === Int16
 
-    @test get_code_spectrum(e6c, 0) ≈ 1.0Hz / get_code_frequency(e6c)
-    @test get_code_center_frequency_ratio(e6c) ≈ 1 / 250
+    @test get_code_spectrum(e6c, 0) ≈ 1.0Hz / get_chip_rate(e6c)
+    @test get_chip_rate_to_center_frequency_ratio(e6c) ≈ 1 / 250
 end
 
 @testset "Galileo E6 primary codes match the Technical Note listing" begin
