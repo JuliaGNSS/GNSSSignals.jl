@@ -7,19 +7,24 @@
 # sub-chip carrying the subcarrier sign, and resample that expanded ±1 table in a single
 # windowed-permute pass — no separate `multiply_with_subcarrier!`/secondary loop.
 #
-#   LOC (BPSK):   P = 1,  sub-chip sign = +1
-#   BOC(m,1) sin: P = 2m, sub-chip k sign = iseven(k) ? +1 : -1
-#   BOC(m,1) cos: P = 4m, sub-chip k sign = iseven((k+1)÷2) ? +1 : -1 (sine shifted a quarter
-#                 subcarrier period, one quarter-sub-chip, so quarter-sub-chips align every boundary)
-#   TMBOC(m2):    P = 2·m2, BOC(1,1) at most chip positions, BOC(m2,1) at `pattern`
-#                 positions (the high-rate component sets the resolution)
-#   CBOC(m1,m2):  P = 2·lcm(m1,m2), sub-chip value = a1·BOC(m1,1) ± a2·BOC(m2,1) — a multi-
-#                 level *integer approximation* (e.g. ±(a1±a2)) of the irrational
-#                 sqrt-power CBOC amplitudes. The expanded table holds those Int8 values
-#                 verbatim; the permute/run-fill backends are value-agnostic (they gather
-#                 chips by position, not by value), so the ±1 machinery resamples them
-#                 unchanged. Galileo E1B is CBOC(1,6); the default (a1,a2)=(19,6) ≈
-#                 (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10) and the caller may pick another.
+#   LOC (BPSK):    P = 1,  sub-chip sign = +1
+#   BOC(m,n) sin:  P = h = 2m/n subcarrier half-periods per chip; sub-chip k of chip pos is
+#                  half-period pos·h + k, sign iseven(pos·h + k) ? +1 : -1
+#   BOC(m,n) cos:  P = 4m/n quarter subcarrier periods per chip (the sine shifted a quarter
+#                  period, one quarter-sub-chip); quarter q = pos·P + k, sign iseven((q+1)÷2)
+#   TMBOC:         P = lcm(h1, h2), BOC(m1,n) at most chip positions, BOC(m2,n) at `pattern`
+#                  positions (the high-rate component sets the resolution)
+#   CBOC:          P = lcm(h1, h2), sub-chip value = a1·BOC(m1,n) ± a2·BOC(m2,n) — a multi-
+#                  level *integer approximation* (e.g. ±(a1±a2)) of the irrational
+#                  sqrt-power CBOC amplitudes. The expanded table holds those Int8 values
+#                  verbatim; the permute/run-fill backends are value-agnostic (they gather
+#                  chips by position, not by value), so the ±1 machinery resamples them
+#                  unchanged. Galileo E1B is CBOC(1,6); the default (a1,a2)=(19,6) ≈
+#                  (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10) and the caller may pick another.
+#
+# A chip of BOC(m,n) spans 2m/n subcarrier half-periods, which must be a whole number for the
+# table to put every subcarrier edge on its sub-chip grid; for n = 1 it is 2m, even, so every
+# chip starts on a whole subcarrier period and the signs are the same in every chip.
 #
 # Resample at `chip_frequency · P` (the sub-chip rate); this needs `fs ≥ chip_frequency·P`
 # (sub-chip oversampling ≥ 1), the same window-span condition as the plain code.
@@ -31,58 +36,96 @@
 # ---- modulation descriptors ----
 abstract type Modulation end
 struct LOC <: Modulation end                    # BPSK, no subcarrier
-struct BOC <: Modulation                        # sine-phased BOC(m, 1)
-    m::Int
+
+# `count · m/n` as a whole number of sub-chips per chip, or an ArgumentError: the table can
+# only bake a subcarrier whose edges fall on its sub-chip grid. Exact for integer and binary
+# fractional m and n alike (`Rational(2.5) == 5//2`).
+function _whole_subchips(count::Integer, m::Real, n::Real, what)
+    subchips = count * Rational(m) / Rational(n)
+    isinteger(subchips) && subchips >= 1 || throw(ArgumentError(
+        "$what: a chip spans $(float(subchips)) sub-chips, not a whole number, so the code " *
+        "lookup table cannot bake its subcarrier"))
+    Int(subchips)
 end
-BOC() = BOC(1)
-struct BOCcos <: Modulation                      # cosine-phased BOC(m, 1)
-    m::Int
+
+struct BOC <: Modulation                        # sine-phased BOC(m, n)
+    halfperiods::Int                            # subcarrier half-periods per chip, 2m/n
+    BOC(m::Real = 1, n::Real = 1) = new(_whole_subchips(2, m, n, "BOC($m, $n)"))
 end
-BOCcos() = BOCcos(1)
-struct TMBOC <: Modulation                      # BOC(1,1) + BOC(m2,1) at `pattern` positions
-    m2::Int
-    pattern::Vector{Bool}                       # pattern[(pos mod end)+1] == true → use BOC(m2,1)
+struct BOCcos <: Modulation                     # cosine-phased BOC(m, n)
+    quarters::Int                               # quarter subcarrier periods per chip, 4m/n
+    BOCcos(m::Real = 1, n::Real = 1) = new(_whole_subchips(4, m, n, "cosine BOC($m, $n)"))
 end
-# Composite BOC: a1·BOC(m1,1) + a2·BOC(m2,1) with *integer* amplitudes (an Int8 approximation
+struct TMBOC <: Modulation                      # BOC(m1,n) + BOC(m2,n) at `pattern` positions
+    halfperiods1::Int
+    halfperiods2::Int
+    pattern::Vector{Bool}                       # pattern[(pos mod end)+1] == true → use BOC(m2,n)
+    TMBOC(m2::Real, pattern::AbstractVector{Bool}) = TMBOC(1, m2, 1, pattern)
+    TMBOC(m1::Real, m2::Real, n::Real, pattern::AbstractVector{Bool}) = new(
+        _whole_subchips(2, m1, n, "TMBOC component BOC($m1, $n)"),
+        _whole_subchips(2, m2, n, "TMBOC component BOC($m2, $n)"),
+        collect(Bool, pattern),
+    )
+end
+# Composite BOC: a1·BOC(m1,n) + a2·BOC(m2,n) with *integer* amplitudes (an Int8 approximation
 # of the irrational sqrt-power CBOC amplitudes). Galileo E1B is CBOC(m1=1, m2=6); the default
 # (a1,a2)=(19,6) approximates (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10).
 struct CBOC <: Modulation
-    m1::Int
-    m2::Int
-    a1::Int8                                    # amplitude of the BOC(m1,1) component
-    a2::Int8                                    # amplitude of the BOC(m2,1) component
+    halfperiods1::Int
+    halfperiods2::Int
+    a1::Int8                                    # amplitude of the BOC(m1,n) component
+    a2::Int8                                    # amplitude of the BOC(m2,n) component
+    CBOC(m1::Real, m2::Real, a1::Integer, a2::Integer) = CBOC(m1, m2, 1, a1, a2)
+    CBOC(m1::Real, m2::Real, n::Real, a1::Integer, a2::Integer) = new(
+        _whole_subchips(2, m1, n, "CBOC component BOC($m1, $n)"),
+        _whole_subchips(2, m2, n, "CBOC component BOC($m2, $n)"),
+        Int8(a1), Int8(a2),
+    )
 end
 
-subchip_factor(::LOC)   = 1
-subchip_factor(b::BOC)  = 2 * b.m
-subchip_factor(b::BOCcos) = 4 * b.m            # quarter-sub-chips: the ¼-cycle cosine shift halves the grid
-subchip_factor(t::TMBOC) = 2 * t.m2
-subchip_factor(c::CBOC) = 2 * lcm(c.m1, c.m2)
+subchip_factor(::LOC)     = 1
+subchip_factor(b::BOC)    = b.halfperiods
+subchip_factor(b::BOCcos) = b.quarters        # quarter-sub-chips: the quarter-period shift halves the grid
+subchip_factor(t::TMBOC)  = lcm(t.halfperiods1, t.halfperiods2)
+subchip_factor(c::CBOC)   = lcm(c.halfperiods1, c.halfperiods2)
+
+# Sign of the subcarrier half-period that sub-chip `k` (0-based) of chip `pos` falls in, for a
+# component with `h` half-periods per chip at the table's resolution `P` (a multiple of `h`):
+# the half-period counted from the start of the code, `pos·h + ⌊k·h/P⌋`, so a chip that starts
+# mid-period (`h` odd) carries on where the last one ended.
+@inline _half_period_sign(h, k, pos, P) = iseven(pos * h + div(k * h, P)) ? Int8(1) : Int8(-1)
+
+# Whether `Lp` chips span a whole number of subcarrier periods, each component's: the table holds
+# one code period and repeats it, which reproduces the continuous subcarrier only if it repeats
+# with the code. Always so for n = 1 (`Lp·m` periods); a BOC(1.5, 1) on an odd-length code ends
+# its code period half a subcarrier period in, and its true signal repeats every two periods.
+_whole_subcarrier_periods(::LOC, Lp) = true
+_whole_subcarrier_periods(b::BOC, Lp) = iseven(Lp * b.halfperiods)
+_whole_subcarrier_periods(b::BOCcos, Lp) = Lp * b.quarters % 4 == 0
+_whole_subcarrier_periods(t::Union{TMBOC,CBOC}, Lp) =
+    iseven(Lp * t.halfperiods1) && iseven(Lp * t.halfperiods2)
 
 # Sub-carrier value for sub-chip `k` (0-based) of a chip at primary position `pos`, given P.
 # ±1 for BPSK/BOC/TMBOC; a multi-level integer for CBOC (see below).
 @inline _sc_sign(::LOC, k, pos, P)  = Int8(1)
-@inline _sc_sign(b::BOC, k, pos, P) = iseven(k) ? Int8(1) : Int8(-1)
-# Cosine BOC(m,1) at P = 4m: the sub-carrier is the sine BOC shifted by a quarter subcarrier
-# period, 1/(4m) chips (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin,
-# φ + 1/(4m))`), one quarter-sub-chip. At the sub-chip midpoint φ = pos + (k+½)/(4m),
-# `floor((φ + 1/(4m))·2m)` reduces to `pos·2m + (k+1)÷2`; `pos·2m` is even, so the sign is
-# position-independent: `iseven((k+1)÷2)`. Matches the float spec exactly.
-@inline _sc_sign(b::BOCcos, k, pos, P) = iseven((k + 1) ÷ 2) ? Int8(1) : Int8(-1)
+@inline _sc_sign(b::BOC, k, pos, P) = _half_period_sign(b.halfperiods, k, pos, P)
+# Cosine BOC(m,n) at P = 4m/n: the sub-carrier is the sine BOC shifted by a quarter subcarrier
+# period, n/(4m) chips (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin,
+# φ + n/(4m))`), one quarter-sub-chip. Quarter q = pos·P + k from the start of the code falls
+# in sine half-period ⌊(q + 1)/2⌋ once shifted, at its midpoint as at its edges, so the sign is
+# `iseven((q + 1) ÷ 2)`. Matches the float spec exactly.
+@inline _sc_sign(b::BOCcos, k, pos, P) = iseven((pos * P + k + 1) ÷ 2) ? Int8(1) : Int8(-1)
 @inline function _sc_sign(t::TMBOC, k, pos, P)
-    if @inbounds t.pattern[mod(pos, length(t.pattern)) + 1]   # BOC(m2,1): flips every sub-chip
-        iseven(k) ? Int8(1) : Int8(-1)
-    else                                                       # BOC(1,1): +1 first half, -1 second
-        k < P ÷ 2 ? Int8(1) : Int8(-1)
-    end
+    h = @inbounds(t.pattern[mod(pos, length(t.pattern)) + 1]) ? t.halfperiods2 : t.halfperiods1
+    _half_period_sign(h, k, pos, P)
 end
 # CBOC returns the composite *value* a1·b1 + a2·b2 (e.g. ±(a1±a2)), not a bare sign — the Int8
-# table carries it verbatim. `div(k·2m, P)` is the BOC(m,1) sub-carrier half-period index at the
-# composite resolution P, mirroring the float `get_subcarrier_code`'s `floor(phase·2m)` so the
-# sign at every sub-chip matches the spec (`a1 > a2 > 0` ⇒ same sign as the sqrt-power version).
+# table carries it verbatim, each component's sign taken at the composite resolution P, as the
+# float `get_subcarrier_code` floors each component's own half-period (`a1 > a2 > 0` ⇒ same
+# sign as the sqrt-power version).
 @inline function _sc_sign(c::CBOC, k, pos, P)
-    b1 = iseven(div(k * 2 * c.m1, P)) ? Int8(1) : Int8(-1)
-    b2 = iseven(div(k * 2 * c.m2, P)) ? Int8(1) : Int8(-1)
+    b1 = _half_period_sign(c.halfperiods1, k, pos, P)
+    b2 = _half_period_sign(c.halfperiods2, k, pos, P)
     c.a1 * b1 + c.a2 * b2
 end
 
@@ -110,9 +153,11 @@ Base.length(mc::ModulatedCode) = length(mc.table)
     code_replica(primary_chips, modulation; secondary=Int8[1], max_bake=typemax(Int16))
 
 Build a [`ModulatedCode`](@ref) from a primary ±1 `primary_chips` vector and a
-`modulation` (`LOC()`, `BOC(m)`, `BOCcos(m)`, `TMBOC(m2, pattern)`, or `CBOC(m1, m2, a1, a2)`).
-The table is ±1 for all but `CBOC`; for `CBOC` it holds the multi-level integer composite
-`a1·BOC(m1,1) ± a2·BOC(m2,1)` (still Int8, so all backends resample it unchanged).
+`modulation` (`LOC()`, `BOC(m, n)`, `BOCcos(m, n)`, `TMBOC(m1, m2, n, pattern)`, or
+`CBOC(m1, m2, n, a1, a2)`; `n` defaults to 1 in the shorter `BOC(m)`, `BOCcos(m)`,
+`TMBOC(m2, pattern)` and `CBOC(m1, m2, a1, a2)`). The table is ±1 for all but `CBOC`; for
+`CBOC` it holds the multi-level integer composite `a1·BOC(m1,n) ± a2·BOC(m2,n)` (still Int8,
+so all backends resample it unchanged).
 `secondary` is a ±1 overlay
 that multiplies whole primary periods; it is baked into the table when
 `length(secondary)·length(primary)·subchip_factor ≤ max_bake`, otherwise applied per
@@ -127,6 +172,9 @@ don't need AVX2.
 function code_replica(primary::AbstractVector{<:Integer}, modulation::Modulation;
                       secondary::AbstractVector{<:Integer} = Int8[1], max_bake::Integer = typemax(Int16))
     Lp = length(primary); P = subchip_factor(modulation); Ls = length(secondary)
+    _whole_subcarrier_periods(modulation, Lp) || throw(ArgumentError(
+        "a $Lp-chip code spans no whole number of periods of the $modulation subcarrier, so a " *
+        "one-period code lookup table cannot repeat it"))
     bake_sec = Ls * Lp * P <= max_bake
     nperiods = bake_sec ? Ls : 1
     expanded = Vector{Int8}(undef, nperiods * Lp * P)

@@ -13,7 +13,10 @@ abstract type BOC <: Modulation end
 
 Sine-phased Binary Offset Carrier modulation.
 
-BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a chip rate of `n * 1.023 Mcps`.
+BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a chip rate of `n * 1.023 Mcps`,
+so a code chip spans `2m/n` subcarrier half-periods. A code phase counts chips, as everywhere
+in the package. The code lookup table behind [`gen_code!`](@ref) needs `2m/n` to be a whole
+number, and a code period to span whole subcarrier periods.
 
 # Arguments
 - `m`: Subcarrier frequency multiplier (must be ≥ 1)
@@ -37,6 +40,9 @@ end
 Cosine-phased Binary Offset Carrier modulation.
 
 BOC(m,n) uses a subcarrier frequency of `m * 1.023 MHz` and a chip rate of `n * 1.023 Mcps`.
+The subcarrier is the sine-phased one ([`BOCsin`](@ref)) shifted by a quarter of its period,
+`n/(4m)` chips. The code lookup table behind [`gen_code!`](@ref) bakes it at `4m/n` quarter
+periods per chip, which must be a whole number.
 
 # Arguments
 - `m`: Subcarrier frequency multiplier (must be ≥ 1)
@@ -226,14 +232,16 @@ julia> get_code_spectrum(GPSL1CA(), 0kHz)
 get_code_spectrum(signal, f) = get_code_spectrum(get_modulation(signal), signal, f)
 get_code_spectrum(modulation::LOC, signal, f) =
     get_code_spectrum_BPSK(get_chip_rate(signal), f)
+# The chip rate f_c is the signal's (`n · 1.023 MHz` already) and the subcarrier frequency
+# f_s = m · 1.023 MHz is `m/n` of it.
 get_code_spectrum(modulation::BOCsin, signal, f) = get_code_spectrum_BOCsin(
-    modulation.n * get_chip_rate(signal),
-    modulation.m * get_chip_rate(signal),
+    get_chip_rate(signal),
+    (modulation.m / modulation.n) * get_chip_rate(signal),
     f,
 )
 get_code_spectrum(modulation::BOCcos, signal, f) = get_code_spectrum_BOCcos(
-    modulation.n * get_chip_rate(signal),
-    modulation.m * get_chip_rate(signal),
+    get_chip_rate(signal),
+    (modulation.m / modulation.n) * get_chip_rate(signal),
     f,
 )
 function get_code_spectrum(modulation::CBOC, signal, f)
@@ -249,18 +257,22 @@ function get_code_spectrum(modulation::TMBOC{B1, B2, N}, signal, f) where {B1, B
     get_code_spectrum(modulation.boc2, signal, f) * boc2_frac
 end
 
-# An `Int8` sign, so it keeps the code matrix's element type (`get_code_type`) rather than
-# widening the chip to `Int`.
-function get_subcarrier_code(modulation::BOCsin, phase::T) where {T<:Real}
-    floored_subcarrier_phase = floor(Int, phase * 2 * modulation.m)
+# The phase is in code chips, as everywhere in the package. A chip of BOC(m, n) spans
+# `2m/n` subcarrier half-periods: the subcarrier runs at m · 1.023 MHz, the code at n · 1.023
+# MHz. The phase is multiplied by that factor rather than divided by `n`: the factor does not
+# depend on the phase, so a loop computes it once, and in the phase's own float type it gives
+# for n = 1 exactly the `phase · 2m` this was before n was carried. An `Int8` sign, so it keeps
+# the code matrix's element type (`get_code_type`) rather than widening the chip to `Int`.
+function get_subcarrier_code(modulation::BOCsin, phase::Real)
+    half_periods_per_chip = oftype(float(phase), 2 * modulation.m / modulation.n)
+    floored_subcarrier_phase = floor(Int, phase * half_periods_per_chip)
     iseven(floored_subcarrier_phase) ? Int8(1) : Int8(-1)
 end
 
 # The cosine subcarrier is the sine one a quarter subcarrier period later: sign(cos x) =
-# sign(sin(x + π/2)). A subcarrier period is `1/m` of the 1.023 MHz periods the phase counts,
-# so the quarter is `1/(4m)` of one.
+# sign(sin(x + π/2)). A subcarrier period is `n/m` chips, so the quarter is `n/(4m)` chips.
 function get_subcarrier_code(modulation::BOCcos, phase::Real)
-    quarter_period = oftype(float(phase), 1 / (4 * modulation.m))
+    quarter_period = oftype(float(phase), modulation.n / (4 * modulation.m))
     get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + quarter_period)
 end
 
@@ -277,16 +289,14 @@ end
 # the current primary-chip position (mod pattern length), then evaluate
 # that BOC's subcarrier at the same phase.
 function get_subcarrier_code(modulation::TMBOC{B1, B2, N}, phase::T) where {B1, B2, N, T<:Real}
-    chip_pos = mod(floor(Int, phase * modulation.boc1.n), N)
+    chip_pos = mod(floor(Int, phase), N)
     @inbounds use_boc2 = modulation.pattern[chip_pos + 1]
     use_boc2 ? get_subcarrier_code(modulation.boc2, phase) :
                get_subcarrier_code(modulation.boc1, phase)
 end
 
-get_floored_phase(modulation::LOC, phase) = floor(Int, phase)
-get_floored_phase(modulation::BOC, phase) = floor(Int, phase * modulation.n)
-get_floored_phase(modulation::CBOC, phase) = floor(Int, phase * modulation.boc1.n)
-get_floored_phase(modulation::TMBOC, phase) = floor(Int, phase * modulation.boc1.n)
+# The chip a phase falls in: the phase counts chips for every modulation.
+get_floored_phase(::Modulation, phase) = floor(Int, phase)
 
 """
 $(SIGNATURES)
