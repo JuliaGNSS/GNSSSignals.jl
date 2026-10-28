@@ -256,8 +256,12 @@ function get_subcarrier_code(modulation::BOCsin, phase::T) where {T<:Real}
     iseven(floored_subcarrier_phase) ? Int8(1) : Int8(-1)
 end
 
-function get_subcarrier_code(modulation::BOCcos, phase::T) where {T<:Real}
-    get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + T(0.25))
+# The cosine subcarrier is the sine one a quarter subcarrier period later: sign(cos x) =
+# sign(sin(x + π/2)). A subcarrier period is `1/m` of the 1.023 MHz periods the phase counts,
+# so the quarter is `1/(4m)` of one.
+function get_subcarrier_code(modulation::BOCcos, phase::Real)
+    quarter_period = oftype(float(phase), 1 / (4 * modulation.m))
+    get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + quarter_period)
 end
 
 # The amplitude is the sqrt of the power see

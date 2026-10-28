@@ -1074,8 +1074,9 @@ end
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Cosine-phased BOC support in the LUT path. A cosine BOC(m,1) is the sine BOC(m,1) sub-carrier
-# shifted by a quarter cycle (`GNSSSignals.get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin, φ+¼)`),
-# so its constant segments straddle the sine sub-chip grid. Baking it at `P = 4m` quarter-sub-chips
+# shifted by a quarter subcarrier period, 1/(4m) chips (`GNSSSignals.get_subcarrier_code(BOCcos,
+# φ) == get_subcarrier_code(BOCsin, φ + 1/(4m))`), so its constant segments straddle the sine
+# sub-chip grid. Baking it at `P = 4m` quarter-sub-chips
 # per chip aligns every segment boundary to the grid, and each sub-chip carries the fixed ±1
 # cosine sign. The float reference is the package's own `GNSSSignals.get_subcarrier_code(BOCcos(m,1), φ)` — the
 # `get_code` BOC path (primary × subcarrier, n == 1, no secondary) sampled at the sub-chip rate.
@@ -1125,7 +1126,7 @@ end
         # (n == 1, no secondary: primary[floor φ] × cosine subcarrier φ) at that sub-chip's
         # MIDPOINT φ = (n + 0.5)/P. The subcarrier is constant across the sub-chip, so the midpoint
         # is the get_code value the whole sample represents — and it avoids evaluating exactly on a
-        # sub-chip boundary, where `floor((φ+¼)·2m)` is ill-defined in Float64 (e.g. 7.0 → 6.999…).
+        # sub-chip boundary, where `floor((φ + 1/(4m))·2m)` is ill-defined in Float64 (e.g. 7.0 → 6.999…).
         mid = ((0:N-1) .+ 0.5) .* (fc / fs)
         ref = Int8[Int8(primary[mod(floor(Int, φ), Lp) + 1] *
                         GNSSSignals.get_subcarrier_code(BOCcos(m, 1), φ)) for φ in mid]
