@@ -18,8 +18,9 @@
 # boundary fill that splat-stores one chip run per store at the original `gen_code!`'s
 # store-bound speed instead of paying a permute per window. The baked table is Int8: ±1 for
 # BPSK/BOC (sine or cosine phased)/TMBOC, or a multi-level integer approximation of the sqrt-power
-# amplitudes for CBOC (Galileo E1B). Cosine BOC(m,1) is baked at 4m quarter-sub-chips (the ¼-cycle
-# shift halves the grid); only code-factor n≠1 BOC is unsupported. Requires sub-chip oversampling
+# amplitudes for CBOC (Galileo E1B). Sine BOC(m,n) is baked at 2m/n sub-chips per chip, cosine
+# BOC(m,n) at 4m/n quarter-sub-chips (the quarter-period shift halves the grid); a BOC whose count
+# is not a whole number cannot be baked. Requires sub-chip oversampling
 # (`sampling_frequency ≥ code_frequency · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -211,7 +212,8 @@ end
 # Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOCsin/BOCcos/TMBOC; CBOC
 # bakes a multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the
 # CBOC's own `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit
-# override. Cosine BOC(m,1) bakes at 4m quarter-sub-chips; only code-factor n ≠ 1 errors. The
+# override. Sine BOC(m,n) bakes at 2m/n sub-chips per chip and cosine BOC(m,n) at 4m/n
+# quarter-sub-chips; an ArgumentError where that is not a whole number. The
 # `cboc_amplitudes` argument is ignored by
 # every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
 # Used by `build_signal_lut` (eager bake at signal construction).
@@ -219,14 +221,17 @@ _codelut_modulation(m, ::Union{Nothing,Tuple{Integer,Integer}}) = _codelut_modul
 function _codelut_modulation(m::LOC)
     CodeLUT.LOC()
 end
-function _codelut_modulation(m::BOCsin)
-    m.n == 1 || error("the embedded LUT supports only code-factor n==1 BOC")
-    CodeLUT.BOC(Int(m.m))
+_codelut_modulation(m::BOCsin) = CodeLUT.BOC(m.m, m.n)
+# The composites bake their components' sine subcarriers at a common resolution; a cosine
+# component would need the quarter grid and is not supported.
+function _sine_components(m, what)
+    m.boc1 isa BOCsin && m.boc2 isa BOCsin || throw(ArgumentError(
+        "the code lookup table bakes a $what of sine-phased BOC components only; got " *
+        "$(nameof(typeof(m.boc1))) and $(nameof(typeof(m.boc2)))"))
 end
 function _codelut_modulation(m::TMBOC)
-    (m.boc1.n == 1 && m.boc2.n == 1 && m.boc1.m == 1) ||
-        error("the embedded LUT supports only TMBOC with BOC(1,1) base and code-factor n==1")
-    CodeLUT.TMBOC(Int(m.boc2.m), collect(Bool, m.pattern))
+    _sine_components(m, "TMBOC")
+    CodeLUT.TMBOC(m.boc1.m, m.boc2.m, m.boc1.n, collect(Bool, m.pattern))
 end
 # Best integer amplitude pair (a1, a2) for baking a CBOC subcarrier: the continued-fraction
 # convergent of the target amplitude ratio √(boc1_power) : √(1-boc1_power) whose sum stays within
@@ -255,8 +260,7 @@ end
 
 function _codelut_modulation(m::CBOC,
                              cboc_amplitudes::Union{Nothing,Tuple{Integer,Integer}} = nothing)
-    (m.boc1.n == 1 && m.boc2.n == 1) ||
-        error("the embedded LUT supports only code-factor n==1 CBOC")
+    _sine_components(m, "CBOC")
     # Derive the Int8 amplitude pair from the modulation's own `boc1_power` unless the caller
     # supplies an explicit `cboc_amplitudes` override.
     a1, a2 = cboc_amplitudes === nothing ? _cboc_int_amplitudes(m.boc1_power) : cboc_amplitudes
@@ -264,16 +268,13 @@ function _codelut_modulation(m::CBOC,
         error("cboc_amplitudes must be positive integers; got $cboc_amplitudes")
     Int(a1) + Int(a2) <= typemax(Int8) ||
         error("cboc_amplitudes must satisfy a1 + a2 ≤ $(typemax(Int8)) (Int8 table); got $cboc_amplitudes")
-    # `boc2_sign` selects the relative phase of the BOC(m2,1) component: CBOC(+) for Galileo
-    # E1B (`+1`), CBOC(−) for Galileo E1C (`-1`). CodeLUT.CBOC bakes `a1·BOC(m1,1) + a2·BOC(m2,1)`,
+    # `boc2_sign` selects the relative phase of the BOC(m2,n) component: CBOC(+) for Galileo
+    # E1B (`+1`), CBOC(−) for Galileo E1C (`-1`). CodeLUT.CBOC bakes `a1·BOC(m1,n) + a2·BOC(m2,n)`,
     # so a negative second amplitude reproduces the anti-phase composite.
     a2_signed = m.boc2_sign < 0 ? Int8(-Int(a2)) : Int8(a2)
-    CodeLUT.CBOC(Int(m.boc1.m), Int(m.boc2.m), Int8(a1), a2_signed)
+    CodeLUT.CBOC(m.boc1.m, m.boc2.m, m.boc1.n, Int8(a1), a2_signed)
 end
-function _codelut_modulation(m::BOCcos)
-    m.n == 1 || error("the embedded LUT supports only code-factor n==1 cosine-phased BOC")
-    CodeLUT.BOCcos(Int(m.m))
-end
+_codelut_modulation(m::BOCcos) = CodeLUT.BOCcos(m.m, m.n)
 
 """
     build_signal_lut(modulation, codes, sec::SecondaryCode; cboc_amplitudes = nothing)
@@ -291,10 +292,10 @@ short secondaries are BAKED into each column, a long overlay (GPS L1C-P, 1800 ch
 RESIDUAL and stored in `SignalLUT.secondary` (per-PRN for a `PerPRNSecondaryCode`, one shared
 column otherwise) for runtime application.
 
-**Errors** for modulations the LUT can't bake (code-factor n ≠ 1, …) — these are unimplemented
-for the embedded LUT, so the signal fails to construct rather than silently omitting its LUT.
-Cosine-phased BOC(m,1) *is* supported (baked at 4m quarter-sub-chips). `_codelut_modulation`
-raises the specific error for the remaining unimplemented cases.
+**Throws an `ArgumentError`** for modulations the LUT can't bake — a BOC(m,n) whose chip spans
+no whole number of sub-chips (`2m/n` for sine, `4m/n` for cosine phase), or a TMBOC/CBOC with a
+cosine-phased component — so the signal fails to construct rather than silently omitting its LUT.
+`_codelut_modulation` raises the specific error.
 
 For a `CBOC` modulation, `cboc_amplitudes = nothing` (the default) derives the Int8 amplitude
 pair from the modulation's own `boc1_power` (see `_cboc_int_amplitudes`); the E1 10/11 split

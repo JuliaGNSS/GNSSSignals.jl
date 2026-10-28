@@ -69,10 +69,11 @@
     @test GNSSSignals.get_subcarrier_code(cboc_plus, 0.0) ≈ a + b
     @test GNSSSignals.get_subcarrier_code(cboc_minus, 0.0) ≈ a - b
 
+    # The phase counts code chips whatever the chip rate, so the chip is its floor.
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 1), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 2), 2.3) == 4
+    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 2), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 1), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 2), 2.3) == 4
+    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 2), 2.3) == 2
 
     # Test LOC floored phase
     @test GNSSSignals.get_floored_phase(GNSSSignals.LOC(), 2.3) == 2
@@ -80,7 +81,7 @@
 
     # Test CBOC floored phase
     cboc_test = GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2), GNSSSignals.BOCsin(6, 2), 10 / 11)
-    @test GNSSSignals.get_floored_phase(cboc_test, 2.3) == 4
+    @test GNSSSignals.get_floored_phase(cboc_test, 2.3) == 2
 end
 
 @testset "TMBOC accessors" begin
@@ -127,11 +128,11 @@ end
         @test GNSSSignals.get_floored_phase(tmboc, 32.9) == 32
         @test GNSSSignals.get_floored_phase(tmboc, 33.0) == 33
 
-        # With a non-unit `n`, the result scales by `n`.
+        # The phase counts code chips whatever `n` is.
         boc1_n2 = GNSSSignals.BOCsin(1, 2)
         boc6_n2 = GNSSSignals.BOCsin(6, 2)
         tmboc_n2 = GNSSSignals.TMBOC(boc1_n2, boc6_n2, pattern)
-        @test GNSSSignals.get_floored_phase(tmboc_n2, 2.3) == 4
+        @test GNSSSignals.get_floored_phase(tmboc_n2, 2.3) == 2
     end
 
     # `get_code_spectrum`: power-weighted mix of the BOC component
@@ -157,13 +158,42 @@ end
             @test get_code_spectrum(sig, f) ≈ expected
         end
 
-        # Symmetry: BOC subcarriers are zero-mean, so the spectrum
-        # vanishes at DC.
+        # BOC(1,1) and BOC(6,1) put whole subcarrier periods in a chip, so the
+        # spectrum vanishes at DC.
         @test get_code_spectrum(sig, 0) == 0.0
 
         # Spectrum is even.
         @test get_code_spectrum(sig, 500e3) ≈ get_code_spectrum(sig, -500e3)
     end
+end
+
+# The PSD of a random ±1 code is |P(f)|² / T_c of its chip pulse P, here a chip of equal
+# segments with the given signs. With an odd number of half-periods per chip the subcarrier
+# flips the pulse's sign from one chip to the next, which leaves a random code's PSD as is.
+function chip_pulse_psd(signs, chip_rate, f)
+    d = 1 / (chip_rate * length(signs))
+    P = sum(s * d * sinc(f * d) * cispi(-2f * (j - 0.5) * d) for (j, s) in enumerate(signs))
+    return abs2(P) * chip_rate
+end
+
+@testset "BOC spectrum for k = $k subcarrier half-periods per chip" for k in 1:7
+    fc = 1.023e6
+    fs = k * fc / 2
+    sine_signs = [iseven(j) ? 1 : -1 for j in 0:k-1]
+    cosine_signs = [mod(q, 4) in (0, 3) ? 1 : -1 for q in 0:2k-1]  # quarter periods
+    fs_grid = range(-20fc, 20fc; length = 801) .+ 123.4  # off the 0/0 points
+    for (spectrum, signs) in ((GNSSSignals.get_code_spectrum_BOCsin, sine_signs),
+                              (GNSSSignals.get_code_spectrum_BOCcos, cosine_signs))
+        expected = [chip_pulse_psd(signs, fc, f) for f in fs_grid]
+        got = [spectrum(fc, fs, f) for f in fs_grid]
+        @test maximum(abs.(got .- expected)) <= 1e-9 * maximum(expected)
+        @test spectrum(fc, fs, 0.0) ≈ chip_pulse_psd(signs, fc, 0.0) atol = 1e-20
+    end
+end
+
+@testset "BOC spectrum rejects a fractional number of half-periods per chip" begin
+    @test_throws ArgumentError GNSSSignals.get_code_spectrum_BOCsin(1.023e6, 0.75 * 1.023e6, 0.0)
+    @test_throws ArgumentError GNSSSignals.get_code_spectrum_BOCcos(1.023e6, 0.75 * 1.023e6, 0.0)
 end
 
 @testset "Spectrum functions with units" begin
