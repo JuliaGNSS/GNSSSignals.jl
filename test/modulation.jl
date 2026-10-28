@@ -14,6 +14,25 @@
     @test GNSSSignals.get_subcarrier_code(boc_cos, 1.5) == -1.0
     @test GNSSSignals.get_subcarrier_code(boc_cos, 2.0) == 1.0
 
+    # The cosine subcarrier is the sine one shifted by a quarter subcarrier period,
+    # 1/(4m) of the 1.023 MHz periods the phase counts: +1 for the first quarter period,
+    # -1 for the middle half, +1 for the last quarter, whatever m is.
+    for m in (1, 2, 3, 6)
+        quarter = 1 / (4m)
+        cos_m = GNSSSignals.BOCcos(m, 1)
+        @test GNSSSignals.get_subcarrier_code(cos_m, 0.5 * quarter) == 1
+        @test GNSSSignals.get_subcarrier_code(cos_m, 1.5 * quarter) == -1
+        @test GNSSSignals.get_subcarrier_code(cos_m, 2.5 * quarter) == -1
+        @test GNSSSignals.get_subcarrier_code(cos_m, 3.5 * quarter) == 1
+        for φ in range(0, 3; length = 1201)
+            # Midpoints between the sine's half-period edges, clear of either rounding way.
+            φ_mid = (floor(φ * 4m) + 0.5) / 4m
+            @test GNSSSignals.get_subcarrier_code(cos_m, φ_mid) ==
+                  GNSSSignals.get_subcarrier_code(GNSSSignals.BOCsin(m, 1), φ_mid + quarter)
+        end
+    end
+    @test GNSSSignals.get_subcarrier_code(GNSSSignals.BOCcos(2, 1), 0) == 1   # integer phase
+
     @test_throws ErrorException("m and n must be >= 1") GNSSSignals.BOCcos(0, 1)
     @test_throws ErrorException("m and n must be >= 1") GNSSSignals.BOCcos(1, 0)
     @test_throws ErrorException("m and n must be >= 1") GNSSSignals.BOCsin(0, 1)
