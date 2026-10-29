@@ -125,7 +125,7 @@ get_modulation(::Type{<:GalileoE5aI}) = LOC()
 get_modulation(::Type{<:GalileoE5aQ}) = LOC()
 
 # E5aI data rides the in-phase carrier (default 0); E5aQ pilot is in quadrature.
-@inline get_carrier_phase_offset(::Type{<:GalileoE5aQ}) = π / 2
+@inline get_carrier_phase_offset(::Type{<:GalileoE5aQ}) = 0.25
 
 @inline get_band(::Type{<:GalileoE5aI}) = L5()
 @inline get_band(::Type{<:GalileoE5aQ}) = L5()

@@ -310,7 +310,7 @@ get_code_length(e5b_q)           # 10230
 get_band(e5b_q)                  # E5b()
 get_bit_rate(e5b_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5b_q) # 100
-get_carrier_phase_offset(e5b_q)  # π/2 (leads the E5b-I reference, as E5a-Q does)
+get_carrier_phase_offset(e5b_q)  # 0.25 cycles (leads the E5b-I reference, as E5a-Q does)
 ```
 
 ### Galileo E6-B
@@ -330,7 +330,7 @@ get_modulation(e6b)              # LOC()
 
 ### Galileo E6-C
 
-Galileo E6-C is the dataless pilot of Galileo E6. It uses its own set of 5115-chip memory codes and overlays the same 100-chip per-SVID CS100 secondary codes as E5a-Q, giving a 100 ms tiered code. Both E6 components sit on one carrier component with a 50/50 power split, and the ICD subtracts the pilot there, so E6-C reports a carrier phase offset of π against the E6-B reference:
+Galileo E6-C is the dataless pilot of Galileo E6. It uses its own set of 5115-chip memory codes and overlays the same 100-chip per-SVID CS100 secondary codes as E5a-Q, giving a 100 ms tiered code. Both E6 components sit on one carrier component with a 50/50 power split, and the ICD subtracts the pilot there, so E6-C reports a carrier phase offset of half a cycle against the E6-B reference:
 
 ```julia
 e6c = GalileoE6C()
@@ -338,7 +338,7 @@ get_code_length(e6c)             # 5115
 get_band(e6c)                    # E6()
 get_bit_rate(e6c)                # 0 Hz (dataless)
 get_secondary_code_length(e6c)   # 100
-get_carrier_phase_offset(e6c)    # π  (OS SIS ICD Eq. 10 subtracts the pilot)
+get_carrier_phase_offset(e6c)    # 0.5 cycles (OS SIS ICD Eq. 10 subtracts the pilot)
 get_modulation(e6c)              # LOC()
 ```
 
