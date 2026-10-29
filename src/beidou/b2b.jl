@@ -92,7 +92,7 @@ Get the code length for BeiDou B2b_I (10230 chips).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for BeiDou B2b_I (10.23 MHz).
+Get the nominal chip rate of BeiDou B2b_I (10.23 MHz).
 """
 @inline get_chip_rate(::Type{<:BeiDouB2bI}) = 10_230_000Hz
 

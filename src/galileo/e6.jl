@@ -136,7 +136,7 @@ Get the code length for Galileo E6 (5115 chips, both components).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E6 (5.115 MHz, both components — Galileo
+Get the nominal chip rate of Galileo E6 (5.115 MHz, both components — Galileo
 OS SIS ICD v2.2, Table 9).
 """
 @inline get_chip_rate(::Type{<:GalileoE6B}) = 5_115_000Hz

@@ -108,7 +108,7 @@ Get the code length for BeiDou B1I (2046 chips).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for BeiDou B1I (2.046 MHz).
+Get the nominal chip rate of BeiDou B1I (2.046 MHz).
 """
 @inline get_chip_rate(::Type{<:BeiDouB1I}) = 2_046_000Hz
 

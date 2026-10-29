@@ -88,7 +88,7 @@ end
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E1B.
+Get the nominal chip rate of Galileo E1B.
 
 # Returns
 - `Frequency`: 1.023 MHz

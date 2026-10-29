@@ -164,7 +164,7 @@ Get the code length for BeiDou B2a (10230 chips, both components).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for BeiDou B2a (10.23 MHz, both components).
+Get the nominal chip rate of BeiDou B2a (10.23 MHz, both components).
 """
 @inline get_chip_rate(::Type{<:BeiDouB2aI}) = 10_230_000Hz
 @inline get_chip_rate(::Type{<:BeiDouB2aQ}) = 10_230_000Hz

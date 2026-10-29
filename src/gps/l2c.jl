@@ -207,7 +207,7 @@ long code.
 """
 $(SIGNATURES)
 
-Get the code chipping rate for the GPS L2 civil signals (511.5 kHz, both
+Get the nominal chip rate of the GPS L2 civil signals (511.5 kHz, both
 components).
 
 # Examples
@@ -216,8 +216,8 @@ julia> get_chip_rate(GPSL2CM())
 511500 Hz
 ```
 """
-@inline get_chip_rate(::Type{<:GPSL2CM}) = GPS_L2C_CODE_FREQUENCY
-@inline get_chip_rate(::Type{<:GPSL2CL}) = GPS_L2C_CODE_FREQUENCY
+@inline get_chip_rate(::Type{<:GPSL2CM}) = GPS_L2C_CHIP_RATE
+@inline get_chip_rate(::Type{<:GPSL2CL}) = GPS_L2C_CHIP_RATE
 
 """
 $(SIGNATURES)

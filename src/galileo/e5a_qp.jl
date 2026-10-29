@@ -149,7 +149,7 @@ Get the code length for Galileo E5a-QP (330 chips — 2/31 ms at 5.115 Mcps).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E5a-QP (5.115 MHz, Galileo OS SIS ICD
+Get the nominal chip rate of Galileo E5a-QP (5.115 MHz, Galileo OS SIS ICD
 v2.2, Table 8).
 """
 @inline get_chip_rate(::Type{<:GalileoE5aQP}) = 5_115_000Hz

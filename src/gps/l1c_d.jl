@@ -71,7 +71,7 @@ the pilot, L1C-P).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for GPS L1C-D.
+Get the nominal chip rate of GPS L1C-D.
 
 # Returns
 - `Frequency`: 1.023 MHz

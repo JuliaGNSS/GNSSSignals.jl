@@ -267,7 +267,7 @@ julia> get_code_length(GPSL5I())
 """
 $(SIGNATURES)
 
-Get the code chipping rate for GPS L5 (10.23 MHz, both components).
+Get the nominal chip rate of GPS L5 (10.23 MHz, both components).
 
 # Examples
 ```julia-repl

@@ -513,10 +513,10 @@ $(SIGNATURES)
 Calculate the spectral power density of a BPSK modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BPSK
-signal with chip rate `fc`.
+signal with chip rate `chip_rate`.
 
 # Arguments
-- `fc`: Code chip rate
+- `chip_rate`: Chip rate of the code
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
@@ -529,17 +529,17 @@ julia> get_code_spectrum_BPSK(1.023MHz, 0kHz)
 9.775171065493646e-7
 ```
 """
-function get_code_spectrum_BPSK(fc::Frequency, f)
-    return get_code_spectrum_BPSK(fc / 1Hz, f)
+function get_code_spectrum_BPSK(chip_rate::Frequency, f)
+    return get_code_spectrum_BPSK(chip_rate / 1Hz, f)
 end
-function get_code_spectrum_BPSK(fc, f::Frequency)
-    return get_code_spectrum_BPSK(fc, f / 1Hz)
+function get_code_spectrum_BPSK(chip_rate, f::Frequency)
+    return get_code_spectrum_BPSK(chip_rate, f / 1Hz)
 end
-function get_code_spectrum_BPSK(fc::Frequency, f::Frequency)
-    return get_code_spectrum_BPSK(fc / 1Hz, f / 1Hz)
+function get_code_spectrum_BPSK(chip_rate::Frequency, f::Frequency)
+    return get_code_spectrum_BPSK(chip_rate / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BPSK(fc, f)
-    return sinc(f / fc)^2 / fc
+function get_code_spectrum_BPSK(chip_rate, f)
+    return sinc(f / chip_rate)^2 / chip_rate
 end
 
 """
@@ -548,27 +548,27 @@ $(SIGNATURES)
 Calculate the spectral power density of a sine-phased BOC modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BOC(sin)
-signal with chip rate `fc` and subcarrier frequency `fs`.
+signal with chip rate `chip_rate` and subcarrier frequency `subcarrier_frequency`.
 
 # Arguments
-- `fc`: Code chip rate
-- `fs`: Subcarrier frequency
+- `chip_rate`: Chip rate of the code
+- `subcarrier_frequency`: Subcarrier frequency
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
 - Spectral power density value
 """
-function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f)
-    return get_code_spectrum_BOCsin(fc / 1Hz, fs / 1Hz, f)
+function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
+    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
 end
-function get_code_spectrum_BOCsin(fc, fs, f::Frequency)
-    return get_code_spectrum_BOCsin(fc, fs, f / 1Hz)
+function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f::Frequency)
+    return get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f / 1Hz)
 end
-function get_code_spectrum_BOCsin(fc::Frequency, fs::Frequency, f::Frequency)
-    return get_code_spectrum_BOCsin(fc / 1Hz, fs / 1Hz, f / 1Hz)
+function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
+    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BOCsin(fc, fs, f)
-    return ((sinc(f / fc) * tan(pi * f / (2 * fs)))^2 / fc)
+function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f)
+    return ((sinc(f / chip_rate) * tan(pi * f / (2 * subcarrier_frequency)))^2 / chip_rate)
 end
 
 """
@@ -577,25 +577,26 @@ $(SIGNATURES)
 Calculate the spectral power density of a cosine-phased BOC modulated signal.
 
 Computes the power spectral density at baseband frequency `f` for a BOC(cos)
-signal with chip rate `fc` and subcarrier frequency `fs`.
+signal with chip rate `chip_rate` and subcarrier frequency `subcarrier_frequency`.
 
 # Arguments
-- `fc`: Code chip rate
-- `fs`: Subcarrier frequency
+- `chip_rate`: Chip rate of the code
+- `subcarrier_frequency`: Subcarrier frequency
 - `f`: Baseband frequency at which to evaluate the spectrum
 
 # Returns
 - Spectral power density value
 """
-function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f)
-    return get_code_spectrum_BOCcos(fc / 1Hz, fs / 1Hz, f)
+function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
+    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
 end
-function get_code_spectrum_BOCcos(fc, fs, f::Frequency)
-    return get_code_spectrum_BOCcos(fc, fs, f / 1Hz)
+function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f::Frequency)
+    return get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f / 1Hz)
 end
-function get_code_spectrum_BOCcos(fc::Frequency, fs::Frequency, f::Frequency)
-    return get_code_spectrum_BOCcos(fc / 1Hz, fs / 1Hz, f / 1Hz)
+function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
+    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
 end
-function get_code_spectrum_BOCcos(fc, fs, f)
-    return (2 * sinc(f / fc) * sinpi(f / 4fs)^2 / cospi(f / 2fs))^2 / fc
+function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f)
+    return (2 * sinc(f / chip_rate) * sinpi(f / (4 * subcarrier_frequency))^2 /
+            cospi(f / (2 * subcarrier_frequency)))^2 / chip_rate
 end

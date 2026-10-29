@@ -94,7 +94,7 @@ end
 """
 $(SIGNATURES)
 
-Get the code chipping rate for GPS L1 C/A.
+Get the nominal chip rate of GPS L1 C/A.
 
 # Returns
 - `Frequency`: 1.023 MHz

@@ -151,7 +151,7 @@ Get the code length for Galileo E5b (10230 chips, both components).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E5b (10.23 MHz, both components).
+Get the nominal chip rate of Galileo E5b (10.23 MHz, both components).
 """
 @inline get_chip_rate(::Type{<:GalileoE5bI}) = 10_230_000Hz
 @inline get_chip_rate(::Type{<:GalileoE5bQ}) = 10_230_000Hz

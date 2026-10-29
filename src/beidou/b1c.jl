@@ -177,7 +177,7 @@ Get the code length for BeiDou B1C (10230 chips, both components).
 """
 $(SIGNATURES)
 
-Get the code chipping rate for BeiDou B1C (1.023 MHz, both components).
+Get the nominal chip rate of BeiDou B1C (1.023 MHz, both components).
 """
 @inline get_chip_rate(::Type{<:BeiDouB1C_D}) = 1_023_000Hz
 @inline get_chip_rate(::Type{<:BeiDouB1C_P}) = 1_023_000Hz

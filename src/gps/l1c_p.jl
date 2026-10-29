@@ -79,7 +79,7 @@ one chip of a 1800-bit per-PRN LFSR-generated overlay code, giving an
 """
 $(SIGNATURES)
 
-Get the code chipping rate for GPS L1C-P.
+Get the nominal chip rate of GPS L1C-P.
 
 # Returns
 - `Frequency`: 1.023 MHz

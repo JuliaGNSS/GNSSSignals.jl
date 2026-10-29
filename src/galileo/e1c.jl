@@ -110,7 +110,7 @@ SharedSecondaryCode{25, Int8}((-1, -1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1, 1, -
 """
 $(SIGNATURES)
 
-Get the code chipping rate for Galileo E1C.
+Get the nominal chip rate of Galileo E1C.
 
 # Returns
 - `Frequency`: 1.023 MHz
