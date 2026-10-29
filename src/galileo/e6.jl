@@ -114,7 +114,7 @@ get_modulation(::Type{<:GalileoE6C}) = LOC()
 # phase against the E6-B reference, and — unlike E1, where the anti-phase sits in
 # the CBOC(−) code — nothing in the plain-BPSK E6-C definition carries it, so it
 # lives here. See [`get_carrier_phase_offset`](@ref).
-@inline get_carrier_phase_offset(::Type{<:GalileoE6C}) = Float64(π)
+@inline get_carrier_phase_offset(::Type{<:GalileoE6C}) = 0.5
 
 # 50/50 E6-B/E6-C power sharing (Galileo OS SIS ICD v2.2 §2.3.2), of the E6
 # composite whose −155.25 dBW total (Table 13) is the unit here. See

@@ -125,9 +125,9 @@ get_modulation(::Type{<:BeiDouB2aQ}) = LOC()
 
 # B2a data rides the in-phase carrier (default 0); the B2aQ pilot is in quadrature.
 # BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3 uses the same complex-envelope convention as Galileo
-# (`s_data + j·s_pilot`, RF `I·cos − Q·sin`), so the pilot LEADS by 90° → +π/2, like
+# (`s_data + j·s_pilot`, RF `I·cos − Q·sin`), so the pilot LEADS by 90° → +1/4 cycle, like
 # GalileoE5aQ and opposite in sense to GPSL5Q.
-@inline get_carrier_phase_offset(::Type{<:BeiDouB2aQ}) = π / 2
+@inline get_carrier_phase_offset(::Type{<:BeiDouB2aQ}) = 0.25
 
 # An equal-power composite: BDS-SIS-ICD-B2a-1.0 §4.2.2 states the data:pilot power
 # ratio as 1:1. See [`get_relative_power`](@ref).

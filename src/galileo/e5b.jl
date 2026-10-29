@@ -118,7 +118,7 @@ get_modulation(::Type{<:GalileoE5bQ}) = LOC()
 # E5b-I data rides the in-phase carrier (default 0); the E5b-Q pilot is in
 # quadrature and LEADS it by 90°, the same `(I + jQ)` convention E5a follows
 # (OS SIS ICD v2.2 Eq. 2). See [`get_carrier_phase_offset`](@ref).
-@inline get_carrier_phase_offset(::Type{<:GalileoE5bQ}) = π / 2
+@inline get_carrier_phase_offset(::Type{<:GalileoE5bQ}) = 0.25
 
 """
 $(SIGNATURES)

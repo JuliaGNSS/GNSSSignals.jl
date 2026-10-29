@@ -134,10 +134,10 @@ get_modulation(::Type{<:GPSL2CL}) = LOC()
 # IS-GPS-200N Table 3-III designates the L2 P(Y) carrier as the band's in-phase (I)
 # reference; the civil L2C component (the CM/CL chip-by-chip multiplex) rides the
 # quadrature carrier. §3.3.1.5.1 makes this configurable: CNAV Type 10 message bit 273
-# signals either phase quadrature (L2C lagging L2P(Y) by 90° → −π/2) or in-phase (0);
-# with no CNAV it is "fixed in phase quadrature". We return that nominal/default −π/2.
-@inline get_carrier_phase_offset(::Type{<:GPSL2CM}) = -π / 2
-@inline get_carrier_phase_offset(::Type{<:GPSL2CL}) = -π / 2
+# signals either phase quadrature (L2C lagging L2P(Y) by 90° → −1/4 cycle) or in-phase (0);
+# with no CNAV it is "fixed in phase quadrature". We return that nominal/default −1/4 cycle.
+@inline get_carrier_phase_offset(::Type{<:GPSL2CM}) = -0.25
+@inline get_carrier_phase_offset(::Type{<:GPSL2CL}) = -0.25
 
 @inline get_band(::Type{<:GPSL2CM}) = L2()
 @inline get_band(::Type{<:GPSL2CL}) = L2()
