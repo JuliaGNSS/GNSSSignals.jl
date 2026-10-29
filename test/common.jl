@@ -46,24 +46,24 @@ end
 
 @testset "get_carrier_phase_offset" begin
     # GPS civil signals ride the QUADRATURE carrier, lagging their band's P(Y)
-    # in-phase reference by 90° → −π/2 (IS-GPS-200N §3.3.1.5.1, IS-GPS-705 §3.3.1.5).
-    @test get_carrier_phase_offset(GPSL1CA()) == -π / 2
-    @test get_carrier_phase_offset(GPSL2CM()) == -π / 2   # nominal; CNAV can command in-phase
-    @test get_carrier_phase_offset(GPSL2CL()) == -π / 2
-    @test get_carrier_phase_offset(GPSL5Q()) == -π / 2
-    # Galileo E5aQ pilot LEADS its E5a-I reference by 90° → +π/2 (OS SIS ICD Eq. 1).
-    @test get_carrier_phase_offset(GalileoE5aQ()) == π / 2
+    # in-phase reference by 90° → −1/4 cycle (IS-GPS-200N §3.3.1.5.1, IS-GPS-705 §3.3.1.5).
+    @test get_carrier_phase_offset(GPSL1CA()) == -0.25
+    @test get_carrier_phase_offset(GPSL2CM()) == -0.25   # nominal; CNAV can command in-phase
+    @test get_carrier_phase_offset(GPSL2CL()) == -0.25
+    @test get_carrier_phase_offset(GPSL5Q()) == -0.25
+    # Galileo E5aQ pilot LEADS its E5a-I reference by 90° → +1/4 cycle (OS SIS ICD Eq. 1).
+    @test get_carrier_phase_offset(GalileoE5aQ()) == 0.25
     # E5b follows the same (I + jQ) convention on its own sideband (Eq. 2).
     @test get_carrier_phase_offset(GalileoE5bI()) == 0.0
-    @test get_carrier_phase_offset(GalileoE5bQ()) == π / 2
+    @test get_carrier_phase_offset(GalileoE5bQ()) == 0.25
     # E5a-QP: the ICD states no phase relation to the E5a-I reference, so 0.
     @test get_carrier_phase_offset(GalileoE5aQP()) == 0.0
     # BeiDou uses the same complex-envelope convention as Galileo (`s_data + j·s_pilot`,
-    # RF `I·cos − Q·sin`), so its quadrature pilots also LEAD by 90° → +π/2:
+    # RF `I·cos − Q·sin`), so its quadrature pilots also LEAD by 90° → +1/4 cycle:
     # B2aQ (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3) and the B1C pilot's BOC(1,1) arm, which
     # the BeiDouB1C_P replica tracks (BDS-SIS-ICD-B1C-1.0 Eq. 4-3, Table 4-2).
-    @test get_carrier_phase_offset(BeiDouB2aQ()) == π / 2
-    @test get_carrier_phase_offset(BeiDouB1C_P()) == π / 2
+    @test get_carrier_phase_offset(BeiDouB2aQ()) == 0.25
+    @test get_carrier_phase_offset(BeiDouB1C_P()) == 0.25
     # In-phase references and in-phase components default to 0.
     @test get_carrier_phase_offset(GPSL5I()) == 0.0
     @test get_carrier_phase_offset(GalileoE5aI()) == 0.0
@@ -83,9 +83,9 @@ end
     # OS SIS ICD Eq. 10 subtracts the pilot and the plain-BPSK E6-C code carries
     # no sign of its own (E1C's does, via CBOC's boc2_sign).
     @test get_carrier_phase_offset(GalileoE6B()) == 0.0
-    @test get_carrier_phase_offset(GalileoE6C()) == Float64(π)
+    @test get_carrier_phase_offset(GalileoE6C()) == 0.5
     # C/A and L1C are physically in quadrature with each other.
-    @test get_carrier_phase_offset(GPSL1C_P()) - get_carrier_phase_offset(GPSL1CA()) == π / 2
+    @test get_carrier_phase_offset(GPSL1C_P()) - get_carrier_phase_offset(GPSL1CA()) == 0.25
     # Type- and instance-forms agree.
     @test get_carrier_phase_offset(GPSL5Q) == get_carrier_phase_offset(GPSL5Q())
     @test get_carrier_phase_offset(GPSL1CA) == get_carrier_phase_offset(GPSL1CA())

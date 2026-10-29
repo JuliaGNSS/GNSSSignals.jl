@@ -299,11 +299,12 @@ end
 """
 $(SIGNATURES)
 
-Carrier phase, in **radians**, of the signal's component relative to its band's
+Carrier phase, in **cycles**, of the signal's component relative to its band's
 in-phase (I) carrier reference — the carrier the ICD designates as the "in-phase"
 component of that band (GPS L1/L2: the P(Y) carrier; GPS L5: the I5 carrier;
 Galileo E5a: the E5a-I carrier). Two signals on one band share this reference, so
-their offsets are directly comparable.
+their offsets are directly comparable. A quarter cycle is 90°; `cispi(2 * offset)`
+rotates by the offset, and `2π * offset` gives it in radians.
 
 Several bands multiplex components in phase quadrature (QPSK), one on the in-phase
 carrier and one on the quadrature carrier. That 90° offset lives purely in the
@@ -316,16 +317,16 @@ quadrature component collapses onto the orthogonal axis and never demodulates.
 The sign follows each ICD's own convention, so it differs by constellation:
 
 - **GPS** puts the civil components on the *quadrature* carrier, *lagging* the
-  band's P(Y) in-phase reference by 90° → `−π/2`: `GPSL1CA` (IS-GPS-200N §3.3.1.5.1),
+  band's P(Y) in-phase reference by 90° → `−0.25`: `GPSL1CA` (IS-GPS-200N §3.3.1.5.1),
   `GPSL2CM`/`GPSL2CL` (IS-GPS-200N §3.3.1.5.1; nominal — CNAV Type 10 bit 273 can
   command L2C in-phase, `0.0`), and `GPSL5Q` (IS-GPS-705 §3.3.1.5). `GPSL5I` is the
   L5 in-phase reference (`0.0`).
 - **GPS L1C** (`GPSL1C_D`, `GPSL1C_P`) rides the *same* P(Y) in-phase carrier
   (IS-GPS-800J §3.2.1.6.1) → `0.0`; hence L1C sits 90° off C/A on the same band.
-- **Galileo E5aQ** *leads* the E5a-I reference by 90° → `+π/2` (OS SIS ICD Eq. 1,
+- **Galileo E5aQ** *leads* the E5a-I reference by 90° → `+0.25` (OS SIS ICD Eq. 1,
   `I·cos − Q·sin`); `GalileoE5aI` is the reference (`0.0`).
 - **Galileo E5bQ** likewise *leads* its own sideband's `GalileoE5bI` reference by 90°
-  → `+π/2`: the E5 AltBOC feeds each sideband as `(I + jQ)` (OS SIS ICD Eq. 2), and
+  → `+0.25`: the E5 AltBOC feeds each sideband as `(I + jQ)` (OS SIS ICD Eq. 2), and
   the ICD blesses processing E5a and E5b as two independent QPSK signals (§2.3.1.2).
   `GalileoE5aQP` shares the E5a carrier but the ICD states no phase relation for it
   (§2.3.1.4), so it reports the `0.0` default — no offset is claimed, not one of `0`.
@@ -334,15 +335,15 @@ The sign follows each ICD's own convention, so it differs by constellation:
 - **Galileo E6B/E6C** likewise share one carrier component, but here the 180°
   *is* the carrier's: OS SIS ICD Eq. 10 subtracts the pilot,
   `(e_E6-B − e_E6-C)/√2`, and the plain-BPSK E6-C code carries no sign of its own
-  (E1C's does, in `CBOC`'s `boc2_sign`), so `GalileoE6C` is `π` against the
+  (E1C's does, in `CBOC`'s `boc2_sign`), so `GalileoE6C` is `0.5` against the
   `GalileoE6B` reference (`0.0`).
 - **BeiDou B2a** follows the same complex-envelope convention as Galileo
   (BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3, `s_data + j·s_pilot` with `I·cos − Q·sin`), so
-  the `BeiDouB2aQ` pilot *leads* its `BeiDouB2aI` reference by 90° → `+π/2`.
+  the `BeiDouB2aQ` pilot *leads* its `BeiDouB2aI` reference by 90° → `+0.25`.
 - **BeiDou B1C** is likewise `s_data + j·s_pilot` (BDS-SIS-ICD-B1C-1.0 Eq. 4-3):
   the ICD's own phase table (Table 4-2) puts the data at 0° and the pilot's
   BOC(1,1) arm at 90°, so `BeiDouB1C_P` — whose replica is that BOC(1,1) arm —
-  is `+π/2` against the `BeiDouB1C_D` reference (`0.0`).
+  is `+0.25` against the `BeiDouB1C_D` reference (`0.0`).
 
 Default `0.0` covers every single-component signal and in-phase component above
 (including `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI`, each its band's I component

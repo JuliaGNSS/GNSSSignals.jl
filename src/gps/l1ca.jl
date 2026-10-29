@@ -23,9 +23,9 @@ get_modulation(::Type{<:GPSL1CA}) = LOC()
 
 # IS-GPS-200N Table 3-III designates the L1 P(Y) carrier as the band's in-phase (I)
 # reference; §3.3.1.5.1 puts the C/A carrier in quadrature, "lagging the P signal by
-# 90 degrees" → −π/2. (L1C rides that same P(Y) in-phase carrier — offset 0 — so C/A
+# 90 degrees" → −1/4 cycle. (L1C rides that same P(Y) in-phase carrier — offset 0 — so C/A
 # and L1C are actually 90° apart; IS-GPS-800J §3.2.1.6.1.)
-@inline get_carrier_phase_offset(::Type{<:GPSL1CA}) = -π / 2
+@inline get_carrier_phase_offset(::Type{<:GPSL1CA}) = -0.25
 
 @inline get_band(::Type{<:GPSL1CA}) = L1()
 

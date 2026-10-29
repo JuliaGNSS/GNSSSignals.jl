@@ -57,7 +57,7 @@ so the `j` rotates the whole pilot envelope — the ICD's own phase table (Table
 4-2) puts the data component at 0°, the pilot's BOC(1,1) arm at 90° and its
 minor BOC(6,1) arm back at 0°. The 90° between this replica and the
 [`BeiDouB1C_D`](@ref) reference is what [`get_carrier_phase_offset`](@ref)
-reports (`+π/2`).
+reports (`+0.25` cycles).
 
 The 10230-chip primary code is a truncated Weil code (same construction as
 [`BeiDouB1C_D`](@ref), with the pilot per-SVID parameters `B1C_PILOT_WEIL_PARAMS`,
@@ -135,9 +135,9 @@ get_modulation(::Type{<:BeiDouB1C_P}) = BOCsin(1, 1)   # BOC(1,1) replica of QMB
 # this replica tracks — is in quadrature. BDS-SIS-ICD-B1C-1.0 Eq. 4-3 is
 # `s_data + j·s_pilot` under the same `I·cos − Q·sin` convention as Galileo (Eq. 4-2),
 # and the ICD's own phase table (Table 4-2) puts the data at 0° and the pilot BOC(1,1)
-# arm at 90° → +π/2. (The pilot's minor BOC(6,1) arm lands back at 0°, but no real
+# arm at 90° → +1/4 cycle. (The pilot's minor BOC(6,1) arm lands back at 0°, but no real
 # replica of it is generated; see the [`BeiDouB1C_P`](@ref) docstring.)
-@inline get_carrier_phase_offset(::Type{<:BeiDouB1C_P}) = π / 2
+@inline get_carrier_phase_offset(::Type{<:BeiDouB1C_P}) = 0.25
 
 # The other 75/25 pilot/data split besides GPS L1C: BDS-SIS-ICD-B1C-1.0 §4.2.2 states
 # the data:pilot power ratio as 1:3. Stated as the full ICD component split — not the
