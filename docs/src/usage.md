@@ -185,7 +185,7 @@ get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
 get_modulation(gpsl2cl)             # BPSK()
 ```
 
-The full L2 CL code matrix is 767250 × 63; stored as `Int16` it occupies ~97 MB, so build `GPSL2CL()` once and reuse the instance.
+The full L2 CL code matrix is 767250 × 63; stored as `Int8` it occupies ~48 MB (plus ~48 MB for the baked LUT), so build `GPSL2CL()` once and reuse the instance.
 
 ### Galileo E1B
 
@@ -210,7 +210,7 @@ Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11
 e1b = GalileoE1B_BOC11()
 get_code_length(e1b)         # 4092
 get_modulation(e1b)          # BOCsin(1, 1)
-GNSSSignals.get_code_type(e1b) # Int16  (the get_code accessor type; gen_code! is Int8)
+GNSSSignals.get_code_type(e1b) # Int8  (the get_code accessor type; gen_code! is Int8)
 ```
 
 [`gen_code!`](@ref) outputs `Int8` for both variants. The reason to choose [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) over [`GalileoE1B`](@ref) is the **much lower minimum sampling rate** (`fs ≥ 2 · 1.023` MHz vs `12 · 1.023` MHz) when the ~0.45 dB loss is acceptable.
@@ -235,7 +235,7 @@ A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the B
 ```julia
 e1c = GalileoE1C_BOC11()
 get_modulation(e1c)          # BOCsin(1, 1)
-GNSSSignals.get_code_type(e1c) # Int16  (the get_code accessor type; gen_code! is Int8)
+GNSSSignals.get_code_type(e1c) # Int8  (the get_code accessor type; gen_code! is Int8)
 ```
 
 ### Galileo E5a-I
@@ -467,3 +467,10 @@ weeks separately and add `get_time_scale_offset(from, to)` to TOW. Do not add bo
 offsets to the complete count. `TAITime` accepts Unitful durations directly.
 Use `get_week_and_time_of_week(system, epoch)` for a normalized pair; a rounded
 TOW endpoint now carries to the next week instead of returning `604800.0`.
+
+Built-in signals now retain their primary chips as `Int8` instead of `Int16`.
+Consequently `get_codes` returns an `Int8` matrix and `get_code` /
+`GNSSSignals.get_code_type` use `Int8` for BPSK and BOC replicas. Full CBOC
+scalar values remain `Float32`, and sampled generation remains `Int8`.
+Convert explicitly with `Int16.(get_codes(signal))` if a consumer requires wider
+storage. `GPSL2CL()` saves about 48 MB per instance.

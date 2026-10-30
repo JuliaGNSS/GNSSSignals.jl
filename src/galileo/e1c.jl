@@ -50,7 +50,7 @@ function read_galileo_e1c_codes()
 end
 
 function GalileoE1C()
-    codes = widen_codes_to_storage(read_galileo_e1c_codes())
+    codes = read_galileo_e1c_codes()
     lut = build_signal_lut(get_modulation(GalileoE1C), codes, galileo_e1c_secondary_code())
     GalileoE1C(codes, lut)
 end
@@ -162,8 +162,8 @@ PocketSDR, for example, uses this substitution for E1C by default (see
 
 Use this type when you want the lower sampling-rate variant; use
 [`GalileoE1C`](@ref) for the full CBOC spec approximation. Either way
-`gen_code!` emits `Int8` — only the single-chip [`get_code`](@ref)
-accessor returns `Float32` (`get_code_type` is `Int16` here).
+`gen_code!` emits `Int8` for both variants. The single-chip [`get_code`](@ref)
+accessor returns `Float32` for full CBOC and `Int8` for this BOC(1,1) approximation.
 
 Primary code, code length, secondary code (CS25), chip rate, symbol rate, and
 band are identical to [`GalileoE1C`](@ref); only `get_modulation` differs.
@@ -190,7 +190,7 @@ get_modulation(::Type{<:GalileoE1C_BOC11}) = BOCsin(1, 1)
 @inline get_signal_name(::Type{<:GalileoE1C_BOC11}) = "Galileo E1C (BOC(1,1) approximation)"
 
 function GalileoE1C_BOC11()
-    codes = widen_codes_to_storage(read_galileo_e1c_codes())
+    codes = read_galileo_e1c_codes()
     lut = build_signal_lut(get_modulation(GalileoE1C_BOC11), codes, galileo_e1c_secondary_code())
     GalileoE1C_BOC11(codes, lut)
 end

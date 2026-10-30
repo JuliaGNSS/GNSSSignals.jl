@@ -52,7 +52,7 @@ function read_beidou_b2b_codes()
 end
 
 function BeiDouB2bI()
-    codes = widen_codes_to_storage(read_beidou_b2b_codes())
+    codes = read_beidou_b2b_codes()
     lut = build_signal_lut(get_modulation(BeiDouB2bI), codes, NoSecondaryCode())
     BeiDouB2bI(codes, lut)
 end

@@ -9,7 +9,7 @@
     @test @inferred(get_chip_rate(e6b)) == 5115e3Hz
     @test get_signal_name(e6b) == "Galileo E6-B"
     @test @inferred(get_modulation(e6b)) == GNSSSignals.BPSK()
-    @test get_code_type(e6b) === Int16
+    @test get_code_type(e6b) === Int8
 
     # PRN 1's first hex symbol is E6 -> 1110, so the first chip is +1 (the
     # untiered primary chip: E6-B carries no secondary code).
@@ -35,7 +35,7 @@ end
     @test @inferred(get_chip_rate(e6c)) == 5115e3Hz
     @test get_signal_name(e6c) == "Galileo E6-C"
     @test @inferred(get_modulation(e6c)) == GNSSSignals.BPSK()
-    @test get_code_type(e6c) === Int16
+    @test get_code_type(e6c) === Int8
 
     @test get_code_spectrum(e6c, 0) ≈ 1.0Hz / get_chip_rate(e6c)
     @test get_chip_rate_to_center_frequency_ratio(e6c) ≈ 1 / 250

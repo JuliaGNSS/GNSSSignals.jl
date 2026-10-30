@@ -100,7 +100,7 @@ end
 
     # Output element type stays integer (the whole point of dropping the
     # BOC(6,1) component).
-    @test get_code_type(e1c) === Int16
+    @test get_code_type(e1c) === Int8
 
     # Primary and secondary codes match the full GalileoE1C chip-for-chip.
     @test get_codes(e1c) == get_codes(GalileoE1C())

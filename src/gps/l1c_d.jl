@@ -43,7 +43,7 @@ function read_gpsl1c_d_codes()
 end
 
 function GPSL1C_D()
-    codes = widen_codes_to_storage(read_gpsl1c_d_codes())
+    codes = read_gpsl1c_d_codes()
     lut = build_signal_lut(get_modulation(GPSL1C_D), codes, NoSecondaryCode())
     GPSL1C_D(codes, lut)
 end

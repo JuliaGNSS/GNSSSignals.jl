@@ -93,7 +93,7 @@ const E5A_Q_X2_INIT = [
 ]
 
 function GalileoE5aI()
-    codes = widen_codes_to_storage(read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_I_X2_INIT))
+    codes = read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_I_X2_INIT)
     lut = build_signal_lut(get_modulation(GalileoE5aI), codes, _galileo_e5a_i_secondary_code())
     GalileoE5aI(codes, lut)
 end
@@ -109,7 +109,7 @@ const E5A_I_SECONDARY_CHIPS = (
 )
 
 function GalileoE5aQ()
-    codes = widen_codes_to_storage(read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_Q_X2_INIT))
+    codes = read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_Q_X2_INIT)
     # CS100_n to SVID n (Galileo OS SIS ICD v2.2 §3.5.2). The table lives in
     # `galileo/codes.jl` because the E6-C pilot is assigned the same 50 codes.
     secondary = _build_galileo_cs100_secondary(1:50)

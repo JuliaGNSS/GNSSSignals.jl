@@ -9,7 +9,7 @@
     @test @inferred(get_chip_rate(e5a_i)) == 10230e3Hz
     @test get_signal_name(e5a_i) == "Galileo E5a-I"
     @test @inferred(get_modulation(e5a_i)) == GNSSSignals.BPSK()
-    @test get_code_type(e5a_i) === Int16
+    @test get_code_type(e5a_i) === Int8
 
     # PRN 1 starts on a -1 chip; CS20[0] = +1, so the tiered chip equals the
     # primary chip here (and the fixture test below pins the full code).
@@ -34,7 +34,7 @@ end
     @test @inferred(get_chip_rate(e5a_q)) == 10230e3Hz
     @test get_signal_name(e5a_q) == "Galileo E5a-Q"
     @test @inferred(get_modulation(e5a_q)) == GNSSSignals.BPSK()
-    @test get_code_type(e5a_q) === Int16
+    @test get_code_type(e5a_q) === Int8
 
     @test get_code_spectrum(e5a_q, 0) ≈ 1.0Hz / get_chip_rate(e5a_q)
     @test get_chip_rate_to_center_frequency_ratio(e5a_q) ≈ 1 / 115

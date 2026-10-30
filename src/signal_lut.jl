@@ -33,4 +33,3 @@ end
 # for every PRN; the per-PRN matrix has one column each).
 @inline _signal_lut_secondary(lut::SignalLUT, prn::Int) =
     @view lut.secondary[:, size(lut.secondary, 2) == 1 ? 1 : prn]
-

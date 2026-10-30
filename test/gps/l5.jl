@@ -76,7 +76,7 @@ end
     @test get_code.(gpsl5i, 0:10229, 1) == L5_SAT1_CODE
     @test get_signal_name(gpsl5i) == "GPS L5-I"
     @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.BPSK()
-    @test get_code_type(gpsl5i) === Int16
+    @test get_code_type(gpsl5i) === Int8
 
     @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_chip_rate(gpsl5i)
     @testset "Test $(m). zero" for m = 1:10
@@ -124,7 +124,7 @@ end
     @test @inferred(get_chip_rate(gpsl5q)) == 10230e3Hz
     @test get_signal_name(gpsl5q) == "GPS L5-Q"
     @test @inferred(get_modulation(gpsl5q)) == GNSSSignals.BPSK()
-    @test get_code_type(gpsl5q) === Int16
+    @test get_code_type(gpsl5q) === Int8
 
     # BPSK(10) spectrum and code/center-frequency ratio (Q5 shares the L5
     # band, so the ratio is the same 1/115 as GPS L5-I).

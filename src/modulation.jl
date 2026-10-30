@@ -154,7 +154,7 @@ $(SIGNATURES)
 Get the element type for code values of a GNSS signal.
 
 Returns the type of the values [`get_code`](@ref) returns: the element type of the
-code matrix (`Int16`), or a floating-point type for CBOC signals, whose two
+code matrix (`Int8` for built-in signals), or a floating-point type for CBOC signals, whose two
 subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
 `Int8`.
 
@@ -167,7 +167,7 @@ subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
 # Examples
 ```julia-repl
 julia> get_code_type(GPSL1CA())
-Int16
+Int8
 julia> get_code_type(GalileoE1B())
 Float32
 ```
@@ -262,7 +262,7 @@ at the specified code phase. The phase is automatically wrapped to the code leng
 - `prn`: PRN number of the satellite
 
 # Returns
-- Code value, of type [`get_code_type`](@ref)`(signal)`: `Int16`, or `Float32` for CBOC
+- Code value, of type [`get_code_type`](@ref)`(signal)`: `Int8`, or `Float32` for CBOC
 
 # Examples
 ```julia-repl

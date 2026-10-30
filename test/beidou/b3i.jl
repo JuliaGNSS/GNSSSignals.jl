@@ -9,7 +9,7 @@
     @test @inferred(get_chip_rate(b3i)) == 10_230_000Hz
     @test get_signal_name(b3i) == "BeiDou B3I"
     @test @inferred(get_modulation(b3i)) == GNSSSignals.BPSK()
-    @test get_code_type(b3i) === Int16
+    @test get_code_type(b3i) === Int8
     @test get_code_spectrum(b3i, 0) ≈ 1.0Hz / get_chip_rate(b3i)
 end
 

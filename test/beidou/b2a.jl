@@ -9,7 +9,7 @@
     @test @inferred(get_chip_rate(b2a_i)) == 10_230_000Hz
     @test get_signal_name(b2a_i) == "BeiDou B2a data"
     @test @inferred(get_modulation(b2a_i)) == GNSSSignals.BPSK()
-    @test get_code_type(b2a_i) === Int16
+    @test get_code_type(b2a_i) === Int8
     # Shares the L5 band, so the code/center ratio is the same 1/115 as GPS L5.
     @test get_chip_rate_to_center_frequency_ratio(b2a_i) ≈ 1 / 115
     @test get_code_spectrum(b2a_i, 0) ≈ 1.0Hz / get_chip_rate(b2a_i)

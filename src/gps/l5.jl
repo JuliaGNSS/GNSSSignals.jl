@@ -215,13 +215,13 @@ function read_gpsl5q_codes()
 end
 
 function GPSL5I()
-    codes = widen_codes_to_storage(read_gpsl5i_codes())
+    codes = read_gpsl5i_codes()
     lut = build_signal_lut(get_modulation(GPSL5I), codes, _gpsl5i_secondary_code())
     GPSL5I(codes, lut)
 end
 
 function GPSL5Q()
-    codes = widen_codes_to_storage(read_gpsl5q_codes())
+    codes = read_gpsl5q_codes()
     lut = build_signal_lut(get_modulation(GPSL5Q), codes, _gpsl5q_secondary_code())
     GPSL5Q(codes, lut)
 end

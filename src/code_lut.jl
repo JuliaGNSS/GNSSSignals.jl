@@ -286,7 +286,7 @@ construction. For each PRN it bakes the padded table via
 per-PRN `mc.table.padded` as column `prn`. The shared metadata (P, table_length,
 period_subchips) is read from the first PRN's `mc`.
 
-`codes` is the signal's primary code matrix (`Int16`, ±1 per chip, unpadded); the primary
+`codes` is the signal's primary code matrix (`Int8`, ±1 per chip, unpadded); the primary
 ±1 for PRN `prn` is `sign(codes[:, prn])`. `sec` is the signal's [`SecondaryCode`](@ref):
 short secondaries are BAKED into each column, a long overlay (GPS L1C-P, 1800 chips) is kept
 RESIDUAL and stored in `SignalLUT.secondary` (per-PRN for a `PerPRNSecondaryCode`, one shared
@@ -378,7 +378,7 @@ julia> get_code_amplitude(GalileoE1B())   # sqrt(19^2 + 6^2)
 """
 @inline get_code_amplitude(signal::AbstractGNSSSignal) = signal.lut.code_amplitude
 
-# Primary ±1 column for PRN `prn` from the (Int16) code matrix — sign of each stored chip.
+# Primary ±1 column for PRN `prn` from the code matrix — sign of each stored chip.
 @inline _primary_col(codes::AbstractMatrix, prn::Integer) =
     Int8[Int8(sign(codes[i, prn])) for i in 1:size(codes, 1)]
 

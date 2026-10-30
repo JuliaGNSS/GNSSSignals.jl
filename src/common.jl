@@ -3,7 +3,8 @@ $(SIGNATURES)
 
 Get the full code matrix for a GNSS signal.
 
-Returns the codes as a matrix where each column represents a PRN.
+Returns the primary codes as a matrix where each column represents a PRN.
+Built-in signals store `Int8` chips; sampled generation reads a separate baked LUT.
 
 # Arguments
 - `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
@@ -21,38 +22,6 @@ julia> size(codes)
 function get_codes(signal::AbstractGNSSSignal)
     signal.codes
 end
-
-"""
-$(SIGNATURES)
-
-Widen a primary-code matrix from its on-disk / LFSR-generated `Int8`
-representation to `Int16`.
-
-Chip values are ±1 and would fit in `Int8`, but on x86_64 / AVX2 hardware
-storing as `Int16` is materially faster for `gen_code!`: the inner store
-loop emits a clean `vpbroadcastw` + `vmovq` pattern, while Int8 storage
-triggers an `shl 8 + or` byte-packing antipattern (3 extra μops per chip)
-when the buffer is also `Int8`. Storing Int8 chips into an Int16 buffer
-recovers the clean codegen but still loses ~14 % because the `movsx`
-load chain runs slower than `movzx`.
-
-Probed alternatives that did **not** recover Int8 perf on AVX2:
-- `@simd ivdep` annotation on the inner store loop (no measurable
-  effect — LLVM has already made its codegen choice for `Val`-known
-  fixed-trip loops)
-- `unsafe_store!` of a replicated `UInt32` to bypass LLVM's
-  pattern-matcher (helped Int8/Int8 by ~5 % but still ~12 % slower
-  than Int16/Int16, and a regression for Int16/Int16)
-- `SIMD.jl` `Vec{N,T}` broadcast-store (slower at every NUM_INNER
-  measured because the abstraction forces an xmm materialization for
-  small N)
-
-Memory cost of widening is small in absolute terms — the largest
-current matrix (GPS L5-I, 10230 × 37) is 757 KB at Int16. The trade-off
-may invert on AVX-512 or non-x86 hardware; revisit if you have access
-to such platforms.
-"""
-widen_codes_to_storage(codes::AbstractMatrix) = Int16.(codes)
 
 """
 $(SIGNATURES)
