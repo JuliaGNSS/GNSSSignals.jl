@@ -8,7 +8,7 @@
     @test @inferred(get_bit_rate(e5a_i)) == 50Hz
     @test @inferred(get_chip_rate(e5a_i)) == 10230e3Hz
     @test get_signal_name(e5a_i) == "Galileo E5a-I"
-    @test @inferred(get_modulation(e5a_i)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(e5a_i)) == GNSSSignals.BPSK()
     @test get_code_type(e5a_i) === Int16
 
     # PRN 1 starts on a -1 chip; CS20[0] = +1, so the tiered chip equals the
@@ -33,7 +33,7 @@ end
     @test @inferred(get_bit_rate(e5a_q)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(e5a_q)) == 10230e3Hz
     @test get_signal_name(e5a_q) == "Galileo E5a-Q"
-    @test @inferred(get_modulation(e5a_q)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(e5a_q)) == GNSSSignals.BPSK()
     @test get_code_type(e5a_q) === Int16
 
     @test get_code_spectrum(e5a_q, 0) ≈ 1.0Hz / get_chip_rate(e5a_q)
@@ -96,7 +96,7 @@ end
 end
 
 @testset "Galileo E5a gen_code! produces a sampled BPSK(10) replica" begin
-    # gen_code!'s fixed-point sampler is already covered for LOC signals by the
+    # gen_code!'s fixed-point sampler is already covered for BPSK signals by the
     # GPS L5-I and Galileo E1B(BOC11) tests; here we confirm the E5a wiring
     # (code table + secondary selection) drives it correctly. At an integer
     # number of samples per chip, every sample equals the corresponding

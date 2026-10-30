@@ -38,7 +38,7 @@ Signals on the same RF carrier report the same [`Band`](@ref GNSSSignals.Band): 
 
 ### Modulation Types
 
-- **LOC** — Linear Offset Carrier; the BPSK-like baseline with no subcarrier (GPS L1 C/A, L2C and L5, Galileo E5 and E6, BeiDou B1I, B2 and B3I)
+- **BPSK** — Binary Phase Shift Keying; the baseline with no subcarrier (GPS L1 C/A, L2C and L5, Galileo E5 and E6, BeiDou B1I, B2 and B3I)
 - **BOCsin** — Sine-phased Binary Offset Carrier (GPS L1C-D, BeiDou B1C, the Galileo E1 BOC(1,1) approximations)
 - **BOCcos** — Cosine-phased Binary Offset Carrier
 - **CBOC** — Composite Binary Offset Carrier (Galileo E1B uses CBOC(+), Galileo E1C uses CBOC(−))

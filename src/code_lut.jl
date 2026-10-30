@@ -26,10 +26,10 @@
 
 # `GNSSSignals.CodeLUT` — internal submodule vendoring the GNSSSignalsLUT.jl SIMD code
 # resampler. Not exported and not part of the public GNSSSignals API; use the public
-# `gen_code!` / `gen_code` / `code_engine` instead. All names (`CodeTable`, `LOC`, `BOC`, `TMBOC`,
+# `gen_code!` / `gen_code` / `code_engine` instead. All names (`CodeTable`, `BPSK`, `BOC`, `TMBOC`,
 # `CBOC`, `ModulatedCode`, `code_replica`, `generate_code!`, `generate_code`, `AVX512`, `AVX2`,
 # `Portable`, `default_backend`, …) live inside this submodule so they do not clash with
-# GNSSSignals' own `LOC` / `BOC` / `TMBOC` / `CBOC` / `Modulation`. (Plain comment, not a docstring,
+# GNSSSignals' own `BPSK` / `BOC` / `TMBOC` / `CBOC` / `Modulation`. (Plain comment, not a docstring,
 # so Documenter's checkdocs doesn't require this internal module in the manual.)
 module CodeLUT
 
@@ -209,7 +209,7 @@ end
     _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, CodeLUT._STEP_DEN)
 end
 
-# Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for LOC/BOCsin/BOCcos/TMBOC; CBOC
+# Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for BPSK/BOCsin/BOCcos/TMBOC; CBOC
 # bakes a multi-level Int8 integer approximation of its sqrt-power amplitudes, DERIVED from the
 # CBOC's own `boc1_power` (see `_cboc_int_amplitudes`) unless `cboc_amplitudes` is an explicit
 # override. Sine BOC(m,n) bakes at 2m/n sub-chips per chip and cosine BOC(m,n) at 4m/n
@@ -218,8 +218,8 @@ end
 # every modulation except CBOC (the generic two-arg method below forwards to the one-arg form).
 # Used by `build_signal_lut` (eager bake at signal construction).
 _codelut_modulation(m, ::Union{Nothing,Tuple{Integer,Integer}}) = _codelut_modulation(m)
-function _codelut_modulation(m::LOC)
-    CodeLUT.LOC()
+function _codelut_modulation(m::BPSK)
+    CodeLUT.BPSK()
 end
 _codelut_modulation(m::BOCsin) = CodeLUT.BOC(m.m, m.n)
 # The composites bake their components' sine subcarriers at a common resolution; a cosine

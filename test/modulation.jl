@@ -75,9 +75,9 @@
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 1), 2.3) == 2
     @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 2), 2.3) == 2
 
-    # Test LOC floored phase
-    @test GNSSSignals.get_floored_phase(GNSSSignals.LOC(), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.LOC(), 5.9) == 5
+    # Test BPSK floored phase
+    @test GNSSSignals.get_floored_phase(GNSSSignals.BPSK(), 2.3) == 2
+    @test GNSSSignals.get_floored_phase(GNSSSignals.BPSK(), 5.9) == 5
 
     # Test CBOC floored phase
     cboc_test = GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2), GNSSSignals.BOCsin(6, 2), 10 / 11)

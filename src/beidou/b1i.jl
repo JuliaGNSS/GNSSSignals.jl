@@ -64,7 +64,7 @@ function BeiDouB1I()
     BeiDouB1I(codes, secondary, lut)
 end
 
-get_modulation(::Type{<:BeiDouB1I}) = LOC()
+get_modulation(::Type{<:BeiDouB1I}) = BPSK()
 
 """
 $(SIGNATURES)

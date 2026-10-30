@@ -120,8 +120,8 @@ end
 
 # Shared interface.
 
-get_modulation(::Type{<:BeiDouB2aI}) = LOC()
-get_modulation(::Type{<:BeiDouB2aQ}) = LOC()
+get_modulation(::Type{<:BeiDouB2aI}) = BPSK()
+get_modulation(::Type{<:BeiDouB2aQ}) = BPSK()
 
 # B2a data rides the in-phase carrier (default 0); the B2aQ pilot is in quadrature.
 # BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3 uses the same complex-envelope convention as Galileo

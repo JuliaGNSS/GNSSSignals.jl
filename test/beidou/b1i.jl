@@ -8,7 +8,7 @@
     @test @inferred(get_bit_rate(b1i)) == 50Hz
     @test @inferred(get_chip_rate(b1i)) == 2_046_000Hz
     @test get_signal_name(b1i) == "BeiDou B1I"
-    @test @inferred(get_modulation(b1i)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(b1i)) == GNSSSignals.BPSK()
     @test get_code_type(b1i) === Int16
 
     # The B1I chip rate is 2× the C/A rate on the 1561.098 MHz carrier.

@@ -247,8 +247,8 @@ end
 end
 
 @testset "get_modulation type dispatch" begin
-    @test get_modulation(GPSL1CA) == GNSSSignals.LOC()
-    @test get_modulation(GPSL5I) == GNSSSignals.LOC()
+    @test get_modulation(GPSL1CA) == GNSSSignals.BPSK()
+    @test get_modulation(GPSL5I) == GNSSSignals.BPSK()
     @test get_modulation(GalileoE1B) isa GNSSSignals.CBOC
     @test get_modulation(GalileoE1C) isa GNSSSignals.CBOC
     # E1C is CBOC(−): the BOC(6,1) component is in anti-phase.

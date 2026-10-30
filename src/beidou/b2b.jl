@@ -57,7 +57,7 @@ function BeiDouB2bI()
     BeiDouB2bI(codes, lut)
 end
 
-get_modulation(::Type{<:BeiDouB2bI}) = LOC()
+get_modulation(::Type{<:BeiDouB2bI}) = BPSK()
 
 """
 $(SIGNATURES)

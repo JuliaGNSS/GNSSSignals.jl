@@ -61,14 +61,13 @@ struct BOCcos{M<:Union{AbstractFloat,Integer},N<:Union{AbstractFloat,Integer}} <
 end
 
 """
-    LOC()
+    BPSK()
 
-Linear Offset Carrier modulation — the BPSK-like baseline with no
-subcarrier, named in contrast to [`BOC`](@ref) (Binary Offset Carrier).
+Binary Phase Shift Keying modulation, with no subcarrier.
 
 Used for GPS L1 C/A and GPS L5-I.
 """
-struct LOC <: Modulation end
+struct BPSK <: Modulation end
 
 """
     CBOC(boc1, boc2, boc1_power, boc2_sign = 1)
@@ -191,71 +190,22 @@ Get the modulation type for a GNSS signal.
 - `signal`: A GNSS signal instance or type
 
 # Returns
-- `Modulation`: The modulation type (`LOC`, `BOCsin`, `BOCcos`, `CBOC` or `TMBOC`)
+- `Modulation`: The modulation type (`BPSK`, `BOCsin`, `BOCcos`, `CBOC` or `TMBOC`)
 
 Each concrete signal states its modulation once, on its own type
-(`get_modulation(::Type{<:GPSL1CA}) = LOC()`, in that signal's file) — the form
+(`get_modulation(::Type{<:GPSL1CA}) = BPSK()`, in that signal's file) — the form
 the code LUT is baked from; this method forwards an instance to that type, so
 the two can never disagree.
 
 # Examples
 ```julia-repl
 julia> get_modulation(GPSL1CA())
-LOC()
+BPSK()
 julia> get_modulation(GalileoE1B())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
 @inline get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
-
-"""
-$(SIGNATURES)
-
-Get the spectral power density of a GNSS signal at a given frequency.
-
-Computes the power spectral density based on the signal's modulation type.
-
-# Arguments
-- `signal`: A GNSS signal instance
-- `f`: Baseband frequency at which to evaluate the spectrum
-
-# Returns
-- Spectral power density value
-
-# Examples
-```julia-repl
-julia> using Unitful: kHz
-julia> get_code_spectrum(GPSL1CA(), 0kHz)
-9.775171065493646e-7
-```
-"""
-get_code_spectrum(signal, f) = get_code_spectrum(get_modulation(signal), signal, f)
-get_code_spectrum(modulation::LOC, signal, f) =
-    get_code_spectrum_BPSK(get_chip_rate(signal), f)
-# The chip rate f_c is the signal's (`n · 1.023 MHz` already) and the subcarrier frequency
-# f_s = m · 1.023 MHz is `m/n` of it.
-get_code_spectrum(modulation::BOCsin, signal, f) = get_code_spectrum_BOCsin(
-    get_chip_rate(signal),
-    (modulation.m / modulation.n) * get_chip_rate(signal),
-    f,
-)
-get_code_spectrum(modulation::BOCcos, signal, f) = get_code_spectrum_BOCcos(
-    get_chip_rate(signal),
-    (modulation.m / modulation.n) * get_chip_rate(signal),
-    f,
-)
-function get_code_spectrum(modulation::CBOC, signal, f)
-    get_code_spectrum(modulation.boc1, signal, f) * modulation.boc1_power +
-    get_code_spectrum(modulation.boc2, signal, f) * (1 - modulation.boc1_power)
-end
-
-# For TMBOC, weight by the fraction of chips that use each BOC variant.
-function get_code_spectrum(modulation::TMBOC{B1, B2, N}, signal, f) where {B1, B2, N}
-    n_boc2 = count(modulation.pattern)
-    boc2_frac = n_boc2 / N
-    get_code_spectrum(modulation.boc1, signal, f) * (1 - boc2_frac) +
-    get_code_spectrum(modulation.boc2, signal, f) * boc2_frac
-end
 
 # The phase is in code chips, as everywhere in the package. A chip of BOC(m, n) spans
 # `2m/n` subcarrier half-periods: the subcarrier runs at m · 1.023 MHz, the code at n · 1.023
@@ -327,42 +277,26 @@ function get_code(signal::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
     get_code(get_modulation(T), signal, phase, prn)
 end
 
-"""
-$(SIGNATURES)
-
-Get code value for BOC-modulated signals at a given phase.
-
-Internal method that handles BOC modulation (sine or cosine phased).
-"""
-function get_code(modulation::BOC, signal::AbstractGNSSSignal, phase, prn::Integer)
-    floored_phase = get_floored_phase(modulation, phase)
+# Multiply the primary chip by its secondary-code chip. The absolute chip is
+# either wrapped by get_code or supplied in range by get_code_unsafe.
+Base.@propagate_inbounds function _primary_secondary_code(signal, absolute_chip, prn)
     primary_length = size(signal.codes, 1)
     sec = get_secondary_code(signal)
-    sec_len = secondary_code_length(sec)
-    absolute_chip = mod(floored_phase, primary_length * sec_len)
-    chip_idx = mod(absolute_chip, primary_length)
-    sec_idx = div(absolute_chip, primary_length)
-    get_code_at_index(signal, chip_idx, prn) *
-    secondary_value(sec, prn, sec_idx) *
-    get_subcarrier_code(modulation, phase)
-end
-
-"""
-$(SIGNATURES)
-
-Get code value for LOC (BPSK) signals at a given phase.
-
-Internal method that handles legacy/BPSK modulation without subcarrier.
-"""
-function get_code(modulation::LOC, signal::AbstractGNSSSignal, phase, prn::Integer)
-    floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(signal.codes, 1)
-    sec = get_secondary_code(signal)
-    sec_len = secondary_code_length(sec)
-    absolute_chip = mod(floored_phase, primary_length * sec_len)
     chip_idx = mod(absolute_chip, primary_length)
     sec_idx = div(absolute_chip, primary_length)
     get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+end
+
+@inline _modulate_code(::BPSK, code, phase) = code
+@inline _modulate_code(modulation::BOC, code, phase) =
+    code * get_subcarrier_code(modulation, phase)
+
+function get_code(modulation::Union{BOC,BPSK}, signal::AbstractGNSSSignal, phase, prn::Integer)
+    floored_phase = get_floored_phase(modulation, phase)
+    primary_length = size(signal.codes, 1)
+    sec_len = secondary_code_length(get_secondary_code(signal))
+    absolute_chip = mod(floored_phase, primary_length * sec_len)
+    _modulate_code(modulation, _primary_secondary_code(signal, absolute_chip, prn), phase)
 end
 
 Base.@propagate_inbounds function get_code_at_index(
@@ -405,48 +339,13 @@ Base.@propagate_inbounds function get_code_unsafe(
     get_code_unsafe(get_modulation(S), signal, phase, prn)
 end
 
-"""
-$(SIGNATURES)
-
-Get code value for BOC signals without bounds checking.
-
-Internal method for BOC modulation without phase wrapping. Assumes
-`phase` is within `[0, primary_length * secondary_length)`.
-"""
+# The caller supplies a phase within the primary × secondary code length.
 Base.@propagate_inbounds function get_code_unsafe(
-    modulation::BOC,
+    modulation::Union{BOC,BPSK},
     signal::AbstractGNSSSignal,
     phase,
     prn::Integer,
 )
     floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(signal.codes, 1)
-    sec = get_secondary_code(signal)
-    chip_idx = mod(floored_phase, primary_length)
-    sec_idx = div(floored_phase, primary_length)
-    get_code_at_index(signal, chip_idx, prn) *
-    secondary_value(sec, prn, sec_idx) *
-    get_subcarrier_code(modulation, phase)
-end
-
-"""
-$(SIGNATURES)
-
-Get code value for LOC (BPSK) signals without bounds checking.
-
-Internal method for BPSK modulation without phase wrapping. Assumes
-`phase` is within `[0, primary_length * secondary_length)`.
-"""
-Base.@propagate_inbounds function get_code_unsafe(
-    modulation::LOC,
-    signal::AbstractGNSSSignal,
-    phase,
-    prn::Integer,
-)
-    floored_phase = get_floored_phase(modulation, phase)
-    primary_length = size(signal.codes, 1)
-    sec = get_secondary_code(signal)
-    chip_idx = mod(floored_phase, primary_length)
-    sec_idx = div(floored_phase, primary_length)
-    get_code_at_index(signal, chip_idx, prn) * secondary_value(sec, prn, sec_idx)
+    _modulate_code(modulation, _primary_secondary_code(signal, floored_phase, prn), phase)
 end

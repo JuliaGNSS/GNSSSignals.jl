@@ -11,7 +11,7 @@
     @test @inferred(get_bit_rate(gpsl1ca)) == 50Hz
     @test @inferred(get_chip_rate(gpsl1ca)) == 1023e3Hz
     @test get_code.(gpsl1ca, 0:1022, 1) == L1_SAT1_CODE
-    @test @inferred(get_modulation(gpsl1ca)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(gpsl1ca)) == GNSSSignals.BPSK()
     @test get_signal_name(gpsl1ca) == "GPS L1 C/A"
 
     @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_chip_rate(gpsl1ca)
