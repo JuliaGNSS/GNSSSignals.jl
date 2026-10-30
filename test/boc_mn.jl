@@ -22,7 +22,7 @@ GNSSSignals.get_chip_rate(::Type{<:TestBOCSignal{Mod}}) where {Mod} =
     _chip_rate_multiplier(Mod) * 1_023_000Hz
 GNSSSignals.get_code_length(signal::TestBOCSignal) = size(signal.codes, 1)
 GNSSSignals.get_secondary_code(::TestBOCSignal) = NoSecondaryCode()
-GNSSSignals.get_symbol_rate(::Type{<:TestBOCSignal}) = 0Hz
+GNSSSignals.get_bit_rate(::Type{<:TestBOCSignal}) = 0Hz
 GNSSSignals.get_signal_name(::Type{<:TestBOCSignal}) = "test BOC signal"
 
 # Sub-chips per chip the lookup table bakes: 2m/n subcarrier half-periods for sine phase,

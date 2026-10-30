@@ -71,7 +71,7 @@ PRNs 1-63.
 b1c_p = BeiDouB1C_P()
 get_code_length(b1c_p)            # 10230
 get_secondary_code_length(b1c_p)  # 1800
-get_symbol_rate(b1c_p)               # 0 Hz
+get_bit_rate(b1c_p)               # 0 Hz
 ```
 """
 struct BeiDouB1C_P{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractBeiDouSignal{C}
@@ -185,23 +185,23 @@ Get the nominal chip rate of BeiDou B1C (1.023 MHz, both components).
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of BeiDou B1C data: 100 bit/s, the symbol rate of the
+Get the bit rate, as tracked, of BeiDou B1C data: 100 bit/s, the symbol rate of the
 LDPC-coded B-CNAV1 message.
 
 # Returns
 - `Frequency`: 100 Hz
 """
-@inline get_symbol_rate(::Type{<:BeiDouB1C_D}) = 100Hz
+@inline get_bit_rate(::Type{<:BeiDouB1C_D}) = 100Hz
 
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of BeiDou B1C pilot: 0 Hz, as it is dataless.
+Get the bit rate, as tracked, of BeiDou B1C pilot: 0 Hz, as it is dataless.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_symbol_rate(::Type{<:BeiDouB1C_P}) = 0Hz
+@inline get_bit_rate(::Type{<:BeiDouB1C_P}) = 0Hz
 
 """
 $(SIGNATURES)

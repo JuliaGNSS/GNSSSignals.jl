@@ -38,7 +38,7 @@ BeiDou B2a pilot signal (the quadrature, dataless component of B2a).
 BPSK(10)-modulated 10230-chip primary code at 10.23 Mcps on the 1176.45 MHz
 carrier (reported as [`L5`](@ref)), overlaid with a per-SVID 100-chip secondary
 code for a 100 ms tiered code. As the pilot component it carries no navigation
-data, so [`get_symbol_rate`](@ref) returns 0 Hz.
+data, so [`get_bit_rate`](@ref) returns 0 Hz.
 
 The primary code uses the B2a **pilot** polynomials (BDS-SIS-ICD-B2a-1.0
 §5.2.1, Eq. 5-2): register 1 `1+x³+x⁶+x⁷+x¹³`, register 2
@@ -52,7 +52,7 @@ via [`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref). PRNs 1-63.
 b2a_q = BeiDouB2aQ()
 get_code_length(b2a_q)            # 10230
 get_secondary_code_length(b2a_q)  # 100
-get_symbol_rate(b2a_q)               # 0 Hz
+get_bit_rate(b2a_q)               # 0 Hz
 ```
 """
 struct BeiDouB2aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractBeiDouSignal{C}
@@ -172,23 +172,23 @@ Get the nominal chip rate of BeiDou B2a (10.23 MHz, both components).
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of BeiDou B2a data: 200 bit/s, the symbol rate of the
+Get the bit rate, as tracked, of BeiDou B2a data: 200 bit/s, the symbol rate of the
 LDPC-coded B-CNAV2 message.
 
 # Returns
 - `Frequency`: 200 Hz
 """
-@inline get_symbol_rate(::Type{<:BeiDouB2aI}) = 200Hz
+@inline get_bit_rate(::Type{<:BeiDouB2aI}) = 200Hz
 
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of BeiDou B2a pilot: 0 Hz, as it is dataless.
+Get the bit rate, as tracked, of BeiDou B2a pilot: 0 Hz, as it is dataless.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_symbol_rate(::Type{<:BeiDouB2aQ}) = 0Hz
+@inline get_bit_rate(::Type{<:BeiDouB2aQ}) = 0Hz
 
 """
 $(SIGNATURES)

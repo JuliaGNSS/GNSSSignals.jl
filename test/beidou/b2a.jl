@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(b2a_i)) == 10230
     @test @inferred(get_secondary_code_length(b2a_i)) == 5
     @test @inferred(get_secondary_code(b2a_i)) isa SharedSecondaryCode{5}
-    @test @inferred(get_symbol_rate(b2a_i)) == 200Hz
+    @test @inferred(get_bit_rate(b2a_i)) == 200Hz
     @test @inferred(get_chip_rate(b2a_i)) == 10_230_000Hz
     @test get_signal_name(b2a_i) == "BeiDou B2a data"
     @test @inferred(get_modulation(b2a_i)) == GNSSSignals.BPSK()
@@ -22,7 +22,7 @@ end
     @test @inferred(get_code_length(b2a_q)) == 10230
     @test @inferred(get_secondary_code_length(b2a_q)) == 100
     @test @inferred(get_secondary_code(b2a_q)) isa PerPRNSecondaryCode
-    @test @inferred(get_symbol_rate(b2a_q)) == 0Hz   # dataless pilot
+    @test @inferred(get_bit_rate(b2a_q)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(b2a_q)) == 10_230_000Hz
     @test get_signal_name(b2a_q) == "BeiDou B2a pilot"
     @test @inferred(get_modulation(b2a_q)) == GNSSSignals.BPSK()

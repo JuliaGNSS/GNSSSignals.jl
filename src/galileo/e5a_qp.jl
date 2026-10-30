@@ -157,14 +157,14 @@ v2.2, Table 8).
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of Galileo E5a-QP.
+Get the bit rate, as tracked, of Galileo E5a-QP.
 
-The E5a-QP component carries no user data, so its symbol rate is 0 Hz.
+The E5a-QP component carries no user data, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_symbol_rate(::Type{<:GalileoE5aQP}) = 0Hz
+@inline get_bit_rate(::Type{<:GalileoE5aQP}) = 0Hz
 
 """
 $(SIGNATURES)

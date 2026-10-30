@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(sig)) == 10230
     @test @inferred(get_secondary_code_length(sig)) == 1
     @test @inferred(get_secondary_code(sig)) isa NoSecondaryCode
-    @test @inferred(get_symbol_rate(sig)) == 100Hz
+    @test @inferred(get_bit_rate(sig)) == 100Hz
     @test @inferred(get_chip_rate(sig)) == 1023e3Hz
     @test @inferred(get_modulation(sig)) == GNSSSignals.BOCsin(1, 1)
     @test get_signal_name(sig) == "GPS L1C-D"

@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(b3i)) == 10230
     @test @inferred(get_secondary_code_length(b3i)) == 20
     @test @inferred(get_secondary_code(b3i)) isa PerPRNSecondaryCode
-    @test @inferred(get_symbol_rate(b3i)) == 50Hz
+    @test @inferred(get_bit_rate(b3i)) == 50Hz
     @test @inferred(get_chip_rate(b3i)) == 10_230_000Hz
     @test get_signal_name(b3i) == "BeiDou B3I"
     @test @inferred(get_modulation(b3i)) == GNSSSignals.BPSK()

@@ -12,7 +12,7 @@
     @test @inferred(get_code(galileo_e1b, 1.5, 1)) ≈ -1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(GNSSSignals.get_code_unsafe(galileo_e1b, 0.0, 1)) ≈
           1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
-    @test @inferred(get_symbol_rate(galileo_e1b)) == 250Hz
+    @test @inferred(get_bit_rate(galileo_e1b)) == 250Hz
     @test @inferred(get_chip_rate(galileo_e1b)) == 1023e3Hz
     @test get_signal_name(galileo_e1b) == "Galileo E1B"
 
@@ -37,7 +37,7 @@ end
     @test @inferred(get_code_length(e1b)) == 4092
     @test @inferred(get_secondary_code(e1b)) isa NoSecondaryCode
     @test @inferred(get_secondary_code_length(e1b)) == 1
-    @test @inferred(get_symbol_rate(e1b)) == 250Hz
+    @test @inferred(get_bit_rate(e1b)) == 250Hz
     @test @inferred(get_chip_rate(e1b)) == 1023e3Hz
     @test get_signal_name(e1b) == "Galileo E1B (BOC(1,1) approximation)"
 

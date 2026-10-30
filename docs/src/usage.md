@@ -133,7 +133,7 @@ get_code_length(gpsl1c_d)           # 10230
 get_band(gpsl1c_d)                  # L1()
 get_center_frequency(gpsl1c_d)      # 1575420000 Hz
 get_chip_rate(gpsl1c_d)             # 1023000 Hz
-get_symbol_rate(gpsl1c_d)              # 100 Hz
+get_bit_rate(gpsl1c_d)              # 100 Hz
 get_secondary_code_length(gpsl1c_d) # 1 (no secondary code)
 get_modulation(gpsl1c_d)            # BOCsin(1, 1)
 ```
@@ -148,7 +148,7 @@ get_code_length(gpsl1c_p)           # 10230
 get_band(gpsl1c_p)                  # L1()
 get_center_frequency(gpsl1c_p)      # 1575420000 Hz
 get_chip_rate(gpsl1c_p)             # 1023000 Hz
-get_symbol_rate(gpsl1c_p)              # 0 Hz (dataless)
+get_bit_rate(gpsl1c_p)              # 0 Hz (dataless)
 get_secondary_code_length(gpsl1c_p) # 1800
 get_modulation(gpsl1c_p)            # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
 ```
@@ -165,7 +165,7 @@ get_code_length(gpsl2cm)            # 10230
 get_band(gpsl2cm)                   # L2()
 get_center_frequency(gpsl2cm)       # 1227600000 Hz
 get_chip_rate(gpsl2cm)              # 511500 Hz
-get_symbol_rate(gpsl2cm)               # 50 Hz (CNAV, as tracked)
+get_bit_rate(gpsl2cm)               # 50 Hz (CNAV, as tracked)
 get_secondary_code_length(gpsl2cm)  # 1 (no secondary code)
 get_modulation(gpsl2cm)             # BPSK()
 ```
@@ -180,7 +180,7 @@ get_code_length(gpsl2cl)            # 767250
 get_band(gpsl2cl)                   # L2()
 get_center_frequency(gpsl2cl)       # 1227600000 Hz
 get_chip_rate(gpsl2cl)              # 511500 Hz
-get_symbol_rate(gpsl2cl)               # 0 Hz (dataless)
+get_bit_rate(gpsl2cl)               # 0 Hz (dataless)
 get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
 get_modulation(gpsl2cl)             # BPSK()
 ```
@@ -224,7 +224,7 @@ gal_e1c = GalileoE1C()
 get_code_length(gal_e1c)           # 4092
 get_secondary_code_length(gal_e1c) # 25 (CS25)
 get_band(gal_e1c)                  # L1()
-get_symbol_rate(gal_e1c)              # 0 Hz (pilot)
+get_bit_rate(gal_e1c)              # 0 Hz (pilot)
 get_modulation(gal_e1c)            # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
 ```
 
@@ -248,7 +248,7 @@ get_code_length(e5a_i)           # 10230
 get_band(e5a_i)                  # L5()
 get_center_frequency(e5a_i)      # 1176450000 Hz
 get_chip_rate(e5a_i)             # 10230000 Hz
-get_symbol_rate(e5a_i)              # 50 Hz (F/NAV, as tracked)
+get_bit_rate(e5a_i)              # 50 Hz (F/NAV, as tracked)
 get_secondary_code_length(e5a_i) # 20
 get_modulation(e5a_i)            # BPSK()
 ```
@@ -263,7 +263,7 @@ get_code_length(e5a_q)           # 10230
 get_band(e5a_q)                  # L5()
 get_center_frequency(e5a_q)      # 1176450000 Hz
 get_chip_rate(e5a_q)             # 10230000 Hz
-get_symbol_rate(e5a_q)              # 0 Hz (dataless)
+get_bit_rate(e5a_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5a_q) # 100
 get_modulation(e5a_q)            # BPSK()
 ```
@@ -277,7 +277,7 @@ e5a_qp = GalileoE5aQP()
 get_code_length(e5a_qp)          # 330
 get_chip_rate(e5a_qp)            # 5115000 Hz
 get_band(e5a_qp)                 # L5()
-get_symbol_rate(e5a_qp)             # 0 Hz (no user data)
+get_bit_rate(e5a_qp)             # 0 Hz (no user data)
 get_secondary_code_length(e5a_qp)# 1 (no secondary code)
 get_relative_power(e5a_qp)       # 0.282 — 5.5 dB below the E5a composite
 ```
@@ -295,7 +295,7 @@ e5b_i = GalileoE5bI()
 get_code_length(e5b_i)           # 10230
 get_band(e5b_i)                  # E5b()
 get_center_frequency(e5b_i)      # 1207140000 Hz
-get_symbol_rate(e5b_i)              # 250 Hz (I/NAV, as tracked)
+get_bit_rate(e5b_i)              # 250 Hz (I/NAV, as tracked)
 get_secondary_code_length(e5b_i) # 4 (CS4)
 get_modulation(e5b_i)            # BPSK()
 ```
@@ -308,7 +308,7 @@ Galileo E5b-Q is the dataless pilot of the E5b sideband. It shares the E5b-I bas
 e5b_q = GalileoE5bQ()
 get_code_length(e5b_q)           # 10230
 get_band(e5b_q)                  # E5b()
-get_symbol_rate(e5b_q)              # 0 Hz (dataless)
+get_bit_rate(e5b_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5b_q) # 100
 get_carrier_phase_offset(e5b_q)  # 0.25 cycles (leads the E5b-I reference, as E5a-Q does)
 ```
@@ -323,7 +323,7 @@ get_code_length(e6b)             # 5115
 get_band(e6b)                    # E6()
 get_center_frequency(e6b)        # 1278750000 Hz
 get_chip_rate(e6b)               # 5115000 Hz
-get_symbol_rate(e6b)                # 1000 Hz (C/NAV, as tracked)
+get_bit_rate(e6b)                # 1000 Hz (C/NAV, as tracked)
 get_secondary_code_length(e6b)   # 1 (no secondary code)
 get_modulation(e6b)              # BPSK()
 ```
@@ -336,7 +336,7 @@ Galileo E6-C is the dataless pilot of Galileo E6. It uses its own set of 5115-ch
 e6c = GalileoE6C()
 get_code_length(e6c)             # 5115
 get_band(e6c)                    # E6()
-get_symbol_rate(e6c)                # 0 Hz (dataless)
+get_bit_rate(e6c)                # 0 Hz (dataless)
 get_secondary_code_length(e6c)   # 100
 get_carrier_phase_offset(e6c)    # 0.5 cycles (OS SIS ICD Eq. 10 subtracts the pilot)
 get_modulation(e6c)              # BPSK()
@@ -428,6 +428,18 @@ psd_bpsk = GNSSSignals.get_code_spectrum_BPSK(1.023MHz, 500kHz)
 psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
 ```
 
+## Tracked Bits and Navigation Data
+
+[`get_bit_rate`](@ref) counts bits as tracked, after removal of the spreading and
+secondary codes and before error-correction decoding. On an FEC signal, each
+tracked bit is one transmitted channel symbol. For example, GPS L5-I is tracked
+at 100 bits/s, while its CNAV message carries 50 information bits/s. On an uncoded
+signal such as GPS L1 C/A, both rates are 50 bits/s. Dataless pilots return `0 Hz`.
+
+[`get_code_blocks_per_bit`](@ref) uses the same tracked-bit convention: GPS L5-I
+has 10 primary code periods per tracked bit, and GPS L1 C/A has 20. Pass the PRN
+when it is known so that BeiDou D1 and D2 use the satellite's own rate.
+
 ## Performance Tips
 
 1. **Use `gen_code!`** instead of `gen_code` when generating codes repeatedly to avoid allocations.
@@ -447,30 +459,3 @@ psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
    `st = GNSSSignals.code_state(eng)`, and call
    `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
    is allocation-free, and threading the returned state continues the stream seamlessly.
-
-## Migrating the cleanup API
-
-| Previous name | Replacement |
-|:---|:---|
-| `get_bit_rate` | `get_symbol_rate` |
-| `get_code_blocks_per_bit` | `get_code_periods_per_symbol` |
-| `get_leap_second_offset` | `get_time_scale_offset` |
-| `GNSSSignals.LOC` | `GNSSSignals.BPSK` |
-
-Symbol rates count the transmitted binary symbols before error-correction decoding,
-not the navigation message's information bits. Pass the PRN when it is known so that
-BeiDou D1 and D2 use the correct rate.
-
-For time conversion, add `get_epoch_offset(from, to)` to a complete elapsed count;
-it already includes the fixed time-scale offset. Alternatively, adjust the whole
-weeks separately and add `get_time_scale_offset(from, to)` to TOW. Do not add both
-offsets to the complete count. `TAITime` accepts Unitful durations directly.
-Use `get_week_and_time_of_week(system, epoch)` for a normalized pair; a rounded
-TOW endpoint now carries to the next week instead of returning `604800.0`.
-
-Built-in signals now retain their primary chips as `Int8` instead of `Int16`.
-Consequently `get_codes` returns an `Int8` matrix and `get_code` /
-`GNSSSignals.get_code_type` use `Int8` for BPSK and BOC replicas. Full CBOC
-scalar values remain `Float32`, and sampled generation remains `Int8`.
-Convert explicitly with `Int16.(get_codes(signal))` if a consumer requires wider
-storage. `GPSL2CL()` saves about 48 MB per instance.

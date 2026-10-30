@@ -99,7 +99,7 @@ Get the nominal chip rate of BeiDou B2b_I (10.23 MHz).
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of BeiDou B2b_I.
+Get the bit rate, as tracked, of BeiDou B2b_I.
 
 The B-CNAV3 message is transmitted at 1000 symbols/s: the symbol rate of its rate-½ code, the
 message carrying 500 bit/s.
@@ -107,7 +107,7 @@ message carrying 500 bit/s.
 # Returns
 - `Frequency`: 1000 Hz
 """
-@inline get_symbol_rate(::Type{<:BeiDouB2bI}) = 1000Hz
+@inline get_bit_rate(::Type{<:BeiDouB2bI}) = 1000Hz
 
 """
 $(SIGNATURES)

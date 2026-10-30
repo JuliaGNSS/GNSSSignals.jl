@@ -71,7 +71,7 @@ end
     @test @inferred(get_code(gpsl5i, 0, 1)) == 1
     @test @inferred(get_code(gpsl5i, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5i, 0.0, 1)) == 1
-    @test @inferred(get_symbol_rate(gpsl5i)) == 100Hz
+    @test @inferred(get_bit_rate(gpsl5i)) == 100Hz
     @test @inferred(get_chip_rate(gpsl5i)) == 10230e3Hz
     @test get_code.(gpsl5i, 0:10229, 1) == L5_SAT1_CODE
     @test get_signal_name(gpsl5i) == "GPS L5-I"
@@ -120,7 +120,7 @@ end
     @test @inferred(get_code(gpsl5q, 0, 1)) == 1
     @test @inferred(get_code(gpsl5q, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5q, 0.0, 1)) == 1
-    @test @inferred(get_symbol_rate(gpsl5q)) == 0Hz   # dataless pilot
+    @test @inferred(get_bit_rate(gpsl5q)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(gpsl5q)) == 10230e3Hz
     @test get_signal_name(gpsl5q) == "GPS L5-Q"
     @test @inferred(get_modulation(gpsl5q)) == GNSSSignals.BPSK()

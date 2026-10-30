@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(e6b)) == 5115
     @test @inferred(get_secondary_code_length(e6b)) == 1
     @test @inferred(get_secondary_code(e6b)) isa NoSecondaryCode
-    @test @inferred(get_symbol_rate(e6b)) == 1000Hz     # C/NAV, as tracked
+    @test @inferred(get_bit_rate(e6b)) == 1000Hz     # C/NAV, as tracked
     @test @inferred(get_chip_rate(e6b)) == 5115e3Hz
     @test get_signal_name(e6b) == "Galileo E6-B"
     @test @inferred(get_modulation(e6b)) == GNSSSignals.BPSK()
@@ -31,7 +31,7 @@ end
     @test @inferred(get_code_length(e6c)) == 5115
     @test @inferred(get_secondary_code_length(e6c)) == 100
     @test @inferred(get_secondary_code(e6c)) isa PerPRNSecondaryCode
-    @test @inferred(get_symbol_rate(e6c)) == 0Hz        # dataless pilot
+    @test @inferred(get_bit_rate(e6c)) == 0Hz        # dataless pilot
     @test @inferred(get_chip_rate(e6c)) == 5115e3Hz
     @test get_signal_name(e6c) == "Galileo E6-C"
     @test @inferred(get_modulation(e6c)) == GNSSSignals.BPSK()

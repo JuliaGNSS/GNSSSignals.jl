@@ -20,7 +20,7 @@ Technical Note, Issue 1, §2.3.1 and Annex A.3). Codes 1-50 are defined; SVID
 e6b = GalileoE6B()
 get_code_length(e6b)      # 5115
 get_band(e6b)             # E6()
-get_symbol_rate(e6b)         # 1000 Hz (C/NAV)
+get_bit_rate(e6b)         # 1000 Hz (C/NAV)
 ```
 """
 struct GalileoE6B{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
@@ -36,7 +36,7 @@ Galileo E6-C signal (the dataless pilot component of Galileo E6).
 BPSK(5) modulation ([`BPSK`](@ref)) of a 5115-chip memory code at 5.115 Mcps on
 the E6 band (1278.75 MHz, reported as [`E6`](@ref)), overlaid with the 100-chip
 per-SVID CS100 secondary code for a 100 ms tiered code. As the pilot component
-it carries no navigation data, so [`get_symbol_rate`](@ref) returns 0 Hz.
+it carries no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
 
 The primary codes are memory codes (Galileo E6-B/C Codes Technical Note, Issue
 1, §2.3.1 and Annex A.4); the secondary codes are the same CS100_1-50 the
@@ -54,7 +54,7 @@ The primary codes are memory codes (Galileo E6-B/C Codes Technical Note, Issue
 e6c = GalileoE6C()
 get_code_length(e6c)            # 5115
 get_secondary_code_length(e6c)  # 100
-get_symbol_rate(e6c)               # 0 Hz
+get_bit_rate(e6c)               # 0 Hz
 ```
 """
 struct GalileoE6C{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSignal{C}
@@ -145,7 +145,7 @@ OS SIS ICD v2.2, Table 9).
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of Galileo E6-B.
+Get the bit rate, as tracked, of Galileo E6-B.
 
 The E6-B channel carries the C/NAV message, transmitted at 1000 symbols/s (Galileo OS SIS ICD
 v2.2, Table 9): the symbol rate of its rate-½ convolutional code, the message carrying
@@ -154,19 +154,19 @@ v2.2, Table 9): the symbol rate of its rate-½ convolutional code, the message c
 # Returns
 - `Frequency`: 1000 Hz
 """
-@inline get_symbol_rate(::Type{<:GalileoE6B}) = 1000Hz
+@inline get_bit_rate(::Type{<:GalileoE6B}) = 1000Hz
 
 """
 $(SIGNATURES)
 
-Get the transmitted symbol rate of Galileo E6-C.
+Get the bit rate, as tracked, of Galileo E6-C.
 
-The E6-C component is a dataless pilot, so its symbol rate is 0 Hz.
+The E6-C component is a dataless pilot, so its bit rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_symbol_rate(::Type{<:GalileoE6C}) = 0Hz
+@inline get_bit_rate(::Type{<:GalileoE6C}) = 0Hz
 
 """
 $(SIGNATURES)

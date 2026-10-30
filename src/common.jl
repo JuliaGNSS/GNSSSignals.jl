@@ -186,14 +186,17 @@ this one). Defined per concrete signal type; works on an instance or a type.
 @inline get_chip_rate(s::AbstractGNSSSignal) = get_chip_rate(typeof(s))
 
 """
-    get_symbol_rate(signal) -> Frequency
-    get_symbol_rate(signal, prn) -> Frequency
+    get_bit_rate(signal) -> Frequency
+    get_bit_rate(signal, prn) -> Frequency
 
-The transmitted navigation-symbol rate, before error-correction decoding: the rate
-of the binary signs a tracking loop demodulates after secondary-code removal.
-For example, GPS L5-I transmits 100 symbols/s while its CNAV message carries
-50 information bits/s. For uncoded messages (GPS L1 C/A's LNAV, BeiDou D1)
-the symbol rate and information bit rate coincide. `0 Hz` for a dataless pilot.
+The rate of navigation bits **as tracked**: the binary signs a tracking loop
+recovers after spreading-code and secondary-code removal, before error-correction
+decoding. On a forward-error-corrected (FEC) signal, these tracked bits are the
+transmitted channel symbols, so this returns the channel symbol rate rather than
+the decoded message's information bit rate. GPS L5-I, for example, is tracked at
+100 bits/s (100 channel symbols/s), while its rate-½ CNAV message carries
+50 information bits/s. For uncoded messages (GPS L1 C/A's LNAV, BeiDou D1),
+the tracked bit rate and information bit rate coincide. `0 Hz` for a dataless pilot.
 
 With a `prn`, the rate that satellite broadcasts. It differs from the signal's only on
 BeiDou B1I and B3I, whose GEO satellites ([`is_beidou_geo`](@ref GNSSSignals.is_beidou_geo))
@@ -203,60 +206,62 @@ wherever the satellite is known.
 Defined per concrete signal type; works on an instance or a type.
 
 ```julia-repl
-julia> get_symbol_rate(BeiDouB1I(), 6), get_symbol_rate(BeiDouB1I(), 1)
+julia> get_bit_rate(BeiDouB1I(), 6), get_bit_rate(BeiDouB1I(), 1)
 (50 Hz, 500 Hz)
 ```
 """
-@inline get_symbol_rate(s::AbstractGNSSSignal) = get_symbol_rate(typeof(s))
-@inline get_symbol_rate(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
-    get_symbol_rate(S)
-@inline get_symbol_rate(s::AbstractGNSSSignal, prn::Integer) =
-    get_symbol_rate(typeof(s), prn)
+@inline get_bit_rate(s::AbstractGNSSSignal) = get_bit_rate(typeof(s))
+@inline get_bit_rate(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_bit_rate(S)
+@inline get_bit_rate(s::AbstractGNSSSignal, prn::Integer) =
+    get_bit_rate(typeof(s), prn)
 
 """
-    get_code_periods_per_symbol(signal) -> Int
-    get_code_periods_per_symbol(signal, prn) -> Int
+    get_code_blocks_per_bit(signal) -> Int
+    get_code_blocks_per_bit(signal, prn) -> Int
 
-The number of primary code periods a transmitted navigation symbol spans
-([`get_symbol_rate`](@ref)): `get_chip_rate / (get_code_length · get_symbol_rate)`, a whole
-number for every data signal — 20 for GPS L1 C/A and Galileo E5a-I, 10 for GPS L5-I, 5 for
-BeiDou B2a-I, 4 for Galileo E5b-I, 1 where a symbol spans one code period (Galileo E1B, GPS
-L1C-D, …). With a `prn`, that satellite's ([`get_symbol_rate`](@ref)`(signal, prn)`): 2 on a
-BeiDou B1I or B3I GEO satellite, whose D2 symbols are ten times shorter.
+The number of primary code periods (code blocks) a navigation bit **as tracked**
+spans ([`get_bit_rate`](@ref)). For FEC signals, one tracked bit is one transmitted
+channel symbol, before error-correction decoding. The count is
+`get_chip_rate / (get_code_length · get_bit_rate)`, a whole number for every data signal — 20 for GPS L1 C/A and Galileo E5a-I, 10 for GPS L5-I, 5 for
+BeiDou B2a-I, 4 for Galileo E5b-I, 1 where a tracked bit spans one code period (Galileo E1B, GPS
+L1C-D, …). With a `prn`, that satellite's ([`get_bit_rate`](@ref)`(signal, prn)`): 2 on a
+BeiDou B1I or B3I GEO satellite, whose D2 bits are ten times shorter.
 
-`0` for a dataless pilot, which broadcasts no navigation symbols, as its symbol rate is `0 Hz`: `iszero`
-tells a pilot apart on either, and a caller that needs no symbol constraint for a pilot gets
+`0` for a dataless pilot, which broadcasts no navigation bits, as its bit rate is
+`0 Hz`: `iszero` tells a pilot apart on either, and a caller that needs no bit
+constraint for a pilot gets
 none (`max(get_secondary_code_length(signal), periods)`). Works on an instance or a type.
 
 ```julia-repl
-julia> get_code_periods_per_symbol(GPSL1CA())
+julia> get_code_blocks_per_bit(GPSL1CA())
 20
 
-julia> get_code_periods_per_symbol(BeiDouB1I(), 6), get_code_periods_per_symbol(BeiDouB1I(), 1)
+julia> get_code_blocks_per_bit(BeiDouB1I(), 6), get_code_blocks_per_bit(BeiDouB1I(), 1)
 (20, 2)
 ```
 """
-@inline get_code_periods_per_symbol(::Type{S}) where {S<:AbstractGNSSSignal} =
-    _code_periods_per_symbol(S, get_symbol_rate(S))
-@inline get_code_periods_per_symbol(::Type{S}, prn::Integer) where {S<:AbstractGNSSSignal} =
-    _code_periods_per_symbol(S, get_symbol_rate(S, prn))
-@inline get_code_periods_per_symbol(s::AbstractGNSSSignal) =
-    get_code_periods_per_symbol(typeof(s))
-@inline get_code_periods_per_symbol(s::AbstractGNSSSignal, prn::Integer) =
-    get_code_periods_per_symbol(typeof(s), prn)
+@inline get_code_blocks_per_bit(::Type{S}) where {S<:AbstractGNSSSignal} =
+    _code_blocks_per_bit(S, get_bit_rate(S))
+@inline get_code_blocks_per_bit(::Type{S}, prn::Integer) where {S<:AbstractGNSSSignal} =
+    _code_blocks_per_bit(S, get_bit_rate(S, prn))
+@inline get_code_blocks_per_bit(s::AbstractGNSSSignal) =
+    get_code_blocks_per_bit(typeof(s))
+@inline get_code_blocks_per_bit(s::AbstractGNSSSignal, prn::Integer) =
+    get_code_blocks_per_bit(typeof(s), prn)
 
-# In integer Hz, so that a symbol rate that does not divide the chip rate into whole periods
-# fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
+# In integer Hz, so that a tracked bit rate that does not divide the chip rate
+# into whole periods fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
 # for a non-integer n; it is converted to an `Int` first, and one that is no whole number of
 # Hz is an error.
-function _code_periods_per_symbol(::Type{S}, symbol_rate) where {S<:AbstractGNSSSignal}
-    iszero(symbol_rate) && return 0
+function _code_blocks_per_bit(::Type{S}, bit_rate) where {S<:AbstractGNSSSignal}
+    iszero(bit_rate) && return 0
     periods, remainder = divrem(
         _whole_hertz(S, "chip rate", get_chip_rate(S)),
-        get_code_length(S) * _whole_hertz(S, "symbol rate", symbol_rate),
+        get_code_length(S) * _whole_hertz(S, "tracked bit rate", bit_rate),
     )
     iszero(remainder) || throw(
-        ArgumentError(get_signal_name(S) * "'s symbols span no whole number of code periods"),
+        ArgumentError(get_signal_name(S) * "'s tracked bits span no whole number of code periods"),
     )
     periods
 end

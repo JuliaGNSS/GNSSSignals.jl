@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(e5b_i)) == 10230
     @test @inferred(get_secondary_code_length(e5b_i)) == 4
     @test @inferred(get_secondary_code(e5b_i)) isa SharedSecondaryCode{4}
-    @test @inferred(get_symbol_rate(e5b_i)) == 250Hz     # I/NAV, as tracked
+    @test @inferred(get_bit_rate(e5b_i)) == 250Hz     # I/NAV, as tracked
     @test @inferred(get_chip_rate(e5b_i)) == 10230e3Hz
     @test get_signal_name(e5b_i) == "Galileo E5b-I"
     @test @inferred(get_modulation(e5b_i)) == GNSSSignals.BPSK()
@@ -30,7 +30,7 @@ end
     @test @inferred(get_code_length(e5b_q)) == 10230
     @test @inferred(get_secondary_code_length(e5b_q)) == 100
     @test @inferred(get_secondary_code(e5b_q)) isa PerPRNSecondaryCode
-    @test @inferred(get_symbol_rate(e5b_q)) == 0Hz       # dataless pilot
+    @test @inferred(get_bit_rate(e5b_q)) == 0Hz       # dataless pilot
     @test @inferred(get_chip_rate(e5b_q)) == 10230e3Hz
     @test get_signal_name(e5b_q) == "Galileo E5b-Q"
     @test @inferred(get_modulation(e5b_q)) == GNSSSignals.BPSK()
