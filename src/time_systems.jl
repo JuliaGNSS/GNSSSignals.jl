@@ -14,10 +14,11 @@ A time scale is fixed by its epoch ([`get_system_start_time`](@ref) as a UTC
 label, [`get_tai_system_start_time`](@ref) on the continuous TAI scale) and its
 offset from TAI ([`get_tai_offset`](@ref)). Between two scales,
 [`get_epoch_offset`](@ref) gives the elapsed seconds between their epochs and
-[`get_leap_second_offset`](@ref) the whole seconds between their counts.
+[`get_time_scale_offset`](@ref) the whole seconds between their counts.
 
-Those offsets are Unitful seconds; instants ([`TAITime`](@ref)) and times of week
-([`get_time_of_week`](@ref)) are plain seconds, for full `Float64` resolution.
+Those offsets are Unitful seconds. Instants use [`TAITime`](@ref), whose arithmetic
+accepts plain seconds or Unitful durations; epoch differences and times of week
+([`get_time_of_week`](@ref)) return plain seconds.
 """
 abstract type TimeSystem end
 
@@ -235,7 +236,7 @@ so a broadcast `(WN, TOW)` on `from`'s scale names the instant that reads
 `WN · 604800 + TOW + get_epoch_offset(from, to)` on `to`'s count — nothing
 else: both scales count elapsed TAI from their own epochs, so the epoch offset
 is the *whole* difference. The leap seconds between the two counts' seconds of
-week (`+14 s` from BDT to GPST, [`get_leap_second_offset`](@ref)) are not an
+week (`+14 s` from BDT to GPST, [`get_time_scale_offset`](@ref)) are not an
 additional term; they are this value modulo the week, as the BeiDou identity
 below shows.
 Antisymmetric; zero from a scale to itself.
@@ -302,17 +303,20 @@ function fold_week_crossover(Δt)
 end
 
 """
-    get_leap_second_offset(from::TimeSystem, to::TimeSystem) -> Unitful seconds
+    get_time_scale_offset(from::TimeSystem, to::TimeSystem) -> Unitful seconds
 
 The seconds to add to a time of week counted in `from` to read the same instant in
-the count of `to`: the leap seconds accrued between the two epochs,
+the count of `to`: the fixed difference between the definitions of the continuous scales,
 
-    get_leap_second_offset(from, to) = get_tai_offset(from) - get_tai_offset(to)
+    get_time_scale_offset(from, to) = get_tai_offset(from) - get_tai_offset(to)
 
 `0 s` between [`GPST`](@ref) and [`GST`](@ref), both `TAI − 19 s`; a [`BDT`](@ref)
-reading is 14 s behind, so `get_leap_second_offset(BDT(), GPST()) == 14 s`. It is
-[`get_epoch_offset`](@ref) without its whole weeks, so a `(WN, TOW)` conversion
-across scales needs both. Antisymmetric; zero from a scale to itself.
+reading is 14 s behind, so `get_time_scale_offset(BDT(), GPST()) == 14 s`.
+For `(WN, TOW)` conversion, either add [`get_epoch_offset`](@ref) to the
+complete elapsed count, or add this offset to TOW and separately adjust the whole
+week number by the epoch difference in weeks. Do not add both offsets to the
+complete count: that counts the scale offset twice. Antisymmetric; zero from a
+scale to itself.
 
 It follows from the scales' definitions and is never broadcast: a broadcast time
 offset (GGTO, BGTO) carries only the nanosecond steering residual on top of it
@@ -322,14 +326,14 @@ between the systems using definitions of each system time scale").
 # Examples
 
 ```julia-repl
-julia> get_leap_second_offset(BDT(), GPST())
+julia> get_time_scale_offset(BDT(), GPST())
 14 s
 
-julia> get_leap_second_offset(GST(), GPST())
+julia> get_time_scale_offset(GST(), GPST())
 0 s
 ```
 """
-@inline get_leap_second_offset(from::TimeSystem, to::TimeSystem) =
+@inline get_time_scale_offset(from::TimeSystem, to::TimeSystem) =
     get_tai_offset(from) - get_tai_offset(to)
 
 """
@@ -357,29 +361,40 @@ julia> get_week_start_epoch(BDT(), 1008) - get_week_start_epoch(GPST(), 2364)
 @inline get_week_start_epoch(s::AbstractGNSSSignal, week::Integer) =
     get_week_start_epoch(get_time_system(s), week)
 
+"""
+    get_week_and_time_of_week(time_system, epoch::TAITime) -> (week, seconds)
+
+Return the week and time of week together, inverse to [`get_week_start_epoch`](@ref).
+The time of week is a `Float64` in `[0, 604800)`. If it rounds to 604800.0,
+the result carries to week + 1 and 0.0 seconds. The rounding error is at most
+half a `Float64` step near the end of the week (about 6e-11 seconds).
+Works on a time system, signal, or signal type.
+"""
 # The week and time of week of `epoch` on `time_system`'s count, the inverse of
 # `get_week_start_epoch`. The whole weeks come off in integer seconds before any floating
 # point, so the time of week is good to half a `Float64` step at up to 604800 s, about
 # 6e-11 s (an absolute count of about 1.2e9 s would leave only 0.2 µs). The origins fall
 # on whole TAI seconds, so the fraction is the epoch's own.
-function _week_and_time_of_week(time_system::TimeSystem, epoch::TAITime)
+function get_week_and_time_of_week(time_system::TimeSystem, epoch::TAITime)
     origin = get_week_start_epoch(time_system, 0)
     elapsed_seconds = epoch.second - origin.second
     week = fld(elapsed_seconds, SECONDS_PER_WEEK)
-    # An epoch in the last ~6e-11 s of a week rounds up to exactly 604800.0 here, the same
-    # instant as week + 1 at 0.0. Left as is: every consumer reduces a time of week modulo
-    # a day or the week, or folds differences of it (`fold_week_crossover`), all of which
-    # treat 604800.0 as 0.0, so carrying it would only serve the stated range.
     time_of_week = Float64(
         (elapsed_seconds - week * SECONDS_PER_WEEK) + (epoch.fraction - origin.fraction),
     )
+    time_of_week == SECONDS_PER_WEEK && return (Int(week + 1), 0.0)
     Int(week), time_of_week
 end
+
+@inline get_week_and_time_of_week(::Type{S}, epoch::TAITime) where {S<:AbstractGNSSSignal} =
+    get_week_and_time_of_week(get_time_system(S), epoch)
+@inline get_week_and_time_of_week(s::AbstractGNSSSignal, epoch::TAITime) =
+    get_week_and_time_of_week(get_time_system(s), epoch)
 
 """
     get_week(time_system, epoch::TAITime) -> Int
 
-The week, counted from the system's origin, that the TAI `epoch` falls in on the count
+The rounded week, counted from the system's origin, of the TAI `epoch` on the count
 of a GNSS time system; with [`get_time_of_week`](@ref) the inverse of
 [`get_week_start_epoch`](@ref):
 
@@ -401,7 +416,7 @@ julia> get_week(BDT(), get_week_start_epoch(GPST(), 2364) + 3.5)
 ```
 """
 @inline get_week(time_system::TimeSystem, epoch::TAITime) =
-    first(_week_and_time_of_week(time_system, epoch))
+    first(get_week_and_time_of_week(time_system, epoch))
 @inline get_week(::Type{S}, epoch::TAITime) where {S<:AbstractGNSSSignal} =
     get_week(get_time_system(S), epoch)
 @inline get_week(s::AbstractGNSSSignal, epoch::TAITime) = get_week(get_time_system(s), epoch)
@@ -409,12 +424,13 @@ julia> get_week(BDT(), get_week_start_epoch(GPST(), 2364) + 3.5)
 """
     get_time_of_week(time_system, epoch::TAITime) -> Float64
 
-The time of week (s), in `[0, 604800]`, of the TAI `epoch` on the count of a GNSS time
+The time of week (s), in `[0, 604800)`, of the TAI `epoch` on the count of a GNSS time
 system; with [`get_week`](@ref) the inverse of [`get_week_start_epoch`](@ref). The whole
 weeks come off in integer seconds before any floating point, so the time of week is good
 to half a `Float64` step at its magnitude, at most about 6e-11 s, where the absolute count
-since the origin would leave only 0.2 µs. An epoch in the last ~6e-11 s of a week rounds
-up to 604800.0, the same instant as the next week's 0.0.
+since the origin would leave only 0.2 µs. An epoch close enough to the week boundary
+to round up to 604800.0 is represented as 0.0 of the next week;
+[`get_week`](@ref) carries that endpoint consistently.
 
 Works on a [`TimeSystem`](@ref), or on a signal / signal type (which forwards through
 [`get_time_system`](@ref)).
@@ -428,7 +444,7 @@ julia> get_time_of_week(BDT(), get_week_start_epoch(GPST(), 2364) + 3.5)
 ```
 """
 @inline get_time_of_week(time_system::TimeSystem, epoch::TAITime) =
-    last(_week_and_time_of_week(time_system, epoch))
+    last(get_week_and_time_of_week(time_system, epoch))
 @inline get_time_of_week(::Type{S}, epoch::TAITime) where {S<:AbstractGNSSSignal} =
     get_time_of_week(get_time_system(S), epoch)
 @inline get_time_of_week(s::AbstractGNSSSignal, epoch::TAITime) =

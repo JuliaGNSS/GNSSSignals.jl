@@ -1,3 +1,5 @@
+using Unitful: Time
+
 # A minimal, trim-safe TAI epoch, standing in for AstroTime.jl's `TAIEpoch`, whose
 # `__init__` a `juliac --trim=safe` build cannot verify (it registers `Dates` format tokens
 # and, through EarthOrientation and RemoteFiles, looks for data files and download tools).
@@ -12,15 +14,17 @@ const J2000 = DateTime(2000, 1, 1, 12)
 
 An epoch on International Atomic Time (TAI): `second` whole seconds after J2000
 (`2000-01-01T12:00:00` TAI) plus `fraction ∈ [0, 1)` of a second, AstroTime's `TAIEpoch`
-layout, so the two convert exactly (with AstroTime loaded, `TAIEpoch(t)` and
-`TAITime(epoch)`). A `fraction` outside `[0, 1)` is normalised into it. The time systems
-date their weeks in it ([`get_week_start_epoch`](@ref)).
+layout (with AstroTime loaded, `TAIEpoch(t)` and `TAITime(epoch)`). AstroTime
+may retain an additional compensation term, which is rounded into the `Float64`
+fraction when converting to `TAITime`; conversion back cannot recover lost precision.
+A `fraction` outside `[0, 1)` is normalised into it. The time systems date their
+weeks in it ([`get_week_start_epoch`](@ref)).
 
 `TAITime(datetime)` reads a `DateTime` as a TAI calendar label (millisecond resolution),
 such as [`get_tai_system_start_time`](@ref) returns; `Dates.DateTime(t)` gives the TAI
 calendar label back, rounded to the millisecond. The difference of two `TAITime`s is in
-seconds, `t + Δ` (or `Δ + t`) shifts `t` by `Δ` seconds, and `a ≈ b` holds when the
-two are within `atol` seconds of each other (default `1e-9`, a third of a metre of range).
+seconds, `t + Δ` (or `Δ + t`) shifts `t` by `Δ` seconds or a Unitful duration, and
+`a ≈ b` holds when the two are within `atol` seconds of each other (default `1e-9`, a third of a metre of range).
 
 # Fields
 - `second::Int64`: whole TAI seconds since J2000.
@@ -40,7 +44,7 @@ struct TAITime
     function TAITime(second::Integer, fraction::Real)
         whole = floor(Int64, fraction)
         # `+ 0.0` turns a `-0.0` fraction into `0.0`, so that equal epochs compare equal.
-        rest = Float64(fraction) - whole + 0.0
+        rest = Float64(fraction - whole) + 0.0
         # A fraction just below a whole number rounds up to exactly `1.0` in the
         # subtraction (`-1e-17 - (-1)` is `1.0` in `Float64`), which would escape the
         # `[0, 1)` invariant; carry it into the whole seconds instead.
@@ -65,6 +69,9 @@ function Base.:+(t::TAITime, Δ::Real)
 end
 Base.:+(Δ::Real, t::TAITime) = t + Δ
 Base.:-(t::TAITime, Δ::Real) = t + (-Δ)
+Base.:+(t::TAITime, Δ::Time) = t + ustrip(s, Δ)
+Base.:+(Δ::Time, t::TAITime) = t + Δ
+Base.:-(t::TAITime, Δ::Time) = t - ustrip(s, Δ)
 
 Base.isless(a::TAITime, b::TAITime) = isless((a.second, a.fraction), (b.second, b.fraction))
 

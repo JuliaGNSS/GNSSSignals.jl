@@ -186,17 +186,17 @@ end
     end
 end
 
-@testset "leap seconds between the counts" begin
+@testset "fixed offsets between time scales" begin
     @test GNSSSignals.SECONDS_PER_WEEK == 7 * 24 * 60 * 60
-    @test get_leap_second_offset(BDT(), GPST()) == 14s
-    @test get_leap_second_offset(BDT(), GST()) == 14s
-    @test get_leap_second_offset(GST(), GPST()) == 0s
+    @test get_time_scale_offset(BDT(), GPST()) == 14s
+    @test get_time_scale_offset(BDT(), GST()) == 14s
+    @test get_time_scale_offset(GST(), GPST()) == 0s
     week = GNSSSignals.SECONDS_PER_WEEK * s
     for A in ALL_TIME_SYSTEMS, B in ALL_TIME_SYSTEMS
-        offset = @inferred get_leap_second_offset(A(), B())
-        @test offset == -get_leap_second_offset(B(), A())
+        offset = @inferred get_time_scale_offset(A(), B())
+        @test offset == -get_time_scale_offset(B(), A())
         A === B && @test offset == 0s
-        # The epoch offset less its whole weeks: the two together convert a (WN, TOW).
+        # The scale offset is the epoch offset less its whole weeks.
         @test rem(get_epoch_offset(A(), B()), week, RoundNearest) == offset
     end
 end
@@ -249,6 +249,7 @@ end
     # The inverse of get_week_start_epoch, exactly, across systems, weeks and fractions.
     for T in ALL_TIME_SYSTEMS, week in (0, 1, 1007, 2364), tow in (0.0, 3.5, 0.125, 604799.75)
         epoch = get_week_start_epoch(T(), week) + tow
+        @test @inferred(get_week_and_time_of_week(T(), epoch)) === (week, tow)
         @test @inferred(get_week(T(), epoch)) === week
         @test @inferred(get_time_of_week(T(), epoch)) === tow
         @test get_week_start_epoch(T(), get_week(T(), epoch)) + get_time_of_week(T(), epoch) ==
@@ -273,15 +274,17 @@ end
             back = get_week_start_epoch(T(), get_week(T(), epoch)) +
                    get_time_of_week(T(), epoch)
             @test abs(back - epoch) <= eps(Float64(week_seconds)) / 2
-            @test 0 <= get_time_of_week(T(), epoch) <= week_seconds
+            @test 0 <= get_time_of_week(T(), epoch) < week_seconds
         end
     end
-    # An epoch a hair below the end of a week rounds up to 604800.0 rather than carrying
-    # into the next week: the same instant, kept so (see `_week_and_time_of_week`).
+    # Rounding to the week endpoint carries the pair into the next week.
     last_instant = TAITime(get_week_start_epoch(GPST(), 2364).second + week_seconds - 1,
         prevfloat(1.0))
-    @test get_time_of_week(GPST(), last_instant) === 604800.0
-    @test get_week(GPST(), last_instant) == 2364
+    @test get_week_and_time_of_week(GPST(), last_instant) === (2365, 0.0)
+    @test get_time_of_week(GPST(), last_instant) === 0.0
+    @test get_week(GPST(), last_instant) == 2365
+    @test get_week_and_time_of_week(GPSL1CA, last_instant) == (2365, 0.0)
+    @test get_week_and_time_of_week(GPSL1CA(), last_instant) == (2365, 0.0)
     # Signal forwarding, type and instance.
     @test get_week(GalileoE1B, epoch) == get_week(GST(), epoch)
     @test get_time_of_week(BeiDouB1I(), epoch) == get_time_of_week(BDT(), epoch)

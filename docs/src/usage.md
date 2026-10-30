@@ -447,3 +447,23 @@ psd_boc = GNSSSignals.get_code_spectrum_BOCsin(1.023MHz, 1.023MHz, 500kHz)
    `st = GNSSSignals.code_state(eng)`, and call
    `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
    is allocation-free, and threading the returned state continues the stream seamlessly.
+
+## Migrating the cleanup API
+
+| Previous name | Replacement |
+|:---|:---|
+| `get_bit_rate` | `get_symbol_rate` |
+| `get_code_blocks_per_bit` | `get_code_periods_per_symbol` |
+| `get_leap_second_offset` | `get_time_scale_offset` |
+| `GNSSSignals.LOC` | `GNSSSignals.BPSK` |
+
+Symbol rates count the transmitted binary symbols before error-correction decoding,
+not the navigation message's information bits. Pass the PRN when it is known so that
+BeiDou D1 and D2 use the correct rate.
+
+For time conversion, add `get_epoch_offset(from, to)` to a complete elapsed count;
+it already includes the fixed time-scale offset. Alternatively, adjust the whole
+weeks separately and add `get_time_scale_offset(from, to)` to TOW. Do not add both
+offsets to the complete count. `TAITime` accepts Unitful durations directly.
+Use `get_week_and_time_of_week(system, epoch)` for a normalized pair; a rounded
+TOW endpoint now carries to the next week instead of returning `604800.0`.
