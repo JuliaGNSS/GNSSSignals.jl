@@ -14,7 +14,7 @@ Galileo E5b is one half of the wideband E5 AltBOC(15,10) signal. The ICD notes
 that "E5a and E5b signals can be processed independently by the user receiver as
 though they were two separate QPSK signals" (OS SIS ICD v2.2 §2.3.1.2), which is
 what this implementation models: the E5b sideband on its own as BPSK(10)
-(modulation [`LOC`](@ref)), like [`GalileoE5aI`](@ref) does for E5a.
+(modulation [`BPSK`](@ref)), like [`GalileoE5aI`](@ref) does for E5a.
 
 The primary code is generated from two 14-stage shift registers per the Galileo
 OS SIS ICD (§3.4.1): a common base register 1 (all-ones start, feedback
@@ -45,7 +45,7 @@ tiered code. As the pilot component it carries no navigation data, so
 [`get_bit_rate`](@ref) returns 0 Hz.
 
 Like [`GalileoE5bI`](@ref) the E5b sideband is modelled on its own as BPSK(10)
-([`LOC`](@ref)). The primary code uses the E5b base register 1 (feedback
+([`BPSK`](@ref)). The primary code uses the E5b base register 1 (feedback
 `64021₈`) with the E5b-Q register 2 (feedback `43143₈`) and the per-SVID start
 values `E5B_Q_X2_INIT`. The secondary codes are the CS100 codes 51-100 —
 CS100₍ₙ₊₅₀₎ to SVID `n` (OS SIS ICD v2.2 §3.5.2) — the other half of the table
@@ -112,8 +112,8 @@ end
 
 # Shared interface (band, modulation, frequencies).
 
-get_modulation(::Type{<:GalileoE5bI}) = LOC()
-get_modulation(::Type{<:GalileoE5bQ}) = LOC()
+get_modulation(::Type{<:GalileoE5bI}) = BPSK()
+get_modulation(::Type{<:GalileoE5bQ}) = BPSK()
 
 # E5b-I data rides the in-phase carrier (default 0); the E5b-Q pilot is in
 # quadrature and LEADS it by 90°, the same `(I + jQ)` convention E5a follows

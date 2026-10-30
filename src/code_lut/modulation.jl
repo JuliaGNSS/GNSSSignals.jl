@@ -7,7 +7,7 @@
 # sub-chip carrying the subcarrier sign, and resample that expanded ±1 table in a single
 # windowed-permute pass — no separate `multiply_with_subcarrier!`/secondary loop.
 #
-#   LOC (BPSK):    P = 1,  sub-chip sign = +1
+#   BPSK:         P = 1,  sub-chip sign = +1
 #   BOC(m,n) sin:  P = h = 2m/n subcarrier half-periods per chip; sub-chip k of chip pos is
 #                  half-period pos·h + k, sign iseven(pos·h + k) ? +1 : -1
 #   BOC(m,n) cos:  P = 4m/n quarter subcarrier periods per chip (the sine shifted a quarter
@@ -35,7 +35,7 @@
 
 # ---- modulation descriptors ----
 abstract type Modulation end
-struct LOC <: Modulation end                    # BPSK, no subcarrier
+struct BPSK <: Modulation end                   # no subcarrier
 
 # `count · m/n` as a whole number of sub-chips per chip, or an ArgumentError: the table can
 # only bake a subcarrier whose edges fall on its sub-chip grid. Exact for integer and binary
@@ -83,7 +83,7 @@ struct CBOC <: Modulation
     )
 end
 
-subchip_factor(::LOC)     = 1
+subchip_factor(::BPSK)    = 1
 subchip_factor(b::BOC)    = b.halfperiods
 subchip_factor(b::BOCcos) = b.quarters        # quarter-sub-chips: the quarter-period shift halves the grid
 subchip_factor(t::TMBOC)  = lcm(t.halfperiods1, t.halfperiods2)
@@ -99,7 +99,7 @@ subchip_factor(c::CBOC)   = lcm(c.halfperiods1, c.halfperiods2)
 # one code period and repeats it, which reproduces the continuous subcarrier only if it repeats
 # with the code. Always so for n = 1 (`Lp·m` periods); a BOC(1.5, 1) on an odd-length code ends
 # its code period half a subcarrier period in, and its true signal repeats every two periods.
-_whole_subcarrier_periods(::LOC, Lp) = true
+_whole_subcarrier_periods(::BPSK, Lp) = true
 _whole_subcarrier_periods(b::BOC, Lp) = iseven(Lp * b.halfperiods)
 _whole_subcarrier_periods(b::BOCcos, Lp) = Lp * b.quarters % 4 == 0
 _whole_subcarrier_periods(t::Union{TMBOC,CBOC}, Lp) =
@@ -107,7 +107,7 @@ _whole_subcarrier_periods(t::Union{TMBOC,CBOC}, Lp) =
 
 # Sub-carrier value for sub-chip `k` (0-based) of a chip at primary position `pos`, given P.
 # ±1 for BPSK/BOC/TMBOC; a multi-level integer for CBOC (see below).
-@inline _sc_sign(::LOC, k, pos, P)  = Int8(1)
+@inline _sc_sign(::BPSK, k, pos, P)  = Int8(1)
 @inline _sc_sign(b::BOC, k, pos, P) = _half_period_sign(b.halfperiods, k, pos, P)
 # Cosine BOC(m,n) at P = 4m/n: the sub-carrier is the sine BOC shifted by a quarter subcarrier
 # period, n/(4m) chips (`get_subcarrier_code(BOCcos, φ) == get_subcarrier_code(BOCsin,
@@ -153,7 +153,7 @@ Base.length(mc::ModulatedCode) = length(mc.table)
     code_replica(primary_chips, modulation; secondary=Int8[1], max_bake=typemax(Int16))
 
 Build a [`ModulatedCode`](@ref) from a primary ±1 `primary_chips` vector and a
-`modulation` (`LOC()`, `BOC(m, n)`, `BOCcos(m, n)`, `TMBOC(m1, m2, n, pattern)`, or
+`modulation` (`BPSK()`, `BOC(m, n)`, `BOCcos(m, n)`, `TMBOC(m1, m2, n, pattern)`, or
 `CBOC(m1, m2, n, a1, a2)`; `n` defaults to 1 in the shorter `BOC(m)`, `BOCcos(m)`,
 `TMBOC(m2, pattern)` and `CBOC(m1, m2, a1, a2)`). The table is ±1 for all but `CBOC`; for
 `CBOC` it holds the multi-level integer composite `a1·BOC(m1,n) ± a2·BOC(m2,n)` (still Int8,

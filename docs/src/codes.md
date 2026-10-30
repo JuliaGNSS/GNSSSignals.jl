@@ -14,7 +14,7 @@ GNSSSignals.secondary_value
 
 ```@docs
 GNSSSignals.Modulation
-GNSSSignals.LOC
+GNSSSignals.BPSK
 GNSSSignals.BOC
 GNSSSignals.BOCsin
 GNSSSignals.BOCcos

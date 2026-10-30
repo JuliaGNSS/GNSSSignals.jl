@@ -34,14 +34,14 @@ end
 # so signals sharing a chip rate + modulation order share a rate and timing differences reflect the
 # signal/modulation rather than a different fs; each row carries its fs in the label. fs clears the
 # LUT's fs ≥ code_frequency·P requirement with headroom:
-#   1.023 MHz  P=1  LOC         →  5 MHz   GPSL1CA
+#   1.023 MHz  P=1  BPSK         →  5 MHz   GPSL1CA
 #   1.023 MHz  P=2  BOC(1,1)    →  5 MHz   GPSL1C_D, GalileoE1B_BOC11, GalileoE1C_BOC11,
 #                                          BeiDouB1C_D, BeiDouB1C_P
 #   1.023 MHz  P=12 CBOC/TMBOC  → 15 MHz   GPSL1C_P, GalileoE1B, GalileoE1C
-#   0.5115 MHz P=1  LOC (L2C)   →  2.5 MHz GPSL2CM, GPSL2CL
-#   2.046 MHz  P=1  LOC         → 10 MHz   BeiDouB1I
-#   5.115 MHz  P=1  LOC         → 20 MHz   GalileoE5aQP, GalileoE6B, GalileoE6C
-#   10.23 MHz  P=1  LOC         → 40 MHz   GPSL5I, GPSL5Q, GalileoE5aI, GalileoE5aQ,
+#   0.5115 MHz P=1  BPSK (L2C)   →  2.5 MHz GPSL2CM, GPSL2CL
+#   2.046 MHz  P=1  BPSK         → 10 MHz   BeiDouB1I
+#   5.115 MHz  P=1  BPSK         → 20 MHz   GalileoE5aQP, GalileoE6B, GalileoE6C
+#   10.23 MHz  P=1  BPSK         → 40 MHz   GPSL5I, GPSL5Q, GalileoE5aI, GalileoE5aQ,
 #                                          GalileoE5bI, GalileoE5bQ, BeiDouB3I, BeiDouB2bI,
 #                                          BeiDouB2aI, BeiDouB2aQ
 # ─────────────────────────────────────────────────────────────────────────────

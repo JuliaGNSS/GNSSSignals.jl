@@ -14,7 +14,7 @@
     @test all(name -> isdefined(GNSSSignals, name), documented)
     @test setdiff(documented, exported) == Set([
         :Modulation,
-        :LOC,
+        :BPSK,
         :BOC,
         :BOCsin,
         :BOCcos,

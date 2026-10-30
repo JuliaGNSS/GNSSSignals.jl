@@ -19,7 +19,7 @@ struct GPSL1CA{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-get_modulation(::Type{<:GPSL1CA}) = LOC()
+get_modulation(::Type{<:GPSL1CA}) = BPSK()
 
 # IS-GPS-200N Table 3-III designates the L1 P(Y) carrier as the band's in-phase (I)
 # reference; §3.3.1.5.1 puts the C/A carrier in quadrature, "lagging the P signal by

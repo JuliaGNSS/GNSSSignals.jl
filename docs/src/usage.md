@@ -105,7 +105,7 @@ get_band(gpsl1ca)                  # L1()
 get_center_frequency(gpsl1ca)      # 1575420000 Hz
 get_chip_rate(gpsl1ca)             # 1023000 Hz
 get_secondary_code_length(gpsl1ca) # 1 (no secondary code)
-get_modulation(gpsl1ca)            # LOC()
+get_modulation(gpsl1ca)            # BPSK()
 get_signal_name(gpsl1ca)           # "GPS L1 C/A"
 ```
 
@@ -167,7 +167,7 @@ get_center_frequency(gpsl2cm)       # 1227600000 Hz
 get_chip_rate(gpsl2cm)              # 511500 Hz
 get_bit_rate(gpsl2cm)               # 50 Hz (CNAV, as tracked)
 get_secondary_code_length(gpsl2cm)  # 1 (no secondary code)
-get_modulation(gpsl2cm)             # LOC()
+get_modulation(gpsl2cm)             # BPSK()
 ```
 
 ### GPS L2 CL
@@ -182,7 +182,7 @@ get_center_frequency(gpsl2cl)       # 1227600000 Hz
 get_chip_rate(gpsl2cl)              # 511500 Hz
 get_bit_rate(gpsl2cl)               # 0 Hz (dataless)
 get_secondary_code_length(gpsl2cl)  # 1 (no secondary code)
-get_modulation(gpsl2cl)             # LOC()
+get_modulation(gpsl2cl)             # BPSK()
 ```
 
 The full L2 CL code matrix is 767250 × 63; stored as `Int16` it occupies ~97 MB, so build `GPSL2CL()` once and reuse the instance.
@@ -250,7 +250,7 @@ get_center_frequency(e5a_i)      # 1176450000 Hz
 get_chip_rate(e5a_i)             # 10230000 Hz
 get_bit_rate(e5a_i)              # 50 Hz (F/NAV, as tracked)
 get_secondary_code_length(e5a_i) # 20
-get_modulation(e5a_i)            # LOC()
+get_modulation(e5a_i)            # BPSK()
 ```
 
 ### Galileo E5a-Q
@@ -265,7 +265,7 @@ get_center_frequency(e5a_q)      # 1176450000 Hz
 get_chip_rate(e5a_q)             # 10230000 Hz
 get_bit_rate(e5a_q)              # 0 Hz (dataless)
 get_secondary_code_length(e5a_q) # 100
-get_modulation(e5a_q)            # LOC()
+get_modulation(e5a_q)            # BPSK()
 ```
 
 ### Galileo E5a-QP
@@ -297,7 +297,7 @@ get_band(e5b_i)                  # E5b()
 get_center_frequency(e5b_i)      # 1207140000 Hz
 get_bit_rate(e5b_i)              # 250 Hz (I/NAV, as tracked)
 get_secondary_code_length(e5b_i) # 4 (CS4)
-get_modulation(e5b_i)            # LOC()
+get_modulation(e5b_i)            # BPSK()
 ```
 
 ### Galileo E5b-Q
@@ -325,7 +325,7 @@ get_center_frequency(e6b)        # 1278750000 Hz
 get_chip_rate(e6b)               # 5115000 Hz
 get_bit_rate(e6b)                # 1000 Hz (C/NAV, as tracked)
 get_secondary_code_length(e6b)   # 1 (no secondary code)
-get_modulation(e6b)              # LOC()
+get_modulation(e6b)              # BPSK()
 ```
 
 ### Galileo E6-C
@@ -339,7 +339,7 @@ get_band(e6c)                    # E6()
 get_bit_rate(e6c)                # 0 Hz (dataless)
 get_secondary_code_length(e6c)   # 100
 get_carrier_phase_offset(e6c)    # 0.5 cycles (OS SIS ICD Eq. 10 subtracts the pilot)
-get_modulation(e6c)              # LOC()
+get_modulation(e6c)              # BPSK()
 ```
 
 Note that the E6-C ranging codes are currently transmitted unencrypted, but the Technical Note states that encryption is planned for future use — E6-C availability is not guaranteed the way an Open Service component's is.

@@ -122,7 +122,7 @@ end
 
 # Shared interface (band, modulation, frequencies).
 
-get_modulation(::Type{<:GalileoE5aQP}) = LOC()
+get_modulation(::Type{<:GalileoE5aQP}) = BPSK()
 
 @inline get_band(::Type{<:GalileoE5aQP}) = L5()
 
