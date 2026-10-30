@@ -150,8 +150,11 @@ get_center_frequency(gpsl1c_p)      # 1575420000 Hz
 get_chip_rate(gpsl1c_p)             # 1023000 Hz
 get_bit_rate(gpsl1c_p)              # 0 Hz (dataless)
 get_secondary_code_length(gpsl1c_p) # 1800
-get_modulation(gpsl1c_p)            # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
+get_modulation(gpsl1c_p)            # BOCsin(1, 1)
+get_modulation(GPSL1C_P_TMBOC())    # TMBOC(BOCsin(1,1), BOCsin(6,1), …)
 ```
+
+The default [`GPSL1C_P`](@ref) uses a continuous BOC(1,1) replica. [`GPSL1C_P_TMBOC`](@ref) provides the full TMBOC replica with identical primary and overlay codes. For an ideal wideband received signal, the default has a correlation loss of approximately 1.12 dB relative to the matched TMBOC replica; the loss depends on receiver filtering. The default LUT uses two samples per primary chip instead of twelve.
 
 The overlay code is per-PRN, so [`get_secondary_code`](@ref) returns a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode) wrapping the 1800 × 63 overlay matrix rather than a plain tuple.
 
@@ -187,56 +190,33 @@ get_modulation(gpsl2cl)             # BPSK()
 
 The full L2 CL code matrix is 767250 × 63; stored as `Int8` it occupies ~48 MB (plus ~48 MB for the baked LUT), so build `GPSL2CL()` once and reuse the instance.
 
-### Galileo E1B
+### Galileo E1B and E1C
 
-Galileo E1B (the data-carrying component of Galileo E1 OS) uses CBOC(6,1,1/11) modulation. It is transmitted on the same RF carrier as GPS L1 C/A — [`get_band`](@ref) returns [`L1`](@ref GNSSSignals.L1) for both:
-
-```julia
-gal_e1b = GalileoE1B()
-get_code_length(gal_e1b)         # 4092
-get_band(gal_e1b)                # L1()
-get_center_frequency(gal_e1b)    # 1575420000 Hz
-get_chip_rate(gal_e1b)           # 1023000 Hz
-get_modulation(gal_e1b)          # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
-```
-
-Note that the single-chip accessor [`get_code`](@ref) returns floating-point values for Galileo E1B (the CBOC subcarrier amplitudes are irrational), and `GNSSSignals.get_code_type(GalileoE1B())` is `Float32`. [`gen_code!`](@ref), however, always outputs `Int8`: for CBOC it bakes an `Int8` integer approximation of the two sub-carrier amplitudes (default `(19, 6) → ±25, ±13`), which is sign-identical to the spec with ~0 dB correlation loss.
-
-### Galileo E1B (BOC(1,1) approximation)
-
-Many software receivers substitute a BOC(1,1) replica for the full CBOC(6,1,1/11) E1B signal: BOC(6,1) carries only 1/11 of the signal power, so the correlation loss is roughly 0.45 dB and the replica needs only `fs ≥ 2 · 1.023` MHz instead of `fs ≥ 12 · 1.023` MHz. PocketSDR and other open-source GNSS-SDRs default to this approximation. [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) is the typed variant: identical primary code, code length, chip rate, symbol rate, and band as [`GalileoE1B`](@ref), but with `BOCsin(1, 1)` as the modulation:
+Galileo E1 OS broadcasts E1B data and E1C pilot using CBOC(6,1,1/11). The default [`GalileoE1B`](@ref) and [`GalileoE1C`](@ref) replicas use BOC(1,1). Their primary codes, secondary codes, rates, and relative powers match the explicit full replicas [`GalileoE1B_CBOC`](@ref) and [`GalileoE1C_CBOC`](@ref).
 
 ```julia
-e1b = GalileoE1B_BOC11()
-get_code_length(e1b)         # 4092
-get_modulation(e1b)          # BOCsin(1, 1)
-GNSSSignals.get_code_type(e1b) # Int8  (the get_code accessor type; gen_code! is Int8)
+e1b = GalileoE1B()
+e1c = GalileoE1C()
+get_code_length(e1b)           # 4092
+get_code_length(e1c)           # 4092
+get_band(e1b)                  # L1()
+get_chip_rate(e1b)             # 1023000 Hz
+get_bit_rate(e1b)              # 250 Hz (as tracked)
+get_bit_rate(e1c)              # 0 Hz (pilot)
+get_secondary_code_length(e1b) # 1 (no secondary code)
+get_secondary_code_length(e1c) # 25 (CS25)
+get_modulation(e1b)            # BOCsin(1, 1)
+get_modulation(e1c)            # BOCsin(1, 1)
+
+full_e1b = GalileoE1B_CBOC()
+full_e1c = GalileoE1C_CBOC()
+get_modulation(full_e1b)       # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11)
+get_modulation(full_e1c)       # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
 ```
 
-[`gen_code!`](@ref) outputs `Int8` for both variants. The reason to choose [`GalileoE1B_BOC11`](@ref GNSSSignals.GalileoE1B_BOC11) over [`GalileoE1B`](@ref) is the **much lower minimum sampling rate** (`fs ≥ 2 · 1.023` MHz vs `12 · 1.023` MHz) when the ~0.45 dB loss is acceptable.
+The BOC(1,1) replica has approximately 0.41 dB ideal wideband correlation loss relative to matched CBOC and uses two LUT samples per primary chip instead of twelve. The loss depends on receiver filtering. E1C retains the shared 25-chip CS25 secondary code, which spans 100 ms; E1B has no secondary code. The full CBOC replicas retain the BOC(6,1) component in phase for E1B and in anti-phase for E1C.
 
-### Galileo E1C
-
-Galileo E1C is the pilot (dataless) component of Galileo E1 OS. It shares the 4092-chip primary memory codes' construction with E1B but uses *different* codes (Galileo OS SIS ICD Annex C), and it carries a 25-chip secondary code (CS25) overlaid one chip per 4 ms primary period, giving a 100 ms tiered code. Its CBOC uses the BOC(6,1) component in anti-phase — CBOC(−) — where E1B uses CBOC(+) (Galileo OS SIS ICD §2.3.3):
-
-```julia
-gal_e1c = GalileoE1C()
-get_code_length(gal_e1c)           # 4092
-get_secondary_code_length(gal_e1c) # 25 (CS25)
-get_band(gal_e1c)                  # L1()
-get_bit_rate(gal_e1c)              # 0 Hz (pilot)
-get_modulation(gal_e1c)            # CBOC(BOCsin(1,1), BOCsin(6,1), 10/11, -1)
-```
-
-The secondary code is shared across all PRNs, so [`get_secondary_code`](@ref) returns a [`SharedSecondaryCode`](@ref GNSSSignals.SharedSecondaryCode) of length 25. As with E1B, CBOC modulation makes the code values floating-point.
-
-A [`GalileoE1C_BOC11`](@ref GNSSSignals.GalileoE1C_BOC11) variant provides the BOC(1,1) approximation (lower minimum sampling rate) — the same substitution PocketSDR uses for E1C by default — with identical primary and CS25 secondary codes:
-
-```julia
-e1c = GalileoE1C_BOC11()
-get_modulation(e1c)          # BOCsin(1, 1)
-GNSSSignals.get_code_type(e1c) # Int8  (the get_code accessor type; gen_code! is Int8)
-```
+[`get_code`](@ref) returns `Int8` for the defaults and `Float32` for the full CBOC replicas. [`gen_code!`](@ref) outputs `Int8` for all variants; full CBOC uses the integer amplitude approximation `(19, 6) → ±25, ±13`.
 
 ### Galileo E5a-I
 

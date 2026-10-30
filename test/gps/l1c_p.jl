@@ -7,10 +7,21 @@
     @test @inferred(get_secondary_code(sig)) isa PerPRNSecondaryCode
     @test @inferred(get_bit_rate(sig)) == 0Hz   # pilot is dataless
     @test @inferred(get_chip_rate(sig)) == 1023e3Hz
-    @test get_signal_name(sig) == "GPS L1C-P"
+    @test get_signal_name(sig) == "GPS L1C-P (BOC(1,1) approximation)"
+    @test @inferred(get_modulation(sig)) == GNSSSignals.BOCsin(1, 1)
+
+    full = GPSL1C_P_TMBOC()
+    @test get_signal_name(full) == "GPS L1C-P (TMBOC)"
+    @test full.codes == sig.codes
+    @test full.overlay_codes == sig.overlay_codes
+    @test get_secondary_code_length(full) == get_secondary_code_length(sig)
+    @test get_chip_rate(full) == get_chip_rate(sig)
+    @test get_bit_rate(full) == get_bit_rate(sig)
+    @test get_band(full) == get_band(sig)
+    @test get_relative_power(full) == get_relative_power(sig)
 
     # Modulation: TMBOC over BOC(1,1) and BOC(6,1), pattern length 33.
-    mod = @inferred get_modulation(sig)
+    mod = @inferred get_modulation(full)
     @test mod isa GNSSSignals.TMBOC
     @test mod.boc1 == GNSSSignals.BOCsin(1, 1)
     @test mod.boc2 == GNSSSignals.BOCsin(6, 1)
@@ -24,11 +35,20 @@
     @test mod.pattern[30] == true   # position 29
     @test mod.pattern[2]  == false  # position 1
     @test mod.pattern[33] == false  # position 32
+
+    # Check both subcarrier half-cycles and the overlay boundary independently
+    # against the primary and overlay chips.
+    for phase in (0.0, 0.25, 0.5, 1.0, 10230.0, 10230.5)
+        chip = floor(Int, phase)
+        primary = sig.codes[mod1(chip + 1, 10230), 1]
+        overlay = sig.overlay_codes[mod1(fld(chip, 10230) + 1, 1800), 1]
+        subcarrier = iseven(floor(Int, 2phase)) ? 1 : -1
+        @test get_code(sig, phase, 1) == primary * overlay * subcarrier
+    end
 end
 
 @testset "gen_code! integration: GPS L1C-D and L1C-P run without error" begin
-    # The embedded LUT TMBOC bake/resample path is exercised here; make sure it produces a
-    # finite, non-zero ±1 Int8 output.
+    # Exercise the embedded LUT resample paths for both pilot replicas.
     sampling_rate = 25e6Hz
     samples = 4000
 
@@ -37,14 +57,17 @@ end
         @test all(abs.(buf) .> 0)
     end
 
-    let buf = zeros(Int8, samples)
-        gen_code!(buf, GPSL1C_P(), 1, sampling_rate, 1023e3Hz, 0.0, 0)
+    for sig in (GPSL1C_P(), GPSL1C_P_TMBOC())
+        buf = zeros(Int8, samples)
+        gen_code!(buf, sig, 1, sampling_rate, 1023e3Hz, 0.0, 0)
         @test all(abs.(buf) .> 0)
-        # The first 33 chips of every primary period mix BOC(1,1) and
-        # BOC(6,1); over thousands of samples the average should be
-        # close to zero (BOC subcarrier is zero-mean).
         @test abs(sum(buf)) < samples * 0.5
     end
+
+    sig = GPSL1C_P()
+    buf = zeros(Int8, 1200)
+    gen_code!(buf, sig, 1, 12.276e6Hz, 1023e3Hz, 0.0, 0)
+    @test buf == [get_code(sig, (k - 1) / 12, 1) for k in eachindex(buf)]
 end
 @testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against PocketSDR's L1C code generator
@@ -85,6 +108,6 @@ end
     @test buf_d == ref_d
 
     buf_p = zeros(Int8, n_samples)
-    gen_code!(buf_p, GPSL1C_P(), 1, sampling_rate, code_rate, 0.0, 0)
+    gen_code!(buf_p, GPSL1C_P_TMBOC(), 1, sampling_rate, code_rate, 0.0, 0)
     @test buf_p == ref_p
 end

@@ -17,11 +17,11 @@ _buf(n) = zeros(Int8, n)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2000 sample code generation — fixed 2000-sample spot-check at a couple of representative rates. A
-# small, stable sanity row for the plain (GPSL1/GPSL5) and CBOC (GalileoE1B) generators; full
+# small, stable sanity row for the plain (GPSL1/GPSL5) and CBOC (GalileoE1B_CBOC) generators; full
 # per-signal coverage lives in "1 ms code generation" below.
 # ─────────────────────────────────────────────────────────────────────────────
 for (name, signal, fs) in (("GPSL1", GPSL1CA(), 2e6Hz), ("GPSL5", GPSL5I(), 20e6Hz),
-                           ("GalileoE1B", GalileoE1B(), 15e6Hz))
+                           ("GalileoE1B_CBOC", GalileoE1B_CBOC(), 15e6Hz))
     out = _buf(2000)
     SUITE["2000 sample code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
         $out, $signal, $1, $fs,
@@ -35,9 +35,9 @@ end
 # signal/modulation rather than a different fs; each row carries its fs in the label. fs clears the
 # LUT's fs ≥ code_frequency·P requirement with headroom:
 #   1.023 MHz  P=1  BPSK         →  5 MHz   GPSL1CA
-#   1.023 MHz  P=2  BOC(1,1)    →  5 MHz   GPSL1C_D, GalileoE1B_BOC11, GalileoE1C_BOC11,
+#   1.023 MHz  P=2  BOC(1,1)    →  5 MHz   GPSL1C_D, GPSL1C_P, GalileoE1B, GalileoE1C,
 #                                          BeiDouB1C_D, BeiDouB1C_P
-#   1.023 MHz  P=12 CBOC/TMBOC  → 15 MHz   GPSL1C_P, GalileoE1B, GalileoE1C
+#   1.023 MHz  P=12 CBOC/TMBOC  → 15 MHz   GPSL1C_P_TMBOC, GalileoE1B_CBOC, GalileoE1C_CBOC
 #   0.5115 MHz P=1  BPSK (L2C)   →  2.5 MHz GPSL2CM, GPSL2CL
 #   2.046 MHz  P=1  BPSK         → 10 MHz   BeiDouB1I
 #   5.115 MHz  P=1  BPSK         → 20 MHz   GalileoE5aQP, GalileoE6B, GalileoE6C
@@ -46,10 +46,10 @@ end
 #                                          BeiDouB2aI, BeiDouB2aQ
 # ─────────────────────────────────────────────────────────────────────────────
 const _MS_CASES = (
-    (GPSL1CA, 5e6Hz), (GPSL1C_D, 5e6Hz), (GPSL1C_P, 15e6Hz),
+    (GPSL1CA, 5e6Hz), (GPSL1C_D, 5e6Hz), (GPSL1C_P, 5e6Hz), (GPSL1C_P_TMBOC, 15e6Hz),
     (GPSL2CM, 2.5e6Hz), (GPSL2CL, 2.5e6Hz), (GPSL5I, 40e6Hz), (GPSL5Q, 40e6Hz),
-    (GalileoE1B, 15e6Hz), (GalileoE1B_BOC11, 5e6Hz),
-    (GalileoE1C, 15e6Hz), (GalileoE1C_BOC11, 5e6Hz),
+    (GalileoE1B_CBOC, 15e6Hz), (GalileoE1B, 5e6Hz),
+    (GalileoE1C_CBOC, 15e6Hz), (GalileoE1C, 5e6Hz),
     (GalileoE5aI, 40e6Hz), (GalileoE5aQ, 40e6Hz), (GalileoE5aQP, 20e6Hz),
     (GalileoE5bI, 40e6Hz), (GalileoE5bQ, 40e6Hz), (GalileoE6B, 20e6Hz), (GalileoE6C, 20e6Hz),
     (BeiDouB1I, 10e6Hz), (BeiDouB3I, 40e6Hz), (BeiDouB2bI, 40e6Hz),

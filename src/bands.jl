@@ -196,7 +196,7 @@ cheaper and the name is free to be respelled).
 
 Band identity is by RF frequency, so the name is the *band's* label, not the
 constellation's label for it: `get_band_name(GalileoE1B())` is `"L1"`, not
-`"E1"`. Use [`get_signal_name`](@ref) (`"Galileo E1B"`) when you need the
+`"E1"`. Use [`get_signal_name`](@ref) (`"Galileo E1B (BOC(1,1) approximation)"`) when you need the
 ICD-specific naming.
 
 Stated as a literal per band — `get_band_name(::Type{L1}) = "L1"` — so naming a

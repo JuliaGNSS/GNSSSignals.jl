@@ -40,17 +40,11 @@ power on the BOC(6,1) component. This implementation generates a pure
 sine-phased **BOC(1,1)** replica — `get_modulation` returns `BOCsin(1, 1)` and
 `gen_code!` emits it (needing only `fs ≥ 2·1.023 MHz`).
 
-Note this is *not* the same kind of choice as [`GalileoE1B`](@ref) →
-[`GalileoE1B_BOC11`](@ref). Galileo E1 is CBOC — a *real* weighted sum of
-BOC(1,1) and BOC(6,1) — so a faithful real replica exists (the default type
-bakes it) and `_BOC11` is a genuine lower-power approximation. QMBOC instead
-puts the two components in phase *quadrature*: its faithful replica is complex,
-and its principal (29/33-power) axis simply **is** BOC(1,1). A real correlator
-tracking the pilot on its own carrier phase therefore uses BOC(1,1), capturing
-29/33 of the pilot power; the orthogonal BOC(6,1) arm cannot be captured by a
-single real replica. Hence there is no separate "full" vs `_BOC11` pilot type
-here — BOC(1,1) is already the pilot's real replica, matching PocketSDR
-(`sdr_code.py` generates B1C pilot as "BOC(1,1) instead of QMBOC(6,1,4/33)").
+QMBOC places BOC(1,1) and BOC(6,1) in phase quadrature. This real-valued
+replica captures the principal BOC(1,1) arm, with 29/33 of the pilot power;
+a full QMBOC replica would be complex-valued. In contrast, the explicit
+[`GalileoE1B_CBOC`](@ref) and [`GalileoE1C_CBOC`](@ref) replicas combine
+their two subcarriers in a real-valued CBOC waveform.
 
 Where the pilot sits in the B1C *composite*: Eq. 4-3 is `s_data + j·s_pilot`,
 so the `j` rotates the whole pilot envelope — the ICD's own phase table (Table
@@ -141,7 +135,7 @@ get_modulation(::Type{<:BeiDouB1C_P}) = BOCsin(1, 1)   # BOC(1,1) replica of QMB
 
 # The other 75/25 pilot/data split besides GPS L1C: BDS-SIS-ICD-B1C-1.0 §4.2.2 states
 # the data:pilot power ratio as 1:3. Stated as the full ICD component split — not the
-# 29/44 the BOC(1,1) pilot replica captures — matching the GalileoE1C_BOC11 precedent
+# 29/44 the BOC(1,1) pilot replica captures — matching the GalileoE1C BOC(1,1) replica
 # (the replica changes the correlation shape, not the transmitted split). See
 # [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:BeiDouB1C_D}) = 0.25

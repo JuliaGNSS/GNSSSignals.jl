@@ -372,7 +372,7 @@ it a CBOC prompt is scaled up by the code's integer amplitude relative to a BPSK
 julia> get_code_amplitude(GPSL1CA())
 1.0
 
-julia> get_code_amplitude(GalileoE1B())   # sqrt(19^2 + 6^2)
+julia> get_code_amplitude(GalileoE1B_CBOC())   # sqrt(19^2 + 6^2)
 19.924858845171276
 ```
 """

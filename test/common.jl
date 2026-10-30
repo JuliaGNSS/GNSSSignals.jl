@@ -1,6 +1,6 @@
 @testset "Common functions for $(get_signal_name(signal))" for signal in [
-    GalileoE1B(),
-    GalileoE1C(),
+    GalileoE1B_CBOC(),
+    GalileoE1C_CBOC(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -77,16 +77,16 @@ end
     # GPS L1C rides the same P(Y) in-phase carrier (IS-GPS-800J §3.2.1.6.1) → 0,
     # i.e. 90° off C/A on the same band.
     @test get_carrier_phase_offset(GPSL1C_D()) == 0.0
-    @test get_carrier_phase_offset(GPSL1C_P()) == 0.0
-    @test get_carrier_phase_offset(GalileoE1B()) == 0.0   # E1B/E1C anti-phase is in the code, not the carrier
-    @test get_carrier_phase_offset(GalileoE1C()) == 0.0
+    @test get_carrier_phase_offset(GPSL1C_P_TMBOC()) == 0.0
+    @test get_carrier_phase_offset(GalileoE1B_CBOC()) == 0.0   # E1B/E1C anti-phase is in the code, not the carrier
+    @test get_carrier_phase_offset(GalileoE1C_CBOC()) == 0.0
     # E6 shares one carrier component too, but there the 180° is the carrier's:
     # OS SIS ICD Eq. 10 subtracts the pilot and the plain-BPSK E6-C code carries
     # no sign of its own (E1C's does, via CBOC's boc2_sign).
     @test get_carrier_phase_offset(GalileoE6B()) == 0.0
     @test get_carrier_phase_offset(GalileoE6C()) == 0.5
     # C/A and L1C are physically in quadrature with each other.
-    @test get_carrier_phase_offset(GPSL1C_P()) - get_carrier_phase_offset(GPSL1CA()) == 0.25
+    @test get_carrier_phase_offset(GPSL1C_P_TMBOC()) - get_carrier_phase_offset(GPSL1CA()) == 0.25
     # Type- and instance-forms agree.
     @test get_carrier_phase_offset(GPSL5Q) == get_carrier_phase_offset(GPSL5Q())
     @test get_carrier_phase_offset(GPSL1CA) == get_carrier_phase_offset(GPSL1CA())
@@ -95,8 +95,8 @@ end
 @testset "get_signal_name" begin
     @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
     @test get_signal_name(GPSL5I()) == "GPS L5-I"
-    @test get_signal_name(GalileoE1B()) == "Galileo E1B"
-    @test get_signal_name(GalileoE1C()) == "Galileo E1C"
+    @test get_signal_name(GalileoE1B_CBOC()) == "Galileo E1B (CBOC)"
+    @test get_signal_name(GalileoE1C_CBOC()) == "Galileo E1C (CBOC)"
 
     # Type-level dispatch works without constructing the signal (which would read
     # the code file from disk); the instance path forwards to it.
@@ -104,7 +104,7 @@ end
         @test @inferred(get_signal_name(S)) isa String
     end
     @test get_signal_name(GPSL2CL) == "GPS L2CL"
-    @test get_signal_name(GalileoE1B_BOC11) == "Galileo E1B (BOC(1,1) approximation)"
+    @test get_signal_name(GalileoE1B) == "Galileo E1B (BOC(1,1) approximation)"
     @test get_signal_name(GPSL1CA()) == get_signal_name(GPSL1CA)
     @test get_signal_name(GalileoE5aQ()) == get_signal_name(GalileoE5aQ)
 end
@@ -112,8 +112,8 @@ end
 @testset "get_signal_id" begin
     @test @inferred(get_signal_id(GPSL1CA())) === :GPSL1CA
     @test @inferred(get_signal_id(GPSL5I())) === :GPSL5I
-    @test @inferred(get_signal_id(GalileoE1B())) === :GalileoE1B
-    @test @inferred(get_signal_id(GalileoE1C())) === :GalileoE1C
+    @test @inferred(get_signal_id(GalileoE1B_CBOC())) === :GalileoE1B_CBOC
+    @test @inferred(get_signal_id(GalileoE1C_CBOC())) === :GalileoE1C_CBOC
     @test @inferred(get_signal_id(BeiDouB1I())) === :BeiDouB1I
     @test @inferred(get_signal_id(BeiDouB1C_P())) === :BeiDouB1C_P
     @test @inferred(get_signal_id(BeiDouB2aI)) === :BeiDouB2aI
@@ -128,12 +128,12 @@ end
 @testset "get_constellation_id" begin
     @test @inferred(get_constellation_id(GPSL1CA())) === :GPS
     @test @inferred(get_constellation_id(GPSL5I())) === :GPS
-    @test @inferred(get_constellation_id(GalileoE1B())) === :Galileo
+    @test @inferred(get_constellation_id(GalileoE1B_CBOC())) === :Galileo
     @test @inferred(get_constellation_id(GalileoE5aI())) === :Galileo
     @test @inferred(get_constellation_id(BeiDouB1I())) === :BeiDou
     @test @inferred(get_constellation_id(BeiDouB2aQ())) === :BeiDou
     # Type-level dispatch works without constructing the signal.
-    @test @inferred(get_constellation_id(GalileoE1B)) === :Galileo
+    @test @inferred(get_constellation_id(GalileoE1B_CBOC)) === :Galileo
     # Coarser than the signal id: two bands of one constellation share an id.
     @test get_constellation_id(GPSL1CA()) === get_constellation_id(GPSL5I())
 end
@@ -141,24 +141,24 @@ end
 @testset "get_constellation_name" begin
     @test @inferred(get_constellation_name(GPSL1CA())) == "GPS"
     @test @inferred(get_constellation_name(GPSL5I())) == "GPS"
-    @test @inferred(get_constellation_name(GalileoE1B())) == "Galileo"
+    @test @inferred(get_constellation_name(GalileoE1B_CBOC())) == "Galileo"
     @test @inferred(get_constellation_name(GalileoE5aI())) == "Galileo"
     @test @inferred(get_constellation_name(BeiDouB1I())) == "BeiDou"
     @test @inferred(get_constellation_name(BeiDouB1C_D())) == "BeiDou"
     # Type-level dispatch works without constructing the signal.
-    @test @inferred(get_constellation_name(GalileoE1B)) == "Galileo"
+    @test @inferred(get_constellation_name(GalileoE1B_CBOC)) == "Galileo"
     # Coarser than the signal name: two bands of one constellation share a name.
     @test get_constellation_name(GPSL1CA()) == get_constellation_name(GPSL5I())
     # Display counterpart of the id — same granularity, String instead of Symbol.
     @test get_constellation_name(GPSL1CA()) == String(get_constellation_id(GPSL1CA()))
-    @test get_constellation_name(GalileoE1B()) == String(get_constellation_id(GalileoE1B()))
+    @test get_constellation_name(GalileoE1B_CBOC()) == String(get_constellation_id(GalileoE1B_CBOC()))
 
     # Every constellation states its name as a literal rather than taking the derived
     # fallback: that is what makes the call allocation-free and constant-foldable, and
     # value equality alone cannot tell the two apart ("GPS" == String(:GPS)). So check
     # the method dispatch actually reaches, not just what it returns.
     derived = which(get_constellation_name, Tuple{Type{AbstractGNSSSignal}})
-    for S in (GPSL1CA, GPSL5I, GalileoE1B, GalileoE5aQ, BeiDouB1I, BeiDouB1C_P)
+    for S in (GPSL1CA, GPSL5I, GalileoE1B_CBOC, GalileoE5aQ, BeiDouB1I, BeiDouB1C_P)
         @test which(get_constellation_name, Tuple{Type{S}}) !== derived
         # Stated, but still exactly String() of the id — the two cannot drift apart.
         @test get_constellation_name(S) == String(get_constellation_id(S))
@@ -214,7 +214,7 @@ end
 
     # L1 C/A and E1B have NoSecondaryCode; secondary_value returns `true`
     # (so multiplication is a true no-op preserving eltype).
-    for sig in (GPSL1CA(), GalileoE1B())
+    for sig in (GPSL1CA(), GalileoE1B_CBOC())
         sec = get_secondary_code(sig)
         @test sec isa NoSecondaryCode
         @test GNSSSignals.secondary_code_length(sec) == 1
@@ -231,11 +231,11 @@ end
     show(io, GPSL5I())
     @test occursin("GPSL5I", String(take!(io)))
 
-    show(io, GalileoE1B())
-    @test occursin("GalileoE1B", String(take!(io)))
+    show(io, GalileoE1B_CBOC())
+    @test occursin("GalileoE1B_CBOC", String(take!(io)))
 
-    show(io, GalileoE1C())
-    @test occursin("GalileoE1C", String(take!(io)))
+    show(io, GalileoE1C_CBOC())
+    @test occursin("GalileoE1C_CBOC", String(take!(io)))
 end
 
 @testset "Broadcasting GNSS signals" begin
@@ -250,11 +250,11 @@ end
 @testset "get_modulation type dispatch" begin
     @test get_modulation(GPSL1CA) == GNSSSignals.BPSK()
     @test get_modulation(GPSL5I) == GNSSSignals.BPSK()
-    @test get_modulation(GalileoE1B) isa GNSSSignals.CBOC
-    @test get_modulation(GalileoE1C) isa GNSSSignals.CBOC
+    @test get_modulation(GalileoE1B_CBOC) isa GNSSSignals.CBOC
+    @test get_modulation(GalileoE1C_CBOC) isa GNSSSignals.CBOC
     # E1C is CBOC(−): the BOC(6,1) component is in anti-phase.
-    @test get_modulation(GalileoE1C).boc2_sign == -1
-    @test get_modulation(GalileoE1B).boc2_sign == 1
+    @test get_modulation(GalileoE1C_CBOC).boc2_sign == -1
+    @test get_modulation(GalileoE1B_CBOC).boc2_sign == 1
 
     # The instance form forwards to the type form, so the modulation the code LUT
     # is baked from (type form, via build_signal_lut) can never drift from the one
@@ -345,7 +345,7 @@ end
 end
 
 @testset "Code generation $(get_signal_name(signal))" for signal in
-                                                          [GalileoE1B(), GalileoE1C(), GPSL1CA(), GPSL5I()]
+                                                          [GalileoE1B_CBOC(), GalileoE1C_CBOC(), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
     fc = get_chip_rate(signal)
@@ -357,8 +357,8 @@ end
 end
 
 @testset "Small code generation $(get_signal_name(signal))" for signal in [
-    GalileoE1B(),
-    GalileoE1C(),
+    GalileoE1B_CBOC(),
+    GalileoE1C_CBOC(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -369,8 +369,8 @@ end
 
 # Very short outputs (chip-boundary / tail edge cases) must still match the oracle.
 @testset "Very short / odd-length code generation $(get_signal_name(signal))" for signal in [
-    GalileoE1B(),
-    GalileoE1C(),
+    GalileoE1B_CBOC(),
+    GalileoE1C_CBOC(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -389,7 +389,7 @@ end
 # permute regime, so `_check_gen_code` asserts equality against the independent oracle.
 @testset "Fractional phase + non-baked secondary $(get_signal_name(signal))" for signal in [
     GPSL5I(),
-    GPSL1C_P(),
+    GPSL1C_P_TMBOC(),
 ]
     fc = get_chip_rate(signal)
     P = signal.lut.subchip_factor
@@ -436,8 +436,8 @@ end
 end
 
 @testset "Code generation $(get_signal_name(signal)) with different index" for signal in [
-    GalileoE1B(),
-    GalileoE1C(),
+    GalileoE1B_CBOC(),
+    GalileoE1C_CBOC(),
     GPSL1CA(),
     GPSL5I(),
 ]
@@ -475,7 +475,7 @@ end
 # tail-only-buffer regression test, against the embedded Int8 gen_code!.)
 @testset "secondary applied for small / tail-only buffers" begin
     # GPS L1C-P (PerPRNSecondaryCode) at the chip-aligned 12.276 MHz rate.
-    let signal = GPSL1C_P(), prn = 2, primary = get_code_length(signal),
+    let signal = GPSL1C_P_TMBOC(), prn = 2, primary = get_code_length(signal),
         sr = 12.276e6Hz, cf = 1023e3Hz, sec = GNSSSignals.get_secondary_code(signal)
         s0 = GNSSSignals.secondary_value(sec, prn, 0)
         for sec_offset in 0:5, N in (12, 24, 100)
@@ -502,10 +502,10 @@ end
 # values must sum to 1. The BOC(1,1) stand-ins are not listed — they duplicate a
 # component rather than adding one — and are covered by their own testset below.
 const POWER_COMPOSITES = (
-    (GPSL1C_D, GPSL1C_P),         # GPS L1: L1C, a 75/25 split
+    (GPSL1C_D, GPSL1C_P_TMBOC),         # GPS L1: L1C, a 75/25 split
     (GPSL2CM, GPSL2CL),           # GPS L2: L2C
     (GPSL5I, GPSL5Q),             # GPS L5
-    (GalileoE1B, GalileoE1C),     # Galileo E1
+    (GalileoE1B_CBOC, GalileoE1C_CBOC),     # Galileo E1
     (GalileoE5aI, GalileoE5aQ),   # Galileo E5a
     (GalileoE5bI, GalileoE5bQ),   # Galileo E5b
     (GalileoE6B, GalileoE6C),     # Galileo E6
@@ -519,10 +519,10 @@ const POWER_COMPOSITES = (
 # The constellation-and-band group each signal belongs to. Every signal the package
 # defines appears exactly once, which the exhaustiveness check below enforces.
 const POWER_GROUPS = (
-    (GPSL1CA, GPSL1C_D, GPSL1C_P),
+    (GPSL1CA, GPSL1C_D, GPSL1C_P, GPSL1C_P_TMBOC),
     (GPSL2CM, GPSL2CL),
     (GPSL5I, GPSL5Q),
-    (GalileoE1B, GalileoE1C, GalileoE1B_BOC11, GalileoE1C_BOC11),
+    (GalileoE1B_CBOC, GalileoE1C_CBOC, GalileoE1B, GalileoE1C),
     (GalileoE5aI, GalileoE5aQ, GalileoE5aQP),
     (GalileoE5bI, GalileoE5bQ),
     (GalileoE6B, GalileoE6C),
@@ -539,8 +539,8 @@ const POWER_GROUPS = (
 @testset "get_relative_power" begin
     # The value is the ICD power split itself, stated as a plain constant rather
     # than derived, so each is exact.
-    @test get_relative_power(GalileoE1B()) === 0.5
-    @test get_relative_power(GalileoE1C()) === 0.5
+    @test get_relative_power(GalileoE1B_CBOC()) === 0.5
+    @test get_relative_power(GalileoE1C_CBOC()) === 0.5
     @test get_relative_power(GalileoE5aI()) === 0.5
     @test get_relative_power(GalileoE5aQ()) === 0.5
     @test get_relative_power(GalileoE6B()) === 0.5   # OS SIS ICD §2.3.2, 50/50
@@ -551,7 +551,7 @@ const POWER_GROUPS = (
     @test get_relative_power(GPSL5Q()) === 0.5
     @test get_relative_power(GPSL2CM()) === 0.5     # CM/CL time-multiplexed
     @test get_relative_power(GPSL2CL()) === 0.5
-    @test get_relative_power(GPSL1C_P()) === 0.75   # 75/25 split (IS-GPS-800J)
+    @test get_relative_power(GPSL1C_P_TMBOC()) === 0.75   # 75/25 split (IS-GPS-800J)
     @test get_relative_power(GPSL1C_D()) === 0.25
     @test get_relative_power(BeiDouB2aI()) === 0.5  # ICD states data:pilot 1:1
     @test get_relative_power(BeiDouB2aQ()) === 0.5
@@ -568,11 +568,11 @@ const POWER_GROUPS = (
     for composite in POWER_COMPOSITES
         @test sum(get_relative_power, composite) === 1.0
     end
-    @test get_relative_power(GPSL1C_P()) / get_relative_power(GPSL1C_D()) === 3.0
+    @test get_relative_power(GPSL1C_P_TMBOC()) / get_relative_power(GPSL1C_D()) === 3.0
     @test get_relative_power(BeiDouB1C_P()) / get_relative_power(BeiDouB1C_D()) === 3.0
 
     # The B1C value is the ICD component split, not the 29/44 the BOC(1,1) pilot
-    # replica captures — same convention as the Galileo _BOC11 stand-ins below.
+    # replica captures — same convention as the Galileo BOC(1,1) replicas below.
     @test get_relative_power(BeiDouB1C_P()) != 29 / 44
 
     @testset "GPS L1: C/A against L1C" begin
@@ -582,13 +582,13 @@ const POWER_GROUPS = (
         # −158.5 dBW against L1C's −157.0 is 1.5 dB below it.
         @test get_relative_power(GPSL1CA()) ≈ 10.0^(-1.5 / 10)
         # Hence the pilot sits 0.25 dB above C/A and the data component 4.52 below.
-        @test 10log10(get_relative_power(GPSL1C_P()) / get_relative_power(GPSL1CA())) ≈
+        @test 10log10(get_relative_power(GPSL1C_P_TMBOC()) / get_relative_power(GPSL1CA())) ≈
               0.2506126339170007
         @test 10log10(get_relative_power(GPSL1C_D()) / get_relative_power(GPSL1CA())) ≈
               -4.520599913279623
 
         # Normalised weights over the three signals a joint L1 loop would combine.
-        w = map(get_relative_power, (GPSL1CA(), GPSL1C_D(), GPSL1C_P()))
+        w = map(get_relative_power, (GPSL1CA(), GPSL1C_D(), GPSL1C_P_TMBOC()))
         @test sum(w ./ sum(w)) ≈ 1.0
         @test collect(w ./ sum(w)) ≈
               [0.4145013213281905, 0.14637466966795237, 0.4391240090038571]
@@ -611,14 +611,15 @@ const POWER_GROUPS = (
 
     @testset "BOC(1,1) approximations inherit their parent" begin
         # The approximation changes the correlation shape, not the power split.
-        @test get_relative_power(GalileoE1B_BOC11()) === get_relative_power(GalileoE1B())
-        @test get_relative_power(GalileoE1C_BOC11()) === get_relative_power(GalileoE1C())
+        @test get_relative_power(GPSL1C_P()) === get_relative_power(GPSL1C_P_TMBOC())
+        @test get_relative_power(GalileoE1B()) === get_relative_power(GalileoE1B_CBOC())
+        @test get_relative_power(GalileoE1C()) === get_relative_power(GalileoE1C_CBOC())
     end
 
     @testset "scale is per constellation and band" begin
         # A value only means something next to another from the same group. Pinning
         # the grouping keeps that visible: it is why no cross-band ratio is offered,
-        # and why GalileoE1B and GPSL5I both being 0.5 says nothing about their
+        # and why GalileoE1B_CBOC and GPSL5I both being 0.5 says nothing about their
         # relative strength.
         for group in POWER_GROUPS
             # A signal listed in the wrong group fails here rather than silently
@@ -683,7 +684,7 @@ end
 @testset "get_code_blocks_per_bit" begin
     expected = Dict(
         GPSL1CA => 20, GPSL1C_D => 1, GPSL2CM => 1, GPSL5I => 10,
-        GalileoE1B => 1, GalileoE1B_BOC11 => 1, GalileoE5aI => 20, GalileoE5bI => 4,
+        GalileoE1B_CBOC => 1, GalileoE1B => 1, GalileoE5aI => 20, GalileoE5bI => 4,
         GalileoE6B => 1, BeiDouB1I => 20, BeiDouB3I => 20, BeiDouB2bI => 1,
         BeiDouB2aI => 5, BeiDouB1C_D => 1,
     )

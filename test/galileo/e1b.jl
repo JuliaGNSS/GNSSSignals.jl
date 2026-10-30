@@ -1,5 +1,5 @@
-@testset "Galileo E1B" begin
-    galileo_e1b = GalileoE1B()
+@testset "Galileo E1B CBOC" begin
+    galileo_e1b = GalileoE1B_CBOC()
     @test @inferred(get_band(galileo_e1b)) == L1()
     @test @inferred(get_center_frequency(galileo_e1b)) == 1.57542e9Hz
     @test @inferred(get_code_length(galileo_e1b)) == 4092
@@ -14,7 +14,7 @@
           1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(get_bit_rate(galileo_e1b)) == 250Hz
     @test @inferred(get_chip_rate(galileo_e1b)) == 1023e3Hz
-    @test get_signal_name(galileo_e1b) == "Galileo E1B"
+    @test get_signal_name(galileo_e1b) == "Galileo E1B (CBOC)"
 
     @test get_code_spectrum(galileo_e1b, 0) == 0.0
 
@@ -31,7 +31,7 @@
     @test get_code_type(galileo_e1b) === Float32
 end
 @testset "Galileo E1B BOC(1,1) approximation" begin
-    e1b = GalileoE1B_BOC11()
+    e1b = GalileoE1B()
     @test @inferred(get_band(e1b)) == L1()
     @test @inferred(get_center_frequency(e1b)) == 1.57542e9Hz
     @test @inferred(get_code_length(e1b)) == 4092
@@ -48,11 +48,12 @@ end
     # the BOC(6,1) component).
     @test get_code_type(e1b) === Int8
 
-    # Primary code matches the full GalileoE1B's primary code chip-for-chip.
-    @test get_codes(e1b) == get_codes(GalileoE1B())
+    # Primary code matches the full GalileoE1B_CBOC's primary code chip-for-chip.
+    @test get_relative_power(e1b) == get_relative_power(GalileoE1B_CBOC())
+    @test get_codes(e1b) == get_codes(GalileoE1B_CBOC())
 end
 
-@testset "GalileoE1B_BOC11 sample-stream matches PocketSDR reference (PRN 1, 12.276 MHz)" begin
+@testset "GalileoE1B sample-stream matches PocketSDR reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against the BOC(1,1) replica produced by
     # PocketSDR's `gen_code_E1B` at 2 samples per chip, upsampled by 6×
     # to 12 samples per chip. At `sampling_frequency = 12 × code_frequency`
@@ -76,6 +77,6 @@ end
 
     # The embedded LUT emits Int8 ±1; byte-exact to the ±1 fixture at this chip-aligned rate.
     buf = zeros(Int8, n_samples)
-    gen_code!(buf, GalileoE1B_BOC11(), 1, sampling_rate, code_rate, 0.0, 0)
+    gen_code!(buf, GalileoE1B(), 1, sampling_rate, code_rate, 0.0, 0)
     @test buf == ref
 end

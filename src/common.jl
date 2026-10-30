@@ -33,13 +33,11 @@ This is the finest identity level: the same PRN measured on two bands of one
 constellation (e.g. GPS L1 and L5) has two distinct signal ids.
 
 Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
-to pin a different symbol. The BOC(1,1) approximation types keep their own ids
-(`:GalileoE1B_BOC11`), distinct from the signals they approximate. The id therefore
-identifies a replica variant as well as its broadcast component: tracking can keep
-separate calibration and noise models for each approximation. A decoder can map
-these variants back to the same broadcast component because they carry the same
-navigation symbols. Works on an instance or a type and folds to a
-compile-time constant.
+to pin a different symbol. Each replica variant has its own id: the BOC(1,1)
+default `:GalileoE1B` and the full `:GalileoE1B_CBOC` are distinct. Tracking can
+therefore keep separate calibration and noise models for each replica. A decoder
+can map them to the same broadcast component, since they carry the same transmitted navigation
+symbols. Works on an instance or a type and folds to a compile-time constant.
 
 Distinct from [`get_signal_name`](@ref), which is a human-readable display
 string (`"GPS L1 C/A"`), and finer than [`get_band_id`](@ref) (`:L1`).
@@ -65,7 +63,7 @@ This is the display counterpart to [`get_signal_id`](@ref), at the same (finest)
 identity level: it names one specific transmission, component included. The
 spelling follows the ICD rather than the type name, so it is meant for log lines,
 plot labels and user-facing output — prefer the `Symbol` id when branching or
-keying. The BOC(1,1) approximation types name themselves as such (`"Galileo E1B
+keying. The default BOC(1,1) replicas name themselves as such (`"Galileo E1B
 (BOC(1,1) approximation)"`), so a label never silently claims to be the exact
 signal.
 

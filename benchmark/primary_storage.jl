@@ -41,6 +41,6 @@ function compare_storage(S, fs)
     end
 end
 
-for (S, fs) in ((GPSL1CA, 5e6Hz), (GPSL2CL, 2.5e6Hz), (GalileoE1B, 15e6Hz))
+for (S, fs) in ((GPSL1CA, 5e6Hz), (GPSL2CL, 2.5e6Hz), (GalileoE1B_CBOC, 15e6Hz))
     compare_storage(S, fs)
 end

@@ -10,14 +10,15 @@ GNSSSignals.AbstractBeiDouSignal
 GNSSSignals.GPSL1CA
 GNSSSignals.GPSL1C_D
 GNSSSignals.GPSL1C_P
+GNSSSignals.GPSL1C_P_TMBOC
 GNSSSignals.GPSL2CM
 GNSSSignals.GPSL2CL
 GNSSSignals.GPSL5I
 GNSSSignals.GPSL5Q
 GNSSSignals.GalileoE1B
-GNSSSignals.GalileoE1B_BOC11
+GNSSSignals.GalileoE1B_CBOC
 GNSSSignals.GalileoE1C
-GNSSSignals.GalileoE1C_BOC11
+GNSSSignals.GalileoE1C_CBOC
 GNSSSignals.GalileoE5aI
 GNSSSignals.GalileoE5aQ
 GNSSSignals.GalileoE5aQP

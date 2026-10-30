@@ -1,5 +1,5 @@
 @testset "Modulation" begin
-    galileo_e1b = GalileoE1B()
+    galileo_e1b = GalileoE1B_CBOC()
     boc_sin = GNSSSignals.BOCsin(1, 1)
     @test GNSSSignals.get_subcarrier_code(boc_sin, 0.0) == 1.0
     @test GNSSSignals.get_subcarrier_code(boc_sin, 0.25) == 1.0
@@ -138,7 +138,7 @@ end
     # `get_code_spectrum`: power-weighted mix of the BOC component
     # spectra, where the weights are the fractions of chips using each.
     @testset "get_code_spectrum" begin
-        sig = GPSL1C_P()
+        sig = GPSL1C_P_TMBOC()
 
         # Sanity: the PSD is real and non-negative at sampled frequencies.
         for f in (-2e6, -100e3, 100e3, 2e6)
@@ -225,7 +225,7 @@ end
     # Test spectrum through get_code_spectrum interface
     gpsl1ca = GPSL1CA()
     gpsl5i = GPSL5I()
-    gal_e1b = GalileoE1B()
+    gal_e1b = GalileoE1B_CBOC()
 
     # BPSK signals should have peak at DC
     @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_chip_rate(gpsl1ca)

@@ -168,7 +168,7 @@ subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
 ```julia-repl
 julia> get_code_type(GPSL1CA())
 Int8
-julia> get_code_type(GalileoE1B())
+julia> get_code_type(GalileoE1B_CBOC())
 Float32
 ```
 """
@@ -201,7 +201,7 @@ the two can never disagree.
 ```julia-repl
 julia> get_modulation(GPSL1CA())
 BPSK()
-julia> get_modulation(GalileoE1B())
+julia> get_modulation(GalileoE1B_CBOC())
 CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
 ```
 """
@@ -257,7 +257,7 @@ Returns the spreading code value (including subcarrier modulation for BOC signal
 at the specified code phase. The phase is automatically wrapped to the code length.
 
 # Arguments
-- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
+- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B_CBOC()`)
 - `phase`: Code phase in chips
 - `prn`: PRN number of the satellite
 

@@ -688,10 +688,10 @@ end
     # SIMD width of the host's default backend (what the engine uses internally).
     Wdef = _width(CL.default_backend())
 
-    # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P
+    # Baked-secondary signals only. Excluded: GPSL5I (non-baked NH10) and GPSL1C_P_TMBOC
     # (its 1800-chip overlay is too long to bake) — both yield a residual secondary
     # and are covered by the error testset below.
-    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11(), GalileoE1B()]   # E1B: CBOC, multi-level long table
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B(), GalileoE1B_CBOC()]   # E1B: CBOC, multi-level long table
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
@@ -845,7 +845,7 @@ end
 # exercised one level down via `CL.code_replica` / `_codelut_modulation`.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "Galileo E1B CBOC (LUT integer approximation)" begin
-    signal = GalileoE1B(); prn = 1
+    signal = GalileoE1B_CBOC(); prn = 1
     fc = get_chip_rate(signal)
     P = 12                                            # 2·lcm(1,6)
     Lp = get_code_length(signal)
@@ -967,7 +967,7 @@ end
 # byte-for-byte, cross-validating the one-shot and continuing copies of each unified routine.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "unified DDA + secondary period-walk (issue #110 characterization)" begin
-    sigs = [GPSL5I(), GPSL5Q(), GalileoE5aI(), GalileoE1C()]   # all carry a non-baked secondary
+    sigs = [GPSL5I(), GPSL5Q(), GalileoE5aI(), GalileoE1C_CBOC()]   # all carry a non-baked secondary
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
@@ -1025,7 +1025,7 @@ end
         out
     end
 
-    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1) — all baked
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B()]   # BPSK, BOC(1,1), BOC(1,1) — all baked
     for signal in sigs
         prn = 1
         fc = get_chip_rate(signal)
@@ -1171,7 +1171,7 @@ end
 # resampled chip from the baked column, byte-exactly in the permute regime.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "fractional start-phase parity vs scalar oracle" begin
-    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B_BOC11()]   # BPSK, BOC(1,1), BOC(1,1)
+    sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B()]   # BPSK, BOC(1,1), BOC(1,1)
     for signal in sigs
         prn = 1
         fc = get_chip_rate(signal)
