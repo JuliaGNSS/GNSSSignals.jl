@@ -173,8 +173,8 @@ function code_replica(primary::AbstractVector{<:Integer}, modulation::Modulation
                       secondary::AbstractVector{<:Integer} = Int8[1], max_bake::Integer = typemax(Int16))
     Lp = length(primary); P = subchip_factor(modulation); Ls = length(secondary)
     _whole_subcarrier_periods(modulation, Lp) || throw(ArgumentError(
-        "a $Lp-chip code spans no whole number of periods of the $modulation subcarrier, so a " *
-        "one-period code lookup table cannot repeat it"))
+        "the primary code must span a whole number of subcarrier periods " *
+        "to repeat in a one-period code lookup table"))
     bake_sec = Ls * Lp * P <= max_bake
     nperiods = bake_sec ? Ls : 1
     expanded = Vector{Int8}(undef, nperiods * Lp * P)

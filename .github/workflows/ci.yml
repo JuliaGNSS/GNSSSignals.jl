@@ -88,3 +88,24 @@ jobs:
           disable_search: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  trim:
+    name: Trimmed signal construction (juliac --trim=safe)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Install JuliaC
+        run: julia --color=yes -e 'using Pkg; Pkg.Registry.add("General"); Pkg.Apps.add("JuliaC")'
+      - name: Instantiate the trim project
+        run: julia --color=yes --project=test/trim -e 'using Pkg; Pkg.instantiate()'
+      - name: Build trimmed executable
+        run: >
+          ~/.julia/bin/juliac --output-exe gnsssignals_trim
+          --bundle "$RUNNER_TEMP/gnsssignals-trim" --trim=safe --experimental
+          --project test/trim test/trim/main.jl
+      - name: Run trimmed executable
+        run: '"$RUNNER_TEMP/gnsssignals-trim/bin/gnsssignals_trim"'
