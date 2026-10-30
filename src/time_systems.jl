@@ -370,12 +370,12 @@ the result carries to week + 1 and 0.0 seconds. The rounding error is at most
 half a `Float64` step near the end of the week (about 6e-11 seconds).
 Works on a time system, signal, or signal type.
 """
-# The week and time of week of `epoch` on `time_system`'s count, the inverse of
-# `get_week_start_epoch`. The whole weeks come off in integer seconds before any floating
-# point, so the time of week is good to half a `Float64` step at up to 604800 s, about
-# 6e-11 s (an absolute count of about 1.2e9 s would leave only 0.2 µs). The origins fall
-# on whole TAI seconds, so the fraction is the epoch's own.
 function get_week_and_time_of_week(time_system::TimeSystem, epoch::TAITime)
+    # The week and time of week of `epoch` on `time_system`'s count, the inverse of
+    # `get_week_start_epoch`. The whole weeks come off in integer seconds before any floating
+    # point, so the time of week is good to half a `Float64` step at up to 604800 s, about
+    # 6e-11 s (an absolute count of about 1.2e9 s would leave only 0.2 µs). The origins fall
+    # on whole TAI seconds, so the fraction is the epoch's own.
     origin = get_week_start_epoch(time_system, 0)
     elapsed_seconds = epoch.second - origin.second
     week = fld(elapsed_seconds, SECONDS_PER_WEEK)

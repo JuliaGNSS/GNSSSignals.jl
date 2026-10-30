@@ -103,7 +103,8 @@ Concrete subtypes include [`GPSL1CA`](@ref), [`GPSL5I`](@ref), and
 
 Signals that share an RF carrier expose the same [`Band`](@ref) via
 [`get_band`](@ref); this is what lets a receiver share a carrier NCO
-between them (e.g. GPS L1 C/A and Galileo E1B both on 1575.42 MHz).
+between components of one satellite (e.g. GPS L1 C/A and GPS L1C). Signals
+from different satellites still have independent carrier phases and Dopplers.
 """
 abstract type AbstractGNSSSignal{C} end
 

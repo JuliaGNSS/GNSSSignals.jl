@@ -34,7 +34,8 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 | BeiDou B1C data | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | — | BOC(1,1) |
 | BeiDou B1C pilot | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | 1800-chip | BOC(1,1) approximation of QMBOC(6,1,4/33) (pilot) |
 
-Signals on the same RF carrier report the same [`Band`](@ref GNSSSignals.Band): GPS L1 C/A, GPS L1C, Galileo E1 and BeiDou B1C are all [`L1`](@ref GNSSSignals.L1) at 1575.42 MHz, so a receiver can drive them with the same carrier NCO. Likewise every signal reports the [`TimeSystem`](@ref GNSSSignals.TimeSystem) of its constellation — [`GPST`](@ref GNSSSignals.GPST), [`GST`](@ref GNSSSignals.GST) or [`BDT`](@ref GNSSSignals.BDT) — the level at which signals share a receiver clock bias.
+Signals on the same RF carrier report the same [`Band`](@ref GNSSSignals.Band): GPS L1 C/A, GPS L1C, Galileo E1 and BeiDou B1C are all [`L1`](@ref GNSSSignals.L1) at 1575.42 MHz, which groups their nominal frequencies. Components of the same satellite on one
+band can share a carrier NCO; different satellites have independent phases and Dopplers. Likewise every signal reports the [`TimeSystem`](@ref GNSSSignals.TimeSystem) of its constellation — [`GPST`](@ref GNSSSignals.GPST), [`GST`](@ref GNSSSignals.GST) or [`BDT`](@ref GNSSSignals.BDT) — the level at which signals share a receiver clock bias.
 
 ### Modulation Types
 
