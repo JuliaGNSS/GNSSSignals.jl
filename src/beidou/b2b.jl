@@ -7,7 +7,7 @@ BeiDou B2b_I signal — the open-service data signal on the BeiDou B2b frequency
 (1207.14 MHz, reported as the [`E5b`](@ref) band, which Galileo E5b shares).
 
 BPSK(10)-modulated 10230-chip ranging code at 10.23 Mcps (a Gold code); the
-B-CNAV3 navigation message is tracked at 1000 bit/s. B2b_I has no secondary code (its
+B-CNAV3 navigation message is transmitted at 1000 symbols/s. B2b_I has no secondary code (its
 1 ms primary period already matches the bit period).
 
 The ranging code is the modulo-2 sum of two 13-stage shift registers
@@ -99,15 +99,15 @@ Get the nominal chip rate of BeiDou B2b_I (10.23 MHz).
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B2b_I.
+Get the transmitted symbol rate of BeiDou B2b_I.
 
-The B-CNAV3 message is tracked at 1000 bit/s: the symbol rate of its rate-½ code, the
+The B-CNAV3 message is transmitted at 1000 symbols/s: the symbol rate of its rate-½ code, the
 message carrying 500 bit/s.
 
 # Returns
 - `Frequency`: 1000 Hz
 """
-@inline get_bit_rate(::Type{<:BeiDouB2bI}) = 1000Hz
+@inline get_symbol_rate(::Type{<:BeiDouB2bI}) = 1000Hz
 
 """
 $(SIGNATURES)

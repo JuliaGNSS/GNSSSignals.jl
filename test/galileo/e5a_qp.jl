@@ -5,7 +5,7 @@
     @test @inferred(get_code_length(e5a_qp)) == 330
     @test @inferred(get_secondary_code_length(e5a_qp)) == 1
     @test @inferred(get_secondary_code(e5a_qp)) isa NoSecondaryCode
-    @test @inferred(get_bit_rate(e5a_qp)) == 0Hz      # no user data
+    @test @inferred(get_symbol_rate(e5a_qp)) == 0Hz      # no user data
     @test @inferred(get_chip_rate(e5a_qp)) == 5115e3Hz
     @test get_signal_name(e5a_qp) == "Galileo E5a-QP"
     @test @inferred(get_modulation(e5a_qp)) == GNSSSignals.BPSK()

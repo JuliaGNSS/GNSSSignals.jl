@@ -8,7 +8,7 @@
     @test @inferred(get_code(gpsl1ca, 0, 1)) == 1
     @test @inferred(get_code(gpsl1ca, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl1ca, 0.0, 1)) == 1
-    @test @inferred(get_bit_rate(gpsl1ca)) == 50Hz
+    @test @inferred(get_symbol_rate(gpsl1ca)) == 50Hz
     @test @inferred(get_chip_rate(gpsl1ca)) == 1023e3Hz
     @test get_code.(gpsl1ca, 0:1022, 1) == L1_SAT1_CODE
     @test @inferred(get_modulation(gpsl1ca)) == GNSSSignals.BPSK()

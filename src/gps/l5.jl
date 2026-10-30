@@ -28,7 +28,7 @@ GPS L5-Q signal (the quadrature, dataless pilot component of GPS L5).
 BPSK-modulated 10230-chip primary code at 10.23 Mcps on the L5 band
 (1176.45 MHz), with a 20-bit Neuman-Hofman secondary code (NH20) overlaying
 the pilot channel for a 20 ms tiered code. As the pilot component it carries
-no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
+no navigation data, so [`get_symbol_rate`](@ref) returns 0 Hz.
 
 The Q5 primary code uses the same XA/XB shift-register generator as
 [`GPSL5I`](@ref) (IS-GPS-705 §3.2.1.1, `gen_l5_code`) and differs only in the
@@ -40,7 +40,7 @@ supported, matching [`GPSL5I`](@ref).
 gpsl5q = GPSL5Q()
 get_code_length(gpsl5q)            # 10230
 get_secondary_code_length(gpsl5q)  # 20
-get_bit_rate(gpsl5q)               # 0 Hz
+get_symbol_rate(gpsl5q)               # 0 Hz
 get_band(gpsl5q)                   # L5()
 ```
 """
@@ -281,9 +281,9 @@ julia> get_chip_rate(GPSL5I())
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of GPS L5-I.
+Get the transmitted symbol rate of GPS L5-I.
 
-The L5-I channel carries the CNAV navigation message, tracked at 100 bit/s: the symbol
+The L5-I channel carries the CNAV navigation message, transmitted at 100 symbols/s: the symbol
 rate of its rate-½ convolutional code, the message carrying 50 bit/s.
 
 # Returns
@@ -291,29 +291,29 @@ rate of its rate-½ convolutional code, the message carrying 50 bit/s.
 
 # Examples
 ```julia-repl
-julia> get_bit_rate(GPSL5I())
+julia> get_symbol_rate(GPSL5I())
 100 Hz
 ```
 """
-@inline get_bit_rate(::Type{<:GPSL5I}) = 100Hz
+@inline get_symbol_rate(::Type{<:GPSL5I}) = 100Hz
 
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of GPS L5-Q.
+Get the transmitted symbol rate of GPS L5-Q.
 
-The Q5 component is a dataless pilot, so its bit rate is 0 Hz.
+The Q5 component is a dataless pilot, so its symbol rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 
 # Examples
 ```julia-repl
-julia> get_bit_rate(GPSL5Q())
+julia> get_symbol_rate(GPSL5Q())
 0 Hz
 ```
 """
-@inline get_bit_rate(::Type{<:GPSL5Q}) = 0Hz
+@inline get_symbol_rate(::Type{<:GPSL5Q}) = 0Hz
 
 """
 $(SIGNATURES)

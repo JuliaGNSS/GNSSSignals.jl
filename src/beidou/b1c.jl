@@ -6,7 +6,7 @@ include("b1c_constants.jl")
 BeiDou B1C data signal (the data-carrying component of B1C).
 
 Sine-phased BOC(1,1)-modulated 10230-chip primary code at 1.023 Mcps on the L1
-band (1575.42 MHz), carrying the B-CNAV1 navigation message, tracked at 100 bit/s.
+band (1575.42 MHz), carrying the B-CNAV1 navigation message, transmitted at 100 symbols/s.
 The data component has no secondary code (BDS-SIS-ICD-B1C-1.0 Table 5-1).
 
 The primary code is a truncated Weil code (BDS-SIS-ICD-B1C-1.0 §5.2.1): a
@@ -71,7 +71,7 @@ PRNs 1-63.
 b1c_p = BeiDouB1C_P()
 get_code_length(b1c_p)            # 10230
 get_secondary_code_length(b1c_p)  # 1800
-get_bit_rate(b1c_p)               # 0 Hz
+get_symbol_rate(b1c_p)               # 0 Hz
 ```
 """
 struct BeiDouB1C_P{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractBeiDouSignal{C}
@@ -185,23 +185,23 @@ Get the nominal chip rate of BeiDou B1C (1.023 MHz, both components).
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B1C data: 100 bit/s, the symbol rate of the
+Get the transmitted symbol rate of BeiDou B1C data: 100 bit/s, the symbol rate of the
 LDPC-coded B-CNAV1 message.
 
 # Returns
 - `Frequency`: 100 Hz
 """
-@inline get_bit_rate(::Type{<:BeiDouB1C_D}) = 100Hz
+@inline get_symbol_rate(::Type{<:BeiDouB1C_D}) = 100Hz
 
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B1C pilot: 0 Hz, as it is dataless.
+Get the transmitted symbol rate of BeiDou B1C pilot: 0 Hz, as it is dataless.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_bit_rate(::Type{<:BeiDouB1C_P}) = 0Hz
+@inline get_symbol_rate(::Type{<:BeiDouB1C_P}) = 0Hz
 
 """
 $(SIGNATURES)

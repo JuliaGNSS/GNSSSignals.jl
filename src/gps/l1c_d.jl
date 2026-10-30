@@ -7,9 +7,9 @@ Block III/IIIF satellites alongside the legacy L1 C/A).
 BOC(1,1) sine-phased on the L1 band (1575.42 MHz). 10230-chip primary
 code at 1.023 Mcps, derived from a Weil-code construction with a 7-chip
 expansion inserted at a PRN-specific point (IS-GPS-800G §3.2.2.1.1).
-No secondary code; carries the CNAV-2 message, tracked at 100 bit/s: the
+No secondary code; carries the CNAV-2 message, transmitted at 100 symbols/s: the
 symbol rate of its rate-½ LDPC code, the message carrying 50 bit/s
-(IS-GPS-800G §3.2.3; see [`get_bit_rate`](@ref)).
+(IS-GPS-800G §3.2.3; see [`get_symbol_rate`](@ref)).
 
 # Example
 ```julia
@@ -81,13 +81,12 @@ Get the nominal chip rate of GPS L1C-D.
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of GPS L1C-D.
+Get the transmitted symbol rate of GPS L1C-D.
 
 Per IS-GPS-800G §3.2.3, each 18 s frame of 9 + 1200 + 548 + 24 + 24 - 5 = 1800
-LDPC-encoded symbols is broadcast at 100 per second. That symbol rate is the bit rate as
-tracked; the CNAV-2 message itself carries 50 bit/s (rate-½ LDPC).
+LDPC-encoded symbols is broadcast at 100 per second. The CNAV-2 message itself carries 50 bit/s (rate-½ LDPC).
 
 # Returns
 - `Frequency`: 100 Hz
 """
-@inline get_bit_rate(::Type{<:GPSL1C_D}) = 100Hz
+@inline get_symbol_rate(::Type{<:GPSL1C_D}) = 100Hz

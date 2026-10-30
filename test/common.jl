@@ -661,25 +661,25 @@ const POWER_GROUPS = (
     end
 end
 
-@testset "get_bit_rate of a satellite" begin
+@testset "get_symbol_rate of a satellite" begin
     # The GEO PRNs, named once: the ones whose NH20 column is the all-ones no-op.
     geo = [prn for prn in 1:63 if GNSSSignals.is_beidou_geo(prn)]
     @test geo == [1:5; 59:63]
     @test geo == [prn for prn in 1:63 if all(==(1), get_secondary_code(BeiDouB1I()).codes[:, prn])]
     for S in (BeiDouB1I, BeiDouB3I), prn in 1:63
-        @test @inferred(get_bit_rate(S, prn)) ==
+        @test @inferred(get_symbol_rate(S, prn)) ==
               (GNSSSignals.is_beidou_geo(prn) ? 500Hz : 50Hz)
-        @test get_bit_rate(S(), prn) == get_bit_rate(S, prn)
+        @test get_symbol_rate(S(), prn) == get_symbol_rate(S, prn)
     end
     # Every other signal broadcasts at its signal's rate on every satellite.
     for S in ALL_SIGNALS
         S in (BeiDouB1I, BeiDouB3I) && continue
-        @test @inferred(get_bit_rate(S, 1)) == get_bit_rate(S)
-        @test get_bit_rate(S(), 1) == get_bit_rate(S)
+        @test @inferred(get_symbol_rate(S, 1)) == get_symbol_rate(S)
+        @test get_symbol_rate(S(), 1) == get_symbol_rate(S)
     end
 end
 
-@testset "get_code_blocks_per_bit" begin
+@testset "get_code_periods_per_symbol" begin
     expected = Dict(
         GPSL1CA => 20, GPSL1C_D => 1, GPSL2CM => 1, GPSL5I => 10,
         GalileoE1B => 1, GalileoE1B_BOC11 => 1, GalileoE5aI => 20, GalileoE5bI => 4,
@@ -687,44 +687,44 @@ end
         BeiDouB2aI => 5, BeiDouB1C_D => 1,
     )
     for S in ALL_SIGNALS
-        if iszero(get_bit_rate(S))
+        if iszero(get_symbol_rate(S))
             # A pilot broadcasts no bits: 0, as its bit rate is 0 Hz.
-            @test @inferred(get_code_blocks_per_bit(S)) === 0
-            @test get_code_blocks_per_bit(S(), 1) === 0
+            @test @inferred(get_code_periods_per_symbol(S)) === 0
+            @test get_code_periods_per_symbol(S(), 1) === 0
         else
-            blocks = @inferred get_code_blocks_per_bit(S)
+            blocks = @inferred get_code_periods_per_symbol(S)
             @test blocks == expected[S]
             # The symbol period, in code periods, recovered from the rates themselves.
             @test blocks * get_code_length(S) / get_chip_rate(S) ≈
-                  1 / get_bit_rate(S)
-            @test get_code_blocks_per_bit(S()) == blocks
+                  1 / get_symbol_rate(S)
+            @test get_code_periods_per_symbol(S()) == blocks
         end
     end
     # A BeiDou GEO satellite's D2 symbols span two 1 ms blocks, its D1 ones twenty.
     for S in (BeiDouB1I, BeiDouB3I)
-        @test @inferred(get_code_blocks_per_bit(S, 6)) == 20
-        @test get_code_blocks_per_bit(S, 1) == 2
-        @test get_code_blocks_per_bit(S(), 60) == 2
+        @test @inferred(get_code_periods_per_symbol(S, 6)) == 20
+        @test get_code_periods_per_symbol(S, 1) == 2
+        @test get_code_periods_per_symbol(S(), 60) == 2
     end
-    @test get_code_blocks_per_bit(GPSL1CA, 3) == 20
+    @test get_code_periods_per_symbol(GPSL1CA, 3) == 20
 end
 
 # Test-only signals stating their rates as floats, as a BOC(m, n) with a non-integer n does.
 struct FloatRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
 GNSSSignals.get_chip_rate(::Type{FloatRateSignal}) = 1.023e6Hz
-GNSSSignals.get_bit_rate(::Type{FloatRateSignal}) = 50.0Hz
+GNSSSignals.get_symbol_rate(::Type{FloatRateSignal}) = 50.0Hz
 GNSSSignals.get_code_length(::Type{FloatRateSignal}) = 1023
 GNSSSignals.get_signal_name(::Type{FloatRateSignal}) = "float-rate test signal"
 struct FractionalRateSignal <: GNSSSignals.AbstractGNSSSignal{Matrix{Int16}} end
 GNSSSignals.get_chip_rate(::Type{FractionalRateSignal}) = 1_023_000.5Hz
-GNSSSignals.get_bit_rate(::Type{FractionalRateSignal}) = 50Hz
+GNSSSignals.get_symbol_rate(::Type{FractionalRateSignal}) = 50Hz
 GNSSSignals.get_code_length(::Type{FractionalRateSignal}) = 1023
 GNSSSignals.get_signal_name(::Type{FractionalRateSignal}) = "fractional-rate test signal"
 
-@testset "get_code_blocks_per_bit counts in integer Hz" begin
+@testset "get_code_periods_per_symbol counts in integer Hz" begin
     # Rates stated as floats are converted to whole Hz before dividing.
-    @test @inferred(get_code_blocks_per_bit(FloatRateSignal)) === 20
+    @test @inferred(get_code_periods_per_symbol(FloatRateSignal)) === 20
     # A rate that is no whole number of Hz cannot be counted in integer Hz.
-    @test_throws ArgumentError get_code_blocks_per_bit(FractionalRateSignal)
+    @test_throws ArgumentError get_code_periods_per_symbol(FractionalRateSignal)
 end
 

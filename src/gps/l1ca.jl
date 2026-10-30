@@ -112,7 +112,7 @@ end
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of GPS L1 C/A.
+Get the transmitted symbol rate of GPS L1 C/A.
 
 The LNAV message is broadcast uncoded at 50 bit/s.
 
@@ -121,10 +121,10 @@ The LNAV message is broadcast uncoded at 50 bit/s.
 
 # Examples
 ```julia-repl
-julia> get_bit_rate(GPSL1CA())
+julia> get_symbol_rate(GPSL1CA())
 50 Hz
 ```
 """
-@inline function get_bit_rate(::Type{<:GPSL1CA})
+@inline function get_symbol_rate(::Type{<:GPSL1CA})
     50Hz
 end

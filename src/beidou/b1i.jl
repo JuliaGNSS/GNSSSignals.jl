@@ -115,17 +115,17 @@ Get the nominal chip rate of BeiDou B1I (2.046 MHz).
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B1I.
+Get the transmitted symbol rate of BeiDou B1I.
 
 The D1 navigation message (MEO/IGSO satellites) is broadcast at 50 bit/s; the GEO
 satellites broadcast the D2 message at 500 bit/s. This returns the D1 rate;
-`get_bit_rate(signal, prn)` returns the rate of a given satellite.
+`get_symbol_rate(signal, prn)` returns the rate of a given satellite.
 
 # Returns
 - `Frequency`: 50 Hz
 """
-@inline get_bit_rate(::Type{<:BeiDouB1I}) = 50Hz
-@inline get_bit_rate(::Type{<:BeiDouB1I}, prn::Integer) =
+@inline get_symbol_rate(::Type{<:BeiDouB1I}) = 50Hz
+@inline get_symbol_rate(::Type{<:BeiDouB1I}, prn::Integer) =
     is_beidou_geo(prn) ? 500Hz : 50Hz
 
 """

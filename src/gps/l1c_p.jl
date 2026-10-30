@@ -89,11 +89,11 @@ Get the nominal chip rate of GPS L1C-P.
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of GPS L1C-P.
+Get the transmitted symbol rate of GPS L1C-P.
 
-The pilot component is dataless, so its bit rate is 0 Hz.
+The pilot component is dataless, so its symbol rate is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
 """
-@inline get_bit_rate(::Type{<:GPSL1C_P}) = 0Hz
+@inline get_symbol_rate(::Type{<:GPSL1C_P}) = 0Hz

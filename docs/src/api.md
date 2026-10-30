@@ -42,8 +42,8 @@ GNSSSignals.get_secondary_code_length
 GNSSSignals.get_secondary_code
 GNSSSignals.get_center_frequency
 GNSSSignals.get_chip_rate
-GNSSSignals.get_bit_rate
-GNSSSignals.get_code_blocks_per_bit
+GNSSSignals.get_symbol_rate
+GNSSSignals.get_code_periods_per_symbol
 GNSSSignals.is_beidou_geo
 GNSSSignals.get_chip_rate_to_center_frequency_ratio
 GNSSSignals.get_modulation

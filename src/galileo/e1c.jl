@@ -12,7 +12,7 @@ shares the L1 carrier at 1575.42 MHz, so [`get_band`](@ref) returns
 E1C differs from [`GalileoE1B`](@ref) in three ways:
 
 - It is a *pilot*: it carries no navigation data
-  ([`get_bit_rate`](@ref) returns `0 Hz`).
+  ([`get_symbol_rate`](@ref) returns `0 Hz`).
 - It has a 25-chip secondary code (CS25), where E1B has none.
 - Its CBOC uses the BOC(6,1) component in *anti-phase* — CBOC(−) — per the
   Galileo OS SIS ICD §2.3.3, where E1-B uses CBOC(+).
@@ -128,7 +128,7 @@ end
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of Galileo E1C.
+Get the transmitted symbol rate of Galileo E1C.
 
 E1C is the pilot (dataless) component, so this is `0 Hz`.
 
@@ -137,11 +137,11 @@ E1C is the pilot (dataless) component, so this is `0 Hz`.
 
 # Examples
 ```julia-repl
-julia> get_bit_rate(GalileoE1C())
+julia> get_symbol_rate(GalileoE1C())
 0 Hz
 ```
 """
-@inline function get_bit_rate(::Type{<:GalileoE1C})
+@inline function get_symbol_rate(::Type{<:GalileoE1C})
     0Hz
 end
 
@@ -165,7 +165,7 @@ Use this type when you want the lower sampling-rate variant; use
 `gen_code!` emits `Int8` — only the single-chip [`get_code`](@ref)
 accessor returns `Float32` (`get_code_type` is `Int16` here).
 
-Primary code, code length, secondary code (CS25), chip rate, bit rate, and
+Primary code, code length, secondary code (CS25), chip rate, symbol rate, and
 band are identical to [`GalileoE1C`](@ref); only `get_modulation` differs.
 
 # Example
@@ -198,4 +198,4 @@ end
 @inline get_code_length(::Type{<:GalileoE1C_BOC11}) = 4092
 @inline get_secondary_code(::GalileoE1C_BOC11) = galileo_e1c_secondary_code()
 @inline get_chip_rate(::Type{<:GalileoE1C_BOC11}) = 1023_000Hz
-@inline get_bit_rate(::Type{<:GalileoE1C_BOC11}) = 0Hz
+@inline get_symbol_rate(::Type{<:GalileoE1C_BOC11}) = 0Hz

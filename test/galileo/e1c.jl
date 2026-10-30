@@ -8,7 +8,7 @@
     @test @inferred(get_code_length(galileo_e1c)) == 4092
     @test @inferred(get_secondary_code_length(galileo_e1c)) == 25
     @test @inferred(get_secondary_code(galileo_e1c)) isa SharedSecondaryCode{25}
-    @test @inferred(get_bit_rate(galileo_e1c)) == 0Hz
+    @test @inferred(get_symbol_rate(galileo_e1c)) == 0Hz
     @test @inferred(get_chip_rate(galileo_e1c)) == 1023e3Hz
     @test get_signal_name(galileo_e1c) == "Galileo E1C"
 
@@ -91,7 +91,7 @@ end
     @test @inferred(get_code_length(e1c)) == 4092
     @test @inferred(get_secondary_code(e1c)) isa SharedSecondaryCode{25}
     @test @inferred(get_secondary_code_length(e1c)) == 25
-    @test @inferred(get_bit_rate(e1c)) == 0Hz
+    @test @inferred(get_symbol_rate(e1c)) == 0Hz
     @test @inferred(get_chip_rate(e1c)) == 1023e3Hz
     @test get_signal_name(e1c) == "Galileo E1C (BOC(1,1) approximation)"
 

@@ -84,7 +84,7 @@ end
     @test @inferred(get_code(gpsl2cm, 0, 1)) == 1
     @test @inferred(get_code(gpsl2cm, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl2cm, 0.0, 1)) == 1
-    @test @inferred(get_bit_rate(gpsl2cm)) == 50Hz
+    @test @inferred(get_symbol_rate(gpsl2cm)) == 50Hz
     @test @inferred(get_chip_rate(gpsl2cm)) == 511.5e3Hz
     @test get_signal_name(gpsl2cm) == "GPS L2CM"
     @test @inferred(get_modulation(gpsl2cm)) == GNSSSignals.BPSK()
@@ -112,7 +112,7 @@ end
     @test @inferred(get_code(gpsl2cl, 0, 1)) == 1
     @test @inferred(get_code(gpsl2cl, 0.0, 1)) == 1
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl2cl, 0.0, 1)) == 1
-    @test @inferred(get_bit_rate(gpsl2cl)) == 0Hz   # dataless pilot
+    @test @inferred(get_symbol_rate(gpsl2cl)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(gpsl2cl)) == 511.5e3Hz
     @test get_signal_name(gpsl2cl) == "GPS L2CL"
     @test @inferred(get_modulation(gpsl2cl)) == GNSSSignals.BPSK()
