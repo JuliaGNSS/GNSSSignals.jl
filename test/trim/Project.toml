@@ -1,0 +1,8 @@
+[deps]
+GNSSSignals = "52c80523-2a4e-5c38-8979-05588f836870"
+
+[sources]
+GNSSSignals = {path = "../.."}
+
+[compat]
+julia = "1.12"
