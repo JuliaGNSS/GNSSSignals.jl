@@ -15,3 +15,6 @@ benchmark/Manifest.toml
 
 # Local scratch directory for development probes.
 claude_scratch/
+
+# JuliaC construction smoke-test environment.
+test/trim/Manifest.toml
