@@ -24,6 +24,17 @@ function get_codes(signal::AbstractGNSSSignal)
 end
 
 """
+    get_supported_prns(signal)
+
+Return the PRN numbers for which primary codes are implemented. `signal` may be
+an instance or a signal type; the type form does not construct code tables.
+This describes the static code definitions, not the satellites currently in
+service. For example, BeiDou B2b-I has codes for PRNs 6–58 even though its
+storage has 63 columns.
+"""
+@inline get_supported_prns(signal::AbstractGNSSSignal) = get_supported_prns(typeof(signal))
+
+"""
 $(SIGNATURES)
 
 Get the `Symbol` identifier of a GNSS signal — the machine-readable per-signal
@@ -463,13 +474,20 @@ end
 """
 $(SIGNATURES)
 
-Get the length of the secondary code.
+Get the secondary-code length in primary code periods. Works on a signal instance
+or, for built-in signals, its type without constructing the code tables.
 
-# Arguments
-- `signal`: A GNSS signal instance
+With no PRN, this describes the stored secondary-code structure: `1` when no
+secondary code is stored. With a PRN, it describes that satellite's effective
+overlay. BeiDou B1I and B3I store NH20, but GEO PRNs 1–5 and 59–63
+carry no overlay and return `1`; the other supported PRNs return `20`.
 
-# Returns
-- `Int`: Secondary code length (1 if no secondary code)
+    get_secondary_code_length(signal)
+    get_secondary_code_length(signal, prn)
+
+This query does not validate the PRN; [`get_supported_prns`](@ref) gives the
+supported code domain. It does not change how [`get_secondary_code`](@ref)
+stores the shared or per-PRN chips.
 
 # Examples
 ```julia-repl
@@ -482,3 +500,8 @@ julia> get_secondary_code_length(GPSL5I())
 @inline function get_secondary_code_length(signal::AbstractGNSSSignal)
     secondary_code_length(get_secondary_code(signal))
 end
+
+@inline get_secondary_code_length(signal::AbstractGNSSSignal, ::Integer) =
+    get_secondary_code_length(signal)
+@inline get_secondary_code_length(::Type{S}, ::Integer) where {S<:AbstractGNSSSignal} =
+    get_secondary_code_length(S)

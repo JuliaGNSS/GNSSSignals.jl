@@ -157,3 +157,6 @@ end
 @inline get_secondary_code(::GalileoE1B) = NoSecondaryCode()
 @inline get_chip_rate(::Type{<:GalileoE1B}) = 1023_000Hz
 @inline get_bit_rate(::Type{<:GalileoE1B}) = 250Hz
+
+@inline get_supported_prns(::Type{<:Union{GalileoE1B,GalileoE1B_CBOC}}) = 1:50
+@inline get_secondary_code_length(::Type{<:Union{GalileoE1B,GalileoE1B_CBOC}}) = 1

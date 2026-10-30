@@ -123,3 +123,10 @@ NH20 on the MEO/IGSO PRNs (6-58, D1) for a 20 ms tiered code, and no overlay
 - [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 overlay matrix
 """
 @inline get_secondary_code(s::BeiDouB3I) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB3I}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB3I}) = 20
+@inline get_secondary_code_length(::Type{<:BeiDouB3I}, prn::Integer) =
+    is_beidou_geo(prn) ? 1 : 20
+@inline get_secondary_code_length(signal::BeiDouB3I, prn::Integer) =
+    get_secondary_code_length(typeof(signal), prn)

@@ -39,6 +39,7 @@ GNSSSignals.BeiDouB1C_P
 
 ```@docs
 GNSSSignals.get_code_length
+GNSSSignals.get_supported_prns
 GNSSSignals.get_secondary_code_length
 GNSSSignals.get_secondary_code
 GNSSSignals.get_center_frequency

@@ -730,3 +730,40 @@ GNSSSignals.get_signal_name(::Type{FractionalRateSignal}) = "fractional-rate tes
     @test_throws ArgumentError get_code_blocks_per_bit(FractionalRateSignal)
 end
 
+@testset "Supported PRNs and effective secondary codes" begin
+    expected_ranges = (
+        1:37 => (GPSL1CA, GPSL5I, GPSL5Q),
+        1:63 => (GPSL1C_D, GPSL1C_P, GPSL1C_P_TMBOC, GPSL2CM, GPSL2CL,
+                 BeiDouB1I, BeiDouB3I, BeiDouB2aI, BeiDouB2aQ, BeiDouB1C_D, BeiDouB1C_P),
+        1:50 => (GalileoE1B, GalileoE1B_CBOC, GalileoE1C, GalileoE1C_CBOC,
+                 GalileoE5aI, GalileoE5aQ, GalileoE5bI, GalileoE5bQ, GalileoE6B, GalileoE6C),
+        1:40 => (GalileoE5aQP,),
+        6:58 => (BeiDouB2bI,),
+    )
+    @test Set(Iterators.flatten(last(pair) for pair in expected_ranges)) == Set(ALL_SIGNALS)
+    for (expected, signal_types) in expected_ranges, S in signal_types
+        @test @inferred(get_supported_prns(S)) == expected
+        signal = S()
+        @test @inferred(get_supported_prns(signal)) == expected
+        @test last(expected) <= size(get_codes(signal), 2)
+        @test @inferred(get_secondary_code_length(S)) == get_secondary_code_length(signal)
+        for prn in (first(expected), last(expected))
+            @test @inferred(get_secondary_code_length(S, prn)) == get_secondary_code_length(signal, prn)
+        end
+    end
+
+    b2b_codes = get_codes(BeiDouB2bI())
+    @test [prn for prn in axes(b2b_codes, 2) if any(!iszero, @view b2b_codes[:, prn])] == collect(6:58)
+
+    for S in (BeiDouB1I, BeiDouB3I)
+        signal = S()
+        @test get_secondary_code_length(signal) == get_secondary_code_length(S) == 20
+        for prn in get_supported_prns(S)
+            geo = prn in 1:5 || prn in 59:63
+            @test @inferred(get_secondary_code_length(S, prn)) == (geo ? 1 : 20)
+            @test get_secondary_code_length(signal, prn) == (geo ? 1 : 20)
+            @test get_bit_rate(S, prn) == (geo ? 500Hz : 50Hz)
+            @test get_code_blocks_per_bit(S, prn) == (geo ? 2 : 20)
+        end
+    end
+end

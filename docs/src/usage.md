@@ -439,3 +439,16 @@ when it is known so that BeiDou D1 and D2 use the satellite's own rate.
    `st = GNSSSignals.code_state(eng)`, and call
    `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
    is allocation-free, and threading the returned state continues the stream seamlessly.
+
+## PRN support and secondary-code periods
+
+[`get_supported_prns`](@ref) reports the implemented code definitions independently of storage size and the active satellite roster. Both signal instances and types are accepted; type queries do not construct code tables.
+
+```julia
+get_supported_prns(BeiDouB2bI)              # 6:58 (storage has 63 columns)
+get_secondary_code_length(BeiDouB1I)       # 20 (stored NH20 sequence)
+get_secondary_code_length(BeiDouB1I, 1)    # 1 (GEO, no overlay)
+get_secondary_code_length(BeiDouB1I, 6)    # 20 (D1)
+```
+
+The PRN-aware secondary-code length gives the effective overlay period. BeiDou B1I and B3I GEO PRNs 1–5 and 59–63 have no overlay; other supported PRNs use NH20. The query without a PRN describes the stored secondary code.

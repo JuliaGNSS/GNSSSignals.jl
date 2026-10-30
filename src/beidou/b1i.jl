@@ -143,3 +143,10 @@ GEO PRN's tiered code equals its primary code).
 - [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 overlay matrix
 """
 @inline get_secondary_code(s::BeiDouB1I) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:BeiDouB1I}) = 1:63
+@inline get_secondary_code_length(::Type{<:BeiDouB1I}) = 20
+@inline get_secondary_code_length(::Type{<:BeiDouB1I}, prn::Integer) =
+    is_beidou_geo(prn) ? 1 : 20
+@inline get_secondary_code_length(signal::BeiDouB1I, prn::Integer) =
+    get_secondary_code_length(typeof(signal), prn)

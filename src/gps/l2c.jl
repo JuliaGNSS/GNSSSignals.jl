@@ -243,3 +243,6 @@ The L2 CL-code is a dataless pilot, so its bit rate is 0 Hz.
 - `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL2CL}) = 0Hz
+
+@inline get_supported_prns(::Type{<:Union{GPSL2CM,GPSL2CL}}) = 1:63
+@inline get_secondary_code_length(::Type{<:Union{GPSL2CM,GPSL2CL}}) = 1

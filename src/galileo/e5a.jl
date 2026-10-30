@@ -209,3 +209,9 @@ SIS ICD §3.5), giving a 100 ms tiered code.
 - [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 CS100 matrix
 """
 @inline get_secondary_code(s::GalileoE5aQ) = PerPRNSecondaryCode(s.secondary_codes)
+
+@inline get_supported_prns(::Type{<:GalileoE5aI}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE5aI}) = 20
+
+@inline get_supported_prns(::Type{<:GalileoE5aQ}) = 1:50
+@inline get_secondary_code_length(::Type{<:GalileoE5aQ}) = 100

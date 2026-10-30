@@ -128,3 +128,6 @@ julia> get_bit_rate(GPSL1CA())
 @inline function get_bit_rate(::Type{<:GPSL1CA})
     50Hz
 end
+
+@inline get_supported_prns(::Type{<:GPSL1CA}) = 1:37
+@inline get_secondary_code_length(::Type{<:GPSL1CA}) = 1

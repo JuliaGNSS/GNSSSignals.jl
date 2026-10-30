@@ -377,3 +377,9 @@ end
         Int8(1), Int8(-1), Int8(-1), Int8(-1), Int8(1),
     )
 end
+
+@inline get_supported_prns(::Type{<:GPSL5I}) = 1:37
+@inline get_secondary_code_length(::Type{<:GPSL5I}) = 10
+
+@inline get_supported_prns(::Type{<:GPSL5Q}) = 1:37
+@inline get_secondary_code_length(::Type{<:GPSL5Q}) = 20
