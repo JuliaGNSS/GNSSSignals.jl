@@ -8,7 +8,7 @@
     @test @inferred(get_bit_rate(b2a_i)) == 200Hz
     @test @inferred(get_chip_rate(b2a_i)) == 10_230_000Hz
     @test get_signal_name(b2a_i) == "BeiDou B2a data"
-    @test @inferred(get_modulation(b2a_i)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(b2a_i)) == GNSSSignals.BPSK()
     @test get_code_type(b2a_i) === Int16
     # Shares the L5 band, so the code/center ratio is the same 1/115 as GPS L5.
     @test get_chip_rate_to_center_frequency_ratio(b2a_i) ≈ 1 / 115
@@ -25,7 +25,7 @@ end
     @test @inferred(get_bit_rate(b2a_q)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(b2a_q)) == 10_230_000Hz
     @test get_signal_name(b2a_q) == "BeiDou B2a pilot"
-    @test @inferred(get_modulation(b2a_q)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(b2a_q)) == GNSSSignals.BPSK()
 end
 
 @testset "BeiDou B2a primary codes match the ICD" begin

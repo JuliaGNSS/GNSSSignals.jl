@@ -75,7 +75,7 @@ end
     @test @inferred(get_chip_rate(gpsl5i)) == 10230e3Hz
     @test get_code.(gpsl5i, 0:10229, 1) == L5_SAT1_CODE
     @test get_signal_name(gpsl5i) == "GPS L5-I"
-    @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.BPSK()
     @test get_code_type(gpsl5i) === Int16
 
     @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_chip_rate(gpsl5i)
@@ -123,7 +123,7 @@ end
     @test @inferred(get_bit_rate(gpsl5q)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(gpsl5q)) == 10230e3Hz
     @test get_signal_name(gpsl5q) == "GPS L5-Q"
-    @test @inferred(get_modulation(gpsl5q)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(gpsl5q)) == GNSSSignals.BPSK()
     @test get_code_type(gpsl5q) === Int16
 
     # BPSK(10) spectrum and code/center-frequency ratio (Q5 shares the L5

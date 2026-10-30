@@ -174,7 +174,7 @@ const _OUTPUT_CHECKSUMS_BEFORE_BOC_MN = Dict(
 
 # The spectrum as it was wired before: the BOC components took `n · f_c` and `m · f_c` from the
 # signal's chip rate f_c, which is the same for n = 1.
-_spectrum_before(::GNSSSignals.LOC, signal, f) = GNSSSignals.get_code_spectrum_BPSK(get_chip_rate(signal), f)
+_spectrum_before(::GNSSSignals.BPSK, signal, f) = GNSSSignals.get_code_spectrum_BPSK(get_chip_rate(signal), f)
 _spectrum_before(m::BOCsin, signal, f) =
     GNSSSignals.get_code_spectrum_BOCsin(m.n * get_chip_rate(signal), m.m * get_chip_rate(signal), f)
 _spectrum_before(m::BOCcos, signal, f) =

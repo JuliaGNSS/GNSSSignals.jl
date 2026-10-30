@@ -10,7 +10,7 @@ giving a 20 ms tiered code.
 
 Galileo E5a is one half of the wideband E5 AltBOC(15,10) signal, but like
 GNSS-SDR and PocketSDR this implementation models the E5a sideband on its own
-as BPSK(10) (modulation [`LOC`](@ref)) — the form used when E5a is acquired
+as BPSK(10) (modulation [`BPSK`](@ref)) — the form used when E5a is acquired
 and tracked as an independent signal.
 
 The primary code is generated from two 14-stage shift registers per the
@@ -42,7 +42,7 @@ Galileo E5a-Q signal (the quadrature, dataless pilot component of Galileo E5a).
 [`get_bit_rate`](@ref) returns 0 Hz.
 
 Like [`GalileoE5aI`](@ref) the E5a sideband is modelled on its own as
-BPSK(10) ([`LOC`](@ref)). The primary code uses the same generator as E5a-I
+BPSK(10) ([`BPSK`](@ref)). The primary code uses the same generator as E5a-I
 (base register 1 feedback `40503₈`, base register 2 feedback `50661₈`) with
 the E5a-Q per-SVID register-2 start values `E5A_Q_X2_INIT`. PRNs 1-50 are
 supported.
@@ -121,8 +121,8 @@ end
 
 # Shared interface (band, modulation, frequencies).
 
-get_modulation(::Type{<:GalileoE5aI}) = LOC()
-get_modulation(::Type{<:GalileoE5aQ}) = LOC()
+get_modulation(::Type{<:GalileoE5aI}) = BPSK()
+get_modulation(::Type{<:GalileoE5aQ}) = BPSK()
 
 # E5aI data rides the in-phase carrier (default 0); E5aQ pilot is in quadrature.
 @inline get_carrier_phase_offset(::Type{<:GalileoE5aQ}) = 0.25

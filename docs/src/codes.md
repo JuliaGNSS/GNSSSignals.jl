@@ -14,7 +14,7 @@ GNSSSignals.get_secondary_code_chip
 
 ```@docs
 GNSSSignals.Modulation
-GNSSSignals.LOC
+GNSSSignals.BPSK
 GNSSSignals.BOC
 GNSSSignals.BOCsin
 GNSSSignals.BOCcos

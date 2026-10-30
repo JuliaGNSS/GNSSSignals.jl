@@ -87,7 +87,7 @@ end
     @test @inferred(get_bit_rate(gpsl2cm)) == 50Hz
     @test @inferred(get_chip_rate(gpsl2cm)) == 511.5e3Hz
     @test get_signal_name(gpsl2cm) == "GPS L2CM"
-    @test @inferred(get_modulation(gpsl2cm)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(gpsl2cm)) == GNSSSignals.BPSK()
     @test get_code_type(gpsl2cm) === Int16
 
     # BPSK(0.5115) spectrum: nulls at multiples of the chip rate, unit integral.
@@ -115,7 +115,7 @@ end
     @test @inferred(get_bit_rate(gpsl2cl)) == 0Hz   # dataless pilot
     @test @inferred(get_chip_rate(gpsl2cl)) == 511.5e3Hz
     @test get_signal_name(gpsl2cl) == "GPS L2CL"
-    @test @inferred(get_modulation(gpsl2cl)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(gpsl2cl)) == GNSSSignals.BPSK()
     @test get_code_type(gpsl2cl) === Int16
 
     @test get_code_spectrum(gpsl2cl, 0) ≈ 1.0Hz / get_chip_rate(gpsl2cl)

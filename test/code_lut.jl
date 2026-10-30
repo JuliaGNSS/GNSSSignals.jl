@@ -391,7 +391,7 @@ const _BACKENDS = (CL.Portable(),
         end
         rng = MersenneTwister(2)
         Lp = 31
-        mods = [CL.LOC(), CL.BOC(1), CL.BOC(2), CL.TMBOC(3, [k in (0, 4, 6) for k in 0:10]),
+        mods = [CL.BPSK(), CL.BOC(1), CL.BOC(2), CL.TMBOC(3, [k in (0, 4, 6) for k in 0:10]),
                 CL.CBOC(1, 6, Int8(19), Int8(6))]   # multi-level table (values ±25, ±13)
         for modulation in mods, Ls in (1, 4), (a, b) in ((1, 1), (3, 5), (7, 9))
             P = CL.subchip_factor(modulation)

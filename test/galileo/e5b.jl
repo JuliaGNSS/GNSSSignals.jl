@@ -8,7 +8,7 @@
     @test @inferred(get_bit_rate(e5b_i)) == 250Hz     # I/NAV, as tracked
     @test @inferred(get_chip_rate(e5b_i)) == 10230e3Hz
     @test get_signal_name(e5b_i) == "Galileo E5b-I"
-    @test @inferred(get_modulation(e5b_i)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(e5b_i)) == GNSSSignals.BPSK()
     @test get_code_type(e5b_i) === Int16
 
     # PRN 1's first chip is 0 -> -1 (ICD Table 19 lists C5BEA1 for code 1, i.e.
@@ -33,7 +33,7 @@ end
     @test @inferred(get_bit_rate(e5b_q)) == 0Hz       # dataless pilot
     @test @inferred(get_chip_rate(e5b_q)) == 10230e3Hz
     @test get_signal_name(e5b_q) == "Galileo E5b-Q"
-    @test @inferred(get_modulation(e5b_q)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(e5b_q)) == GNSSSignals.BPSK()
     @test get_code_type(e5b_q) === Int16
 
     @test get_code_spectrum(e5b_q, 0) ≈ 1.0Hz / get_chip_rate(e5b_q)

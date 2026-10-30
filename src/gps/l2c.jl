@@ -128,8 +128,8 @@ end
 
 # Shared interface (modulation, band, frequencies).
 
-get_modulation(::Type{<:GPSL2CM}) = LOC()
-get_modulation(::Type{<:GPSL2CL}) = LOC()
+get_modulation(::Type{<:GPSL2CM}) = BPSK()
+get_modulation(::Type{<:GPSL2CL}) = BPSK()
 
 # IS-GPS-200N Table 3-III designates the L2 P(Y) carrier as the band's in-phase (I)
 # reference; the civil L2C component (the CM/CL chip-by-chip multiplex) rides the
