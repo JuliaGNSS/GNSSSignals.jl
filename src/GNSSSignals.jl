@@ -250,5 +250,6 @@ include("beidou/b1c.jl")
 include("tai_time.jl")
 include("time_systems.jl")
 include("common.jl")
+include("spectrum.jl")
 include("code_lut.jl")
 end

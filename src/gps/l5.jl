@@ -228,8 +228,8 @@ end
 
 # Shared interface (modulation, band, frequencies).
 
-get_modulation(::Type{<:GPSL5I}) = LOC()
-get_modulation(::Type{<:GPSL5Q}) = LOC()
+get_modulation(::Type{<:GPSL5I}) = BPSK()
+get_modulation(::Type{<:GPSL5Q}) = BPSK()
 
 # L5I data rides the in-phase carrier (default 0); L5Q pilot is in quadrature.
 # IS-GPS-705 §3.3.1.5: the Q5 carrier LAGS the I5 carrier by 90° (cos(ωt−π/2) = sin(ωt)),

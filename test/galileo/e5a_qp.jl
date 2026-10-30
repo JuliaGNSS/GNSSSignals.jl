@@ -8,7 +8,7 @@
     @test @inferred(get_bit_rate(e5a_qp)) == 0Hz      # no user data
     @test @inferred(get_chip_rate(e5a_qp)) == 5115e3Hz
     @test get_signal_name(e5a_qp) == "Galileo E5a-QP"
-    @test @inferred(get_modulation(e5a_qp)) == GNSSSignals.LOC()
+    @test @inferred(get_modulation(e5a_qp)) == GNSSSignals.BPSK()
     @test get_code_type(e5a_qp) === Int16
     # 40 codes, not 50: the ICD caps the family at 40 for cross-correlation.
     @test size(get_codes(e5a_qp)) == (330, 40)

@@ -3,7 +3,7 @@
 
 Galileo E6-B signal (the data-carrying component of Galileo E6).
 
-BPSK(5) modulation ([`LOC`](@ref)) of a 5115-chip memory code at 5.115 Mcps on
+BPSK(5) modulation ([`BPSK`](@ref)) of a 5115-chip memory code at 5.115 Mcps on
 the E6 band at 1278.75 MHz, so [`get_band`](@ref) returns [`E6`](@ref). The
 1 ms primary code carries no secondary code
 ([`get_secondary_code`](@ref) is [`NoSecondaryCode`](@ref)), and the component
@@ -33,7 +33,7 @@ end
 
 Galileo E6-C signal (the dataless pilot component of Galileo E6).
 
-BPSK(5) modulation ([`LOC`](@ref)) of a 5115-chip memory code at 5.115 Mcps on
+BPSK(5) modulation ([`BPSK`](@ref)) of a 5115-chip memory code at 5.115 Mcps on
 the E6 band (1278.75 MHz, reported as [`E6`](@ref)), overlaid with the 100-chip
 per-SVID CS100 secondary code for a 100 ms tiered code. As the pilot component
 it carries no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
@@ -103,8 +103,8 @@ end
 
 # Shared interface (band, modulation, frequencies).
 
-get_modulation(::Type{<:GalileoE6B}) = LOC()
-get_modulation(::Type{<:GalileoE6C}) = LOC()
+get_modulation(::Type{<:GalileoE6B}) = BPSK()
+get_modulation(::Type{<:GalileoE6C}) = BPSK()
 
 @inline get_band(::Type{<:GalileoE6B}) = E6()
 @inline get_band(::Type{<:GalileoE6C}) = E6()
