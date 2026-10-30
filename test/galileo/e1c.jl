@@ -10,7 +10,8 @@
     @test @inferred(get_secondary_code(galileo_e1c)) isa SharedSecondaryCode{25}
     @test @inferred(get_bit_rate(galileo_e1c)) == 0Hz
     @test @inferred(get_chip_rate(galileo_e1c)) == 1023e3Hz
-    @test get_signal_name(galileo_e1c) == "Galileo E1C (CBOC)"
+    @test get_signal_name(galileo_e1c) == "Galileo E1C"
+    @test get_replica_name(galileo_e1c) == "Galileo E1C (CBOC)"
 
     # E1C uses CBOC(−): the BOC(6,1) component is in anti-phase, so at chip
     # boundaries (subcarrier BOC(1,1) = BOC(6,1) = +1) the subcarrier value
@@ -93,7 +94,8 @@ end
     @test @inferred(get_secondary_code_length(e1c)) == 25
     @test @inferred(get_bit_rate(e1c)) == 0Hz
     @test @inferred(get_chip_rate(e1c)) == 1023e3Hz
-    @test get_signal_name(e1c) == "Galileo E1C (BOC(1,1) approximation)"
+    @test get_signal_name(e1c) == "Galileo E1C"
+    @test get_replica_name(e1c) == "Galileo E1C (BOC(1,1) approximation)"
 
     # Modulation differs from full E1C's CBOC.
     @test @inferred(get_modulation(e1c)) == BOCsin(1, 1)

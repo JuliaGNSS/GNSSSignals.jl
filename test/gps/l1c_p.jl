@@ -7,11 +7,13 @@
     @test @inferred(get_secondary_code(sig)) isa PerPRNSecondaryCode
     @test @inferred(get_bit_rate(sig)) == 0Hz   # pilot is dataless
     @test @inferred(get_chip_rate(sig)) == 1023e3Hz
-    @test get_signal_name(sig) == "GPS L1C-P (BOC(1,1) approximation)"
+    @test get_signal_name(sig) == "GPS L1C-P"
+    @test get_replica_name(sig) == "GPS L1C-P (BOC(1,1) approximation)"
     @test @inferred(get_modulation(sig)) == GNSSSignals.BOCsin(1, 1)
 
     full = GPSL1C_P_TMBOC()
-    @test get_signal_name(full) == "GPS L1C-P (TMBOC)"
+    @test get_signal_name(full) == "GPS L1C-P"
+    @test get_replica_name(full) == "GPS L1C-P (TMBOC)"
     @test full.codes == sig.codes
     @test full.overlay_codes == sig.overlay_codes
     @test get_secondary_code_length(full) == get_secondary_code_length(sig)

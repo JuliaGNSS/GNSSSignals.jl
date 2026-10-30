@@ -92,6 +92,19 @@ for k in 0:9  # 10 segments = 2 s at 50 MHz
 end
 ```
 
+## Signal and replica identities
+
+`get_signal_id` and `get_signal_name` identify the broadcast component. Use
+`get_replica_id` and `get_replica_name` when the receiver's replica matters.
+Each accessor accepts either a type or an instance:
+
+```julia
+get_signal_id(GalileoE1B_CBOC)    # :GalileoE1B
+get_signal_name(GalileoE1B())     # "Galileo E1B"
+get_replica_id(GalileoE1B_CBOC)   # :GalileoE1B_CBOC
+get_replica_name(GalileoE1B())    # "Galileo E1B (BOC(1,1) approximation)"
+```
+
 ## Working with Different GNSS Signals
 
 ### GPS L1 C/A

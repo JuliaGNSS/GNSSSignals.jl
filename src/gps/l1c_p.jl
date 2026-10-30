@@ -54,8 +54,11 @@ get_modulation(::Type{<:GPSL1C_P_TMBOC}) =
 # note and [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GPSL1CPReplica}) = 0.75
 
-@inline get_signal_name(::Type{<:GPSL1C_P}) = "GPS L1C-P (BOC(1,1) approximation)"
-@inline get_signal_name(::Type{<:GPSL1C_P_TMBOC}) = "GPS L1C-P (TMBOC)"
+@inline get_signal_name(::Type{<:GPSL1C_P}) = "GPS L1C-P"
+@inline get_replica_name(::Type{<:GPSL1C_P}) = "GPS L1C-P (BOC(1,1) approximation)"
+@inline get_signal_name(::Type{<:GPSL1C_P_TMBOC}) = "GPS L1C-P"
+@inline get_replica_name(::Type{<:GPSL1C_P_TMBOC}) = "GPS L1C-P (TMBOC)"
+@inline get_signal_id(::Type{<:GPSL1C_P_TMBOC}) = :GPSL1C_P
 
 function read_gpsl1c_p_codes()
     _l1c_build_primary_codes(L1C_P_WEIL_INDEX, L1C_P_INSERTION_INDEX)

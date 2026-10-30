@@ -35,68 +35,51 @@ storage has 63 columns.
 @inline get_supported_prns(signal::AbstractGNSSSignal) = get_supported_prns(typeof(signal))
 
 """
-$(SIGNATURES)
+    get_signal_id(signal) -> Symbol
 
-Get the `Symbol` identifier of a GNSS signal — the machine-readable per-signal
-key, e.g. `:GPSL1CA`, `:GalileoE1B`, `:GalileoE5aI`.
+Identify the broadcast signal component, such as `:GPSL1CA` or `:GalileoE1B`.
+Different replica variants of the same component share this identifier; different
+components and bands have distinct identifiers. Accepts an instance or a type.
+The default is `nameof` of the signal type; a variant can override it.
 
-This is the finest identity level: the same PRN measured on two bands of one
-constellation (e.g. GPS L1 and L5) has two distinct signal ids.
-
-Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
-to pin a different symbol. Each replica variant has its own id: the BOC(1,1)
-default `:GalileoE1B` and the full `:GalileoE1B_CBOC` are distinct. Tracking can
-therefore keep separate calibration and noise models for each replica. A decoder
-can map them to the same broadcast component, since they carry the same transmitted navigation
-symbols. Works on an instance or a type and folds to a compile-time constant.
-
-Distinct from [`get_signal_name`](@ref), which is a human-readable display
-string (`"GPS L1 C/A"`), and finer than [`get_band_id`](@ref) (`:L1`).
-
-```julia-repl
-julia> get_signal_id(GPSL1CA())
-:GPSL1CA
-
-julia> get_signal_id(GalileoE1B)
-:GalileoE1B
-```
+Use [`get_replica_id`](@ref) when distinguishing receiver replicas, and
+[`get_signal_name`](@ref) for a human-readable label.
 """
 @inline get_signal_id(::Type{S}) where {S<:AbstractGNSSSignal} = nameof(S)
 @inline get_signal_id(s::AbstractGNSSSignal) = get_signal_id(typeof(s))
 
 """
-$(SIGNATURES)
+    get_signal_name(signal) -> String
 
-Get the human-readable name of a GNSS signal, e.g. `"GPS L1 C/A"`,
-`"Galileo E5a-Q"`.
-
-This is the display counterpart to [`get_signal_id`](@ref), at the same (finest)
-identity level: it names one specific transmission, component included. The
-spelling follows the ICD rather than the type name, so it is meant for log lines,
-plot labels and user-facing output — prefer the `Symbol` id when branching or
-keying. The default BOC(1,1) replicas name themselves as such (`"Galileo E1B
-(BOC(1,1) approximation)"`), so a label never silently claims to be the exact
-signal.
-
-Genuinely per signal, so each concrete signal defines one method on its own type
-(`get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"`, in that signal's file),
-mirroring [`get_band`](@ref); the instance method forwards to the type, so the
-name is available without constructing a signal.
-
-Finer than [`get_band_name`](@ref) (`"L1"`) and [`get_constellation_name`](@ref)
-(`"GPS"`).
-
-```julia-repl
-julia> get_signal_name(GPSL1CA())
-"GPS L1 C/A"
-
-julia> get_signal_name(GalileoE5aQ)
-"Galileo E5a-Q"
-```
+Return a human-readable name of the broadcast component, such as `"GPS L1 C/A"`
+or `"Galileo E1B"`. Replica variants of the same component share a name. Accepts
+an instance or a type. Use [`get_signal_id`](@ref) for a machine-readable key
+and [`get_replica_name`](@ref) to distinguish replica variants.
 """
 function get_signal_name end
 
 @inline get_signal_name(s::AbstractGNSSSignal) = get_signal_name(typeof(s))
+
+"""
+    get_replica_id(signal) -> Symbol
+
+Identify a receiver replica variant, such as `:GalileoE1B` or
+`:GalileoE1B_CBOC`. Defaults to `nameof` of the signal type. Use this key for
+replica-specific processing; [`get_signal_id`](@ref) identifies the shared
+broadcast component. Accepts an instance or a type.
+"""
+@inline get_replica_id(::Type{S}) where {S<:AbstractGNSSSignal} = nameof(S)
+@inline get_replica_id(s::AbstractGNSSSignal) = get_replica_id(typeof(s))
+
+"""
+    get_replica_name(signal) -> String
+
+Return a human-readable replica name, including the modulation when needed to
+distinguish variants. Defaults to [`get_signal_name`](@ref). Accepts an instance
+or a type; use [`get_replica_id`](@ref) as a machine-readable key.
+"""
+@inline get_replica_name(::Type{S}) where {S<:AbstractGNSSSignal} = get_signal_name(S)
+@inline get_replica_name(s::AbstractGNSSSignal) = get_replica_name(typeof(s))
 
 """
 $(SIGNATURES)

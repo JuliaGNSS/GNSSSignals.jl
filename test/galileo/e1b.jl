@@ -14,7 +14,8 @@
           1 * sqrt(10 / 11) + 1 * sqrt(1 / 11)
     @test @inferred(get_bit_rate(galileo_e1b)) == 250Hz
     @test @inferred(get_chip_rate(galileo_e1b)) == 1023e3Hz
-    @test get_signal_name(galileo_e1b) == "Galileo E1B (CBOC)"
+    @test get_signal_name(galileo_e1b) == "Galileo E1B"
+    @test get_replica_name(galileo_e1b) == "Galileo E1B (CBOC)"
 
     @test get_code_spectrum(galileo_e1b, 0) == 0.0
 
@@ -39,7 +40,8 @@ end
     @test @inferred(get_secondary_code_length(e1b)) == 1
     @test @inferred(get_bit_rate(e1b)) == 250Hz
     @test @inferred(get_chip_rate(e1b)) == 1023e3Hz
-    @test get_signal_name(e1b) == "Galileo E1B (BOC(1,1) approximation)"
+    @test get_signal_name(e1b) == "Galileo E1B"
+    @test get_replica_name(e1b) == "Galileo E1B (BOC(1,1) approximation)"
 
     # Modulation differs from full E1B's CBOC.
     @test @inferred(get_modulation(e1b)) == BOCsin(1, 1)

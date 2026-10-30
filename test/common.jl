@@ -95,8 +95,8 @@ end
 @testset "get_signal_name" begin
     @test get_signal_name(GPSL1CA()) == "GPS L1 C/A"
     @test get_signal_name(GPSL5I()) == "GPS L5-I"
-    @test get_signal_name(GalileoE1B_CBOC()) == "Galileo E1B (CBOC)"
-    @test get_signal_name(GalileoE1C_CBOC()) == "Galileo E1C (CBOC)"
+    @test get_signal_name(GalileoE1B_CBOC()) == "Galileo E1B"
+    @test get_signal_name(GalileoE1C_CBOC()) == "Galileo E1C"
 
     # Type-level dispatch works without constructing the signal (which would read
     # the code file from disk); the instance path forwards to it.
@@ -104,7 +104,7 @@ end
         @test @inferred(get_signal_name(S)) isa String
     end
     @test get_signal_name(GPSL2CL) == "GPS L2CL"
-    @test get_signal_name(GalileoE1B) == "Galileo E1B (BOC(1,1) approximation)"
+    @test get_signal_name(GalileoE1B) == "Galileo E1B"
     @test get_signal_name(GPSL1CA()) == get_signal_name(GPSL1CA)
     @test get_signal_name(GalileoE5aQ()) == get_signal_name(GalileoE5aQ)
 end
@@ -112,8 +112,8 @@ end
 @testset "get_signal_id" begin
     @test @inferred(get_signal_id(GPSL1CA())) === :GPSL1CA
     @test @inferred(get_signal_id(GPSL5I())) === :GPSL5I
-    @test @inferred(get_signal_id(GalileoE1B_CBOC())) === :GalileoE1B_CBOC
-    @test @inferred(get_signal_id(GalileoE1C_CBOC())) === :GalileoE1C_CBOC
+    @test @inferred(get_signal_id(GalileoE1B_CBOC())) === :GalileoE1B
+    @test @inferred(get_signal_id(GalileoE1C_CBOC())) === :GalileoE1C
     @test @inferred(get_signal_id(BeiDouB1I())) === :BeiDouB1I
     @test @inferred(get_signal_id(BeiDouB1C_P())) === :BeiDouB1C_P
     @test @inferred(get_signal_id(BeiDouB2aI)) === :BeiDouB2aI
@@ -123,6 +123,31 @@ end
     @test get_signal_id(GPSL1CA()) !== get_signal_id(GPSL5I())
     # BeiDou B1C data and pilot share a carrier but are distinct signals.
     @test get_signal_id(BeiDouB1C_D()) !== get_signal_id(BeiDouB1C_P())
+end
+
+@testset "broadcast and replica identities" begin
+    for (approx, full, id, name) in (
+        (GalileoE1B, GalileoE1B_CBOC, :GalileoE1B, "Galileo E1B"),
+        (GalileoE1C, GalileoE1C_CBOC, :GalileoE1C, "Galileo E1C"),
+        (GPSL1C_P, GPSL1C_P_TMBOC, :GPSL1C_P, "GPS L1C-P"),
+    )
+        @test get_signal_id(approx) === get_signal_id(full) === id
+        @test get_signal_name(approx) == get_signal_name(full) == name
+        @test get_replica_id(approx) !== get_replica_id(full)
+        @test get_replica_name(approx) != get_replica_name(full)
+    end
+    @test get_signal_id(GalileoE1B) !== get_signal_id(GalileoE1C)
+    @test get_signal_id(GalileoE1B) !== get_signal_id(GalileoE5bI)
+    @test get_signal_name(GalileoE1B) != get_signal_name(GalileoE5bI)
+
+    for S in ALL_SIGNALS
+        signal = S()
+        for accessor in (get_signal_id, get_signal_name, get_replica_id, get_replica_name)
+            @test (@inferred accessor(S)) == (@inferred accessor(signal))
+        end
+        @test get_replica_id(S) === nameof(S)
+    end
+    @test get_replica_name(GPSL1CA) == get_signal_name(GPSL1CA)
 end
 
 @testset "get_constellation_id" begin

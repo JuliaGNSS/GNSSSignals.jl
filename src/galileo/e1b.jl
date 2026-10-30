@@ -25,7 +25,9 @@ get_modulation(::Type{<:GalileoE1B_CBOC}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 
 # [`get_modulation`](@ref). See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GalileoE1B_CBOC}) = 0.5
 
-@inline get_signal_name(::Type{<:GalileoE1B_CBOC}) = "Galileo E1B (CBOC)"
+@inline get_signal_name(::Type{<:GalileoE1B_CBOC}) = "Galileo E1B"
+@inline get_replica_name(::Type{<:GalileoE1B_CBOC}) = "Galileo E1B (CBOC)"
+@inline get_signal_id(::Type{<:GalileoE1B_CBOC}) = :GalileoE1B
 
 function read_galileo_e1b_codes()
     read_in_codes(
@@ -145,7 +147,8 @@ get_modulation(::Type{<:GalileoE1B}) = BOCsin(1, 1)
 # the correlation shape, not the E1-B/E1-C power split this reports.
 @inline get_relative_power(::Type{<:GalileoE1B}) = get_relative_power(GalileoE1B_CBOC)
 
-@inline get_signal_name(::Type{<:GalileoE1B}) = "Galileo E1B (BOC(1,1) approximation)"
+@inline get_signal_name(::Type{<:GalileoE1B}) = "Galileo E1B"
+@inline get_replica_name(::Type{<:GalileoE1B}) = "Galileo E1B (BOC(1,1) approximation)"
 
 function GalileoE1B()
     codes = read_galileo_e1b_codes()

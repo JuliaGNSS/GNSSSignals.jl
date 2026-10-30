@@ -23,7 +23,9 @@ get_modulation(::Type{<:GalileoE1C_CBOC}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 
 # [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GalileoE1C_CBOC}) = 0.5
 
-@inline get_signal_name(::Type{<:GalileoE1C_CBOC}) = "Galileo E1C (CBOC)"
+@inline get_signal_name(::Type{<:GalileoE1C_CBOC}) = "Galileo E1C"
+@inline get_replica_name(::Type{<:GalileoE1C_CBOC}) = "Galileo E1C (CBOC)"
+@inline get_signal_id(::Type{<:GalileoE1C_CBOC}) = :GalileoE1C
 
 function read_galileo_e1c_codes()
     read_in_codes(
@@ -153,7 +155,8 @@ get_modulation(::Type{<:GalileoE1C}) = BOCsin(1, 1)
 # Approximates E1-C; see [`GalileoE1B`](@ref)'s note.
 @inline get_relative_power(::Type{<:GalileoE1C}) = get_relative_power(GalileoE1C_CBOC)
 
-@inline get_signal_name(::Type{<:GalileoE1C}) = "Galileo E1C (BOC(1,1) approximation)"
+@inline get_signal_name(::Type{<:GalileoE1C}) = "Galileo E1C"
+@inline get_replica_name(::Type{<:GalileoE1C}) = "Galileo E1C (BOC(1,1) approximation)"
 
 function GalileoE1C()
     codes = read_galileo_e1c_codes()

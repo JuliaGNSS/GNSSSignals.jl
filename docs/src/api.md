@@ -53,6 +53,8 @@ GNSSSignals.get_carrier_phase_offset
 GNSSSignals.get_relative_power
 GNSSSignals.get_signal_name
 GNSSSignals.get_signal_id
+GNSSSignals.get_replica_name
+GNSSSignals.get_replica_id
 GNSSSignals.get_constellation_id
 GNSSSignals.get_constellation_name
 GNSSSignals.get_code_type
