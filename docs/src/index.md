@@ -10,15 +10,16 @@ A Julia package for generating GNSS (Global Navigation Satellite System) spreadi
 |--------|------|-------------------|----------------|-------------|----------------|------------|
 | GPS L1 C/A | L1 | 1575.42 MHz | 1.023 MHz | 1023 chips | — | BPSK |
 | GPS L1C-D | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | — | BOC(1,1) |
-| GPS L1C-P | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | 1800-chip overlay | TMBOC(6,1,4/33) |
+| GPS L1C-P (default) | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | 1800-chip overlay | BOC(1,1) approximation |
+| GPS L1C-P (TMBOC) | L1 | 1575.42 MHz | 1.023 MHz | 10230 chips | 1800-chip overlay | TMBOC(6,1,4/33) |
 | GPS L2 CM | L2 | 1227.6 MHz | 511.5 kHz | 10230 chips | — | BPSK |
 | GPS L2 CL | L2 | 1227.6 MHz | 511.5 kHz | 767250 chips | — | BPSK (pilot) |
 | GPS L5-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 10-chip NH10 | BPSK |
 | GPS L5-Q | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 20-chip NH20 | BPSK (pilot) |
-| Galileo E1B | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | — | CBOC(6,1,1/11) |
-| Galileo E1B (BOC(1,1) approximation) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | — | BOC(1,1) |
-| Galileo E1C | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | 25-chip CS25 | CBOC(6,1,1/11), BOC(6,1) anti-phase (pilot) |
-| Galileo E1C (BOC(1,1) approximation) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | 25-chip CS25 | BOC(1,1) (pilot) |
+| Galileo E1B (default) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | — | BOC(1,1) |
+| Galileo E1B (CBOC) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | — | CBOC(6,1,1/11) |
+| Galileo E1C (default) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | 25-chip CS25 | BOC(1,1) (pilot) |
+| Galileo E1C (CBOC) | L1 | 1575.42 MHz | 1.023 MHz | 4092 chips | 25-chip CS25 | CBOC(6,1,1/11), BOC(6,1) anti-phase (pilot) |
 | Galileo E5a-I | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 20-chip CS20 | BPSK |
 | Galileo E5a-Q | L5 | 1176.45 MHz | 10.23 MHz | 10230 chips | 100-chip CS100 | BPSK (pilot) |
 | Galileo E5a-QP | L5 | 1176.45 MHz | 5.115 MHz | 330 chips | — | BPSK (quasi-pilot) |
@@ -105,6 +106,6 @@ GNSSSignals.jl provides functionality to:
 - Relate the GPS, Galileo and BeiDou time scales to each other and to TAI
 - Compute signal spectra for analysis
 
-The [`gen_code`](@ref) and [`gen_code!`](@ref) functions are highly optimized for real-time GNSS signal processing: each signal bakes its fully-modulated ±1 replica into an embedded `Int8` lookup table once, then resamples it with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, scalar fallback). Output is `Int8`.
+The [`gen_code`](@ref) and [`gen_code!`](@ref) functions are highly optimized for real-time GNSS signal processing: each signal bakes its modulated replica into an embedded `Int8` lookup table once, then resamples it with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, scalar fallback). Output is `Int8`.
 
 The package is designed to be used as a building block for GNSS receiver implementations and signal processing research.

@@ -145,31 +145,31 @@ function _signal_output_checksum(signal)
     acc
 end
 const _OUTPUT_CHECKSUMS_BEFORE_BOC_MN = Dict(
-        :BeiDouB1C_D => 0x24f7e3101ac0ed5c,
-        :BeiDouB1C_P => 0x3114f26e31854d9e,
-        :BeiDouB1I => 0x3cdfd21947597fd4,
-        :BeiDouB2aI => 0xd36ae4e9b84c791a,
-        :BeiDouB2aQ => 0x16289042cfb6a822,
-        :BeiDouB2bI => 0xef31b0d7a738dca0,
-        :BeiDouB3I => 0x2074e6a33068e70a,
-        :GPSL1CA => 0xdd13225653451bce,
-        :GPSL1C_D => 0xc9320bea1c05c354,
-        :GPSL1C_P => 0x6fbf2ce8b86b5e5e,
-        :GPSL2CL => 0x1650bbe438e8c388,
-        :GPSL2CM => 0x030686fa055d78d6,
-        :GPSL5I => 0xe1f91276c27c5948,
-        :GPSL5Q => 0x6bb8b1c51563d5da,
-        :GalileoE1B => 0x0d7ca4bcad554266,
-        :GalileoE1B_BOC11 => 0xbe79c0e19b459348,
-        :GalileoE1C => 0xb39a74bc995eccfa,
-        :GalileoE1C_BOC11 => 0x53f2023f5ee5b236,
-        :GalileoE5aI => 0xcef044e1447ba264,
-        :GalileoE5aQ => 0xdd88612a620117c4,
-        :GalileoE5aQP => 0xd698d8875b2bd194,
-        :GalileoE5bI => 0x275c2b3f1b41981c,
-        :GalileoE5bQ => 0xcde355db4b2c3e0a,
-        :GalileoE6B => 0x1e34f18e30df5254,
-        :GalileoE6C => 0xcfea8d536ac3b64a,
+        "BeiDouB1C_D" => 0x24f7e3101ac0ed5c,
+        "BeiDouB1C_P" => 0x3114f26e31854d9e,
+        "BeiDouB1I" => 0x3cdfd21947597fd4,
+        "BeiDouB2aI" => 0xd36ae4e9b84c791a,
+        "BeiDouB2aQ" => 0x16289042cfb6a822,
+        "BeiDouB2bI" => 0xef31b0d7a738dca0,
+        "BeiDouB3I" => 0x2074e6a33068e70a,
+        "GPSL1CA" => 0xdd13225653451bce,
+        "GPSL1C_D" => 0xc9320bea1c05c354,
+        "GPSL1C_P(TMBOC)" => 0x6fbf2ce8b86b5e5e,
+        "GPSL2CL" => 0x1650bbe438e8c388,
+        "GPSL2CM" => 0x030686fa055d78d6,
+        "GPSL5I" => 0xe1f91276c27c5948,
+        "GPSL5Q" => 0x6bb8b1c51563d5da,
+        "GalileoE1B(CBOC)" => 0x0d7ca4bcad554266,
+        "GalileoE1B" => 0xbe79c0e19b459348,
+        "GalileoE1C(CBOC)" => 0xb39a74bc995eccfa,
+        "GalileoE1C" => 0x53f2023f5ee5b236,
+        "GalileoE5aI" => 0xcef044e1447ba264,
+        "GalileoE5aQ" => 0xdd88612a620117c4,
+        "GalileoE5aQP" => 0xd698d8875b2bd194,
+        "GalileoE5bI" => 0x275c2b3f1b41981c,
+        "GalileoE5bQ" => 0xcde355db4b2c3e0a,
+        "GalileoE6B" => 0x1e34f18e30df5254,
+        "GalileoE6C" => 0xcfea8d536ac3b64a,
 )
 
 # The spectrum as it was wired before: the BOC components took `n · f_c` and `m · f_c` from the
@@ -188,11 +188,15 @@ function _spectrum_before(m::TMBOC{B1,B2,N}, signal, f) where {B1,B2,N}
     _spectrum_before(m.boc2, signal, f) * boc2_frac
 end
 
-@testset "BOC(m, n): every defined signal's code and spectrum are unchanged" begin
-    @test length(_OUTPUT_CHECKSUMS_BEFORE_BOC_MN) == length(ALL_SIGNALS)
-    @testset "$(nameof(S))" for S in ALL_SIGNALS
-        signal = S()
-        @test _signal_output_checksum(signal) == _OUTPUT_CHECKSUMS_BEFORE_BOC_MN[nameof(S)]
+@testset "BOC(m, n): existing replica outputs and all signal spectra" begin
+    # The new L1C-P BOC(1,1) replica has independent primary/overlay checks in gps/l1c_p.jl.
+    @test Set(keys(_OUTPUT_CHECKSUMS_BEFORE_BOC_MN)) ==
+          Set(signal_label(S) for S in ALL_SIGNALS if S !== GPSL1C_P)
+    @testset "$(signal_label(S))" for S in ALL_SIGNALS
+        signal = make_signal(S)
+        if haskey(_OUTPUT_CHECKSUMS_BEFORE_BOC_MN, signal_label(S))
+            @test _signal_output_checksum(signal) == _OUTPUT_CHECKSUMS_BEFORE_BOC_MN[signal_label(S)]
+        end
         modulation = get_modulation(signal)
         @test all(f -> get_code_spectrum(signal, f) === _spectrum_before(modulation, signal, f),
             range(-20e6, 20e6; length = 4001))

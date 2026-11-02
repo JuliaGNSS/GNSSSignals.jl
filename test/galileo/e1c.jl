@@ -1,5 +1,5 @@
-@testset "Galileo E1C" begin
-    galileo_e1c = GalileoE1C()
+@testset "Galileo E1C CBOC" begin
+    galileo_e1c = GalileoE1C(CBOC)
     a = sqrt(10 / 11)  # BOC(1,1) amplitude
     b = sqrt(1 / 11)   # BOC(6,1) amplitude
 
@@ -29,7 +29,7 @@
 
     # PSD is independent of the BOC(6,1) sign, so E1C and E1B share a spectrum.
     @test get_code_spectrum(galileo_e1c, 0) == 0.0
-    @test get_code_spectrum(galileo_e1c, 100e3) == get_code_spectrum(GalileoE1B(), 100e3)
+    @test get_code_spectrum(galileo_e1c, 100e3) == get_code_spectrum(GalileoE1B(CBOC), 100e3)
     @test get_code_spectrum(galileo_e1c, 2 * get_chip_rate(galileo_e1c)) == 0.0
     @test get_code_spectrum(galileo_e1c, -2 * get_chip_rate(galileo_e1c)) == 0.0
 
@@ -44,7 +44,7 @@
 end
 
 @testset "Galileo E1C secondary code (CS25)" begin
-    galileo_e1c = GalileoE1C()
+    galileo_e1c = GalileoE1C(CBOC)
     sec = get_secondary_code(galileo_e1c)
 
     # CS25 = "0011100000001010110110010" (Galileo OS SIS ICD §2.3.4),
@@ -75,7 +75,7 @@ end
 end
 
 @testset "Galileo E1C primary codes" begin
-    e1c = GalileoE1C()
+    e1c = GalileoE1C(CBOC)
     e1b = GalileoE1B()
     # E1B and E1C use distinct memory codes (Galileo OS SIS ICD Annex C).
     @test get_codes(e1c) != get_codes(e1b)
@@ -85,7 +85,7 @@ end
 end
 
 @testset "Galileo E1C BOC(1,1) approximation" begin
-    e1c = GalileoE1C_BOC11()
+    e1c = GalileoE1C()
     @test @inferred(get_band(e1c)) == L1()
     @test @inferred(get_center_frequency(e1c)) == 1.57542e9Hz
     @test @inferred(get_code_length(e1c)) == 4092
@@ -93,7 +93,7 @@ end
     @test @inferred(get_secondary_code_length(e1c)) == 25
     @test @inferred(get_bit_rate(e1c)) == 0Hz
     @test @inferred(get_chip_rate(e1c)) == 1023e3Hz
-    @test get_signal_name(e1c) == "Galileo E1C (BOC(1,1) approximation)"
+    @test get_signal_name(e1c) == "Galileo E1C"
 
     # Modulation differs from full E1C's CBOC.
     @test @inferred(get_modulation(e1c)) == BOCsin(1, 1)
@@ -102,10 +102,15 @@ end
     # BOC(6,1) component).
     @test get_code_type(e1c) === Int
 
-    # Primary and secondary codes match the full GalileoE1C chip-for-chip.
-    @test get_codes(e1c) == get_codes(GalileoE1C())
+    # Primary and secondary codes match the full GalileoE1C(CBOC) replica chip-for-chip.
+    @test get_relative_power(e1c) == get_relative_power(GalileoE1C(CBOC))
+    @test get_codes(e1c) == get_codes(GalileoE1C(CBOC))
     @test [GNSSSignals.secondary_value(get_secondary_code(e1c), 1, k) for k = 0:24] ==
-          [GNSSSignals.secondary_value(get_secondary_code(GalileoE1C()), 1, k) for k = 0:24]
+          [GNSSSignals.secondary_value(get_secondary_code(GalileoE1C(CBOC)), 1, k) for k = 0:24]
+    @test e1c isa GalileoE1C{Matrix{Int8},BOCsin}
+    @test GalileoE1C(CBOC) isa GalileoE1C{Matrix{Int8},CBOC}
+    @test get_signal_id(e1c) === get_signal_id(GalileoE1C(CBOC)) === :GalileoE1C
+    @test get_modulation(GalileoE1C) === get_modulation(e1c)
 end
 
 @testset "Galileo E1C gen_code! sign matches get_code" begin
@@ -115,7 +120,7 @@ end
     # Sample at the sub-chip rate `fc · subchip_factor` (12.276 MHz for the CBOC
     # P=12, 2.046 MHz for the BOC(1,1) P=2) so every sample lands on a sub-chip
     # start and the drift-free DDA agrees with `get_code`'s exact floor bit-for-bit.
-    for sig in (GalileoE1C(), GalileoE1C_BOC11())
+    for sig in (GalileoE1C(CBOC), GalileoE1C())
         cf = get_chip_rate(sig)
         fs = cf * sig.lut.subchip_factor
         # Span several primary periods to cross CS25 secondary boundaries,
@@ -131,7 +136,7 @@ end
     end
 end
 
-@testset "GalileoE1C_BOC11 sample-stream matches PocketSDR reference (PRN 1, 12.276 MHz)" begin
+@testset "GalileoE1C sample-stream matches PocketSDR reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against the BOC(1,1) replica produced by
     # PocketSDR's `gen_code_E1C` at 2 samples per chip, upsampled by 6× to
     # 12 samples per chip, with PocketSDR's CS25 secondary code applied per
@@ -161,6 +166,6 @@ end
 
     # The embedded LUT emits Int8 ±1; byte-exact to the ±1 fixture at this chip-aligned rate.
     buf = zeros(Int8, n_samples)
-    gen_code!(buf, GalileoE1C_BOC11(), 1, sampling_rate, code_rate, 0.0, 0)
+    gen_code!(buf, GalileoE1C(), 1, sampling_rate, code_rate, 0.0, 0)
     @test buf == ref
 end
