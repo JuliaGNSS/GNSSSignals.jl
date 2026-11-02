@@ -40,12 +40,14 @@ This is the finest identity level: the same PRN measured on two bands of one
 constellation (e.g. GPS L1 and L5) has two distinct signal ids.
 
 Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
-to pin a different symbol. The BOC(1,1) approximation types keep their own ids
-(`:GalileoE1B_BOC11`), distinct from the signals they approximate. Works on an instance or a type and folds to a
-compile-time constant.
+to pin a different symbol. Replicas of one transmitted component share its id: the
+type parameter that picks a replica's modulation (`GalileoE1B()` replicates BOC(1,1),
+`GalileoE1B(CBOC)` the full CBOC) does not enter `nameof`, so both are `:GalileoE1B`.
+[`get_modulation`](@ref), or the type itself, tells replicas apart. Works on an instance
+or a type and folds to a compile-time constant.
 
 Distinct from [`get_signal_name`](@ref), which is a human-readable display
-string (`"GPS L1 C/A"`), and coarser than [`get_band_id`](@ref) (`:L1`).
+string (`"GPS L1 C/A"`), and finer than [`get_band_id`](@ref) (`:L1`).
 
 ```julia-repl
 julia> get_signal_id(GPSL1CA())
@@ -68,9 +70,9 @@ This is the display counterpart to [`get_signal_id`](@ref), at the same (finest)
 identity level: it names one specific transmission, component included. The
 spelling follows the ICD rather than the type name, so it is meant for log lines,
 plot labels and user-facing output — prefer the `Symbol` id when branching or
-keying. The BOC(1,1) approximation types name themselves as such (`"Galileo E1B
-(BOC(1,1) approximation)"`), so a label never silently claims to be the exact
-signal.
+keying. Like the id, it names the transmitted component, so the BOC(1,1) and CBOC
+replicas of Galileo E1B are both `"Galileo E1B"`; [`get_modulation`](@ref) says which
+replica a signal is.
 
 Genuinely per signal, so each concrete signal defines one method on its own type
 (`get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"`, in that signal's file),

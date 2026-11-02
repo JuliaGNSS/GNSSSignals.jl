@@ -1,13 +1,15 @@
 """
-    GalileoE1C{C} <: AbstractGalileoSignal{C}
+    GalileoE1C{C, R} <: AbstractGalileoSignal{C}
+    GalileoE1C()
+    GalileoE1C(BOCsin)
+    GalileoE1C(CBOC)
 
 Galileo E1C signal (the pilot, dataless component of Galileo E1 OS).
 
-CBOC(6,1,1/11) modulation with a 4092-chip primary code at 1.023 Mcps,
-overlaid by the 25-chip CS25 secondary code (one chip per 4 ms primary
-period, giving a 100 ms tiered code). Transmitted on the E1 band — which
-shares the L1 carrier at 1575.42 MHz, so [`get_band`](@ref) returns
-[`L1`](@ref) here.
+Broadcast as CBOC(6,1,1/11) with a 4092-chip primary code at 1.023 Mcps, overlaid by the
+25-chip CS25 secondary code (one chip per 4 ms primary period, giving a 100 ms tiered
+code). Transmitted on the E1 band — which shares the L1 carrier at 1575.42 MHz, so
+[`get_band`](@ref) returns [`L1`](@ref) here.
 
 E1C differs from [`GalileoE1B`](@ref) in three ways:
 
@@ -17,24 +19,41 @@ E1C differs from [`GalileoE1B`](@ref) in three ways:
 - Its CBOC uses the BOC(6,1) component in *anti-phase* — CBOC(−) — per the
   Galileo OS SIS ICD §2.3.3, where E1-B uses CBOC(+).
 
+The replica's modulation is chosen at construction, as for [`GalileoE1B`](@ref):
+`GalileoE1C()`, the same as `GalileoE1C(BOCsin)`, replicates the BOC(1,1) component only
+(≈ 0.41 dB correlation loss, fs ≥ 2 · 1.023 MHz), and `GalileoE1C(CBOC)` the full
+CBOC(−) signal. PocketSDR's
+[Python E1C generator](https://github.com/tomojitakasu/PocketSDR/blob/eda83016229dbc1374f8db4be81dc52f0f07bc13/python/sdr_code.py#L1446-L1453)
+uses BOC(1,1), while its
+[C E1C generator](https://github.com/tomojitakasu/PocketSDR/blob/eda83016229dbc1374f8db4be81dc52f0f07bc13/src/sdr_code.c#L1424-L1437)
+uses full CBOC. The BOC(1,1) component is in phase in both CBOC(+) and CBOC(−), so
+the BOC(1,1) replicas of E1B and E1C differ only in their codes. Both replicas share everything but
+[`get_modulation`](@ref), including the signal id (`:GalileoE1C`).
+
 # Example
 ```julia
 e1c = GalileoE1C()
 get_code_length(e1c)            # 4092
 get_secondary_code_length(e1c)  # 25
 get_band(e1c)                   # L1()
+get_modulation(e1c)             # BOCsin(1, 1)
+get_modulation(GalileoE1C(CBOC))  # CBOC(BOCsin(1, 1), BOCsin(6, 1), 10/11, -1)
 ```
 """
-struct GalileoE1C{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
+struct GalileoE1C{C<:AbstractMatrix,R<:Modulation} <: AbstractGalileoSignal{C}
     codes::C
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-get_modulation(::Type{<:GalileoE1C}) = CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11, -1)
+get_modulation(::Type{<:GalileoE1C{<:AbstractMatrix,BOCsin}}) = BOCsin(1, 1)
+# The bare type stands for the default replica, as `GalileoE1C()` does.
+get_modulation(::Type{GalileoE1C}) = BOCsin(1, 1)
+get_modulation(::Type{<:GalileoE1C{<:AbstractMatrix,CBOC}}) =
+    CBOC(BOCsin(1, 1), BOCsin(6, 1), 10 / 11, -1)
 
 @inline get_band(::Type{<:GalileoE1C}) = L1()
 
-# 50/50 E1-B/E1-C power sharing. See [`GalileoE1B`](@ref)'s note and
+# 50/50 E1-B/E1-C power sharing, for either replica. See [`GalileoE1B`](@ref)'s note and
 # [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GalileoE1C}) = 0.5
 
@@ -49,10 +68,14 @@ function read_galileo_e1c_codes()
     )
 end
 
-function GalileoE1C()
+GalileoE1C() = GalileoE1C(BOCsin)
+GalileoE1C(::Type{BOCsin}) = _galileo_e1c(BOCsin)
+GalileoE1C(::Type{CBOC}) = _galileo_e1c(CBOC)
+
+function _galileo_e1c(::Type{R}) where {R<:Modulation}
     codes = read_galileo_e1c_codes()
-    lut = build_signal_lut(get_modulation(GalileoE1C), codes, galileo_e1c_secondary_code())
-    GalileoE1C(codes, lut)
+    S = GalileoE1C{typeof(codes),R}
+    S(codes, build_signal_lut(get_modulation(S), codes, galileo_e1c_secondary_code()))
 end
 
 """
@@ -74,7 +97,7 @@ julia> get_code_length(GalileoE1C())
 end
 
 # CS25 = "0011100000001010110110010", bit 1 → +1, bit 0 → -1. Shared by
-# both the full-CBOC and BOC(1,1)-approximation E1C types.
+# both the CBOC and the BOC(1,1) replica.
 @inline function galileo_e1c_secondary_code()
     SharedSecondaryCode(
         Int8(-1), Int8(-1), Int8(1), Int8(1), Int8(1),
@@ -144,58 +167,3 @@ julia> get_bit_rate(GalileoE1C())
 @inline function get_bit_rate(::Type{<:GalileoE1C})
     0Hz
 end
-
-"""
-    GalileoE1C_BOC11{C} <: AbstractGalileoSignal{C}
-
-BOC(1,1) approximation of Galileo E1C (the pilot component of Galileo E1
-OS).
-
-Galileo E1C is specified as CBOC(6,1,1/11) — a Float32 weighted sum of
-BOC(1,1) and BOC(6,1) requiring fs ≥ 2 · 6 · 1.023 MHz to fully sample.
-Many software receivers substitute a pure BOC(1,1) replica because (a) the
-BOC(6,1) component carries only 1/11 of the signal power, so the
-correlation loss is ≈ 0.45 dB, and (b) BOC(1,1) needs only
-fs ≥ 2 · 1.023 MHz, allowing lower sampling rates.
-PocketSDR, for example, uses this substitution for E1C by default (see
-`gen_code_E1C` in `sdr_code.c`).
-
-Use this type when you want the lower sampling-rate variant; use
-[`GalileoE1C`](@ref) for the full CBOC spec approximation. Either way
-`gen_code!` emits `Int8` for both variants. The single-chip [`get_code`](@ref)
-accessor returns `Float32` for full CBOC and `Int` for this BOC(1,1) approximation.
-
-Primary code, code length, secondary code (CS25), chip rate, tracked bit rate, and
-band are identical to [`GalileoE1C`](@ref); only `get_modulation` differs.
-
-# Example
-```julia
-e1c = GalileoE1C_BOC11()
-get_modulation(e1c)    # BOCsin(1, 1)
-get_code_length(e1c)   # 4092
-```
-"""
-struct GalileoE1C_BOC11{C<:AbstractMatrix} <: AbstractGalileoSignal{C}
-    codes::C
-    lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
-end
-
-get_modulation(::Type{<:GalileoE1C_BOC11}) = BOCsin(1, 1)
-
-@inline get_band(::Type{<:GalileoE1C_BOC11}) = L1()
-
-# Approximates E1-C; see [`GalileoE1B_BOC11`](@ref)'s note.
-@inline get_relative_power(::Type{<:GalileoE1C_BOC11}) = get_relative_power(GalileoE1C)
-
-@inline get_signal_name(::Type{<:GalileoE1C_BOC11}) = "Galileo E1C (BOC(1,1) approximation)"
-
-function GalileoE1C_BOC11()
-    codes = read_galileo_e1c_codes()
-    lut = build_signal_lut(get_modulation(GalileoE1C_BOC11), codes, galileo_e1c_secondary_code())
-    GalileoE1C_BOC11(codes, lut)
-end
-
-@inline get_code_length(::Type{<:GalileoE1C_BOC11}) = 4092
-@inline get_secondary_code(::GalileoE1C_BOC11) = galileo_e1c_secondary_code()
-@inline get_chip_rate(::Type{<:GalileoE1C_BOC11}) = 1023_000Hz
-@inline get_bit_rate(::Type{<:GalileoE1C_BOC11}) = 0Hz
