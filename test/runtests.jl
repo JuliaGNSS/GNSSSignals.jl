@@ -13,18 +13,30 @@ using CodecZlib: GzipDecompressorStream
 # ("every signal answers every identity accessor" and friends). Test-suite
 # stand-ins (e.g. `TestOnlyBand`) stay out: the invariants are the package's to
 # keep.
+#
+# The full-modulation replicas are no types of their own but a type parameter of their
+# signal (`GalileoE1B(CBOC)` is a `GalileoE1B{Matrix{Int8}, CBOC}`), so they enter by their
+# concrete types; `make_signal` constructs any entry and `signal_label` names it.
+const L1C_P_TMBOC = GPSL1C_P{Matrix{Int8},Matrix{Int8},TMBOC}
+const E1B_CBOC = GalileoE1B{Matrix{Int8},CBOC}
+const E1C_CBOC = GalileoE1C{Matrix{Int8},CBOC}
+make_signal(S::UnionAll) = S()
+make_signal(S::DataType) = Base.typename(S).wrapper(last(S.parameters))
+signal_label(S::UnionAll) = String(nameof(S))
+signal_label(S::DataType) = string(nameof(S), "(", nameof(last(S.parameters)), ")")
 const ALL_SIGNALS = (
     GPSL1CA,
     GPSL1C_D,
     GPSL1C_P,
+    L1C_P_TMBOC,
     GPSL2CM,
     GPSL2CL,
     GPSL5I,
     GPSL5Q,
+    E1B_CBOC,
     GalileoE1B,
-    GalileoE1B_BOC11,
+    E1C_CBOC,
     GalileoE1C,
-    GalileoE1C_BOC11,
     GalileoE5aI,
     GalileoE5aQ,
     GalileoE5aQP,

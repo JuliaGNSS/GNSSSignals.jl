@@ -54,17 +54,17 @@ import Random
     # Signal-level access forwards through the time system, on type or instance.
     for S in gps_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(GPST(), 0)
-        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
+        @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 19s
     end
     for S in galileo_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(GST(), 0)
-        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
+        @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 19s
     end
     for S in beidou_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(BDT(), 0)
-        @test get_week_start_epoch(S(), 0) == get_week_start_epoch(S, 0)
+        @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
         @test get_tai_offset(S) == 33s
     end
 
@@ -97,20 +97,20 @@ end
     for S in (GPSL1CA, GPSL2CM, GPSL5Q)
         @test @inferred(get_time_system_id(S)) === :GPST
         @test @inferred(get_time_system_name(S)) == "GPS Time"
-        @test get_time_system_id(S()) === get_time_system_id(S)
-        @test get_time_system_name(S()) == get_time_system_name(S)
+        @test get_time_system_id(make_signal(S)) === get_time_system_id(S)
+        @test get_time_system_name(make_signal(S)) == get_time_system_name(S)
     end
     for S in (GalileoE1B, GalileoE1C, GalileoE5aI)
         @test @inferred(get_time_system_id(S)) === :GST
         @test @inferred(get_time_system_name(S)) == "Galileo System Time"
-        @test get_time_system_id(S()) === get_time_system_id(S)
-        @test get_time_system_name(S()) == get_time_system_name(S)
+        @test get_time_system_id(make_signal(S)) === get_time_system_id(S)
+        @test get_time_system_name(make_signal(S)) == get_time_system_name(S)
     end
     for S in (BeiDouB1I, BeiDouB3I, BeiDouB2aQ, BeiDouB1C_D)
         @test @inferred(get_time_system_id(S)) === :BDT
         @test @inferred(get_time_system_name(S)) == "BeiDou Time"
-        @test get_time_system_id(S()) === get_time_system_id(S)
-        @test get_time_system_name(S()) == get_time_system_name(S)
+        @test get_time_system_id(make_signal(S)) === get_time_system_id(S)
+        @test get_time_system_name(make_signal(S)) == get_time_system_name(S)
     end
 
     # Every signal referenced to one scale shares id and name, across bands.

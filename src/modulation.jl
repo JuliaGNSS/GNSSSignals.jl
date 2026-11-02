@@ -169,7 +169,7 @@ two subcarriers are weighted by their power split. [`gen_code!`](@ref) always fi
 ```julia-repl
 julia> get_code_type(GPSL1CA())
 Int64
-julia> get_code_type(GalileoE1B())
+julia> get_code_type(GalileoE1B(CBOC))
 Float32
 ```
 """
@@ -203,8 +203,8 @@ the two can never disagree.
 ```julia-repl
 julia> get_modulation(GPSL1CA())
 BPSK()
-julia> get_modulation(GalileoE1B())
-CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0)
+julia> get_modulation(GalileoE1B(CBOC))
+CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOCsin{Int64, Int64}(6, 1), 0.90909094f0, 1.0f0)
 ```
 """
 @inline get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
