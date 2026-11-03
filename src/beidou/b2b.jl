@@ -3,12 +3,12 @@ include("b2b_constants.jl")
 """
     BeiDouB2bI{C} <: AbstractBeiDouSignal{C}
 
-BeiDou B2b_I signal — the open-service data signal on the BeiDou B2b frequency
+BeiDou B2b_I signal, the open-service data signal on the BeiDou B2b frequency
 (1207.14 MHz, reported as the [`E5b`](@ref) band, which Galileo E5b shares).
 
 BPSK(10)-modulated 10230-chip ranging code at 10.23 Mcps (a Gold code); the
-B-CNAV3 navigation message is tracked at 1000 bit/s. B2b_I has no secondary code (its
-1 ms primary period already matches the bit period).
+B-CNAV3 message is tracked at 1000 bit/s. B2b_I has no secondary code (its 1 ms primary
+period already matches the bit period).
 
 The ranging code is the modulo-2 sum of two 13-stage shift registers
 (BDS-SIS-ICD-B2b-1.0 §5): register 1 (`1+X+X⁹+X¹⁰+X¹³`) starts all-ones and is
@@ -64,22 +64,15 @@ $(SIGNATURES)
 
 Get the band the signal is transmitted on.
 
-BeiDou B2b is on the 1207.14 MHz carrier, which this package names after
-Galileo's label for it, so this returns [`E5b`](@ref) — as `BeiDouB1C_D` returns
-[`L1`](@ref) for the carrier it shares with GPS.
+BeiDou B2b is on the 1207.14 MHz carrier, which this package names after Galileo's label
+for it, so this returns [`E5b`](@ref).
 """
 @inline get_band(::Type{<:BeiDouB2bI}) = E5b()
 
 # BeiDou's only open-service component on the 1207.14 MHz carrier (the B2b ICD v1.0
-# specifies the I component only), so it is its own composite. See
-# [`get_relative_power`](@ref).
+# specifies the I component only), so it is its own composite.
 @inline get_relative_power(::Type{<:BeiDouB2bI}) = 1.0
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
 @inline get_signal_name(::Type{<:BeiDouB2bI}) = "BeiDou B2b-I"
 
 """
@@ -103,9 +96,6 @@ Get the bit rate, as tracked, of BeiDou B2b_I.
 
 The B-CNAV3 message is tracked at 1000 bit/s: the symbol rate of its rate-½ code, the
 message carrying 500 bit/s.
-
-# Returns
-- `Frequency`: 1000 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB2bI}) = 1000Hz
 
@@ -114,10 +104,7 @@ $(SIGNATURES)
 
 Get the secondary code for BeiDou B2b_I.
 
-B2b_I has no secondary code.
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+B2b_I has no secondary code; returns [`NoSecondaryCode`](@ref).
 """
 @inline get_secondary_code(::BeiDouB2bI) = NoSecondaryCode()
 

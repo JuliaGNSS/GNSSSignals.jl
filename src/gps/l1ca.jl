@@ -21,19 +21,17 @@ end
 
 get_modulation(::Type{<:GPSL1CA}) = BPSK()
 
-# IS-GPS-200N Table 3-III designates the L1 P(Y) carrier as the band's in-phase (I)
-# reference; §3.3.1.5.1 puts the C/A carrier in quadrature, "lagging the P signal by
-# 90 degrees" → −1/4 cycle. (L1C rides that same P(Y) in-phase carrier — offset 0 — so C/A
-# and L1C are actually 90° apart; IS-GPS-800J §3.2.1.6.1.)
+# IS-GPS-200N Table 3-III: the L1 P(Y) carrier is the in-phase (I) reference; §3.3.1.5.1
+# puts C/A in quadrature, "lagging the P signal by 90 degrees" → −1/4 cycle. L1C rides the
+# P(Y) in-phase carrier (offset 0), so C/A and L1C are 90° apart (IS-GPS-800J §3.2.1.6.1).
 @inline get_carrier_phase_offset(::Type{<:GPSL1CA}) = -0.25
 
 @inline get_band(::Type{<:GPSL1CA}) = L1()
 
-# A single fully-modulated component with no pilot, so C/A has no composite to be a
-# share of. It is instead scaled against the L1C composite it shares the carrier
-# with: −158.5 dBW (IS-GPS-200N, Table 3-Va) against L1C's −157.0, i.e. 1.5 dB below
-# it, so 10^(-0.15). One of the two values in the package that are not bare ICD power
-# splits, with `GalileoE5aQP`. See [`get_relative_power`](@ref).
+# C/A is a single component, so it has no composite to be a share of; it is scaled against
+# the L1C composite on the same carrier: −158.5 dBW (IS-GPS-200N, Table 3-Va) against L1C's
+# −157.0, i.e. 1.5 dB below, 10^(-0.15). One of two values in the package that are not bare
+# ICD power splits, with `GalileoE5aQP`. See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GPSL1CA}) = 0.7079457843841379
 
 @inline get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"
@@ -56,10 +54,7 @@ end
 """
 $(SIGNATURES)
 
-Get the code length for GPS L1 C/A.
-
-# Returns
-- `Int`: 1023 chips
+Get the code length for GPS L1 C/A (1023 chips).
 
 # Examples
 ```julia-repl
@@ -74,12 +69,7 @@ end
 """
 $(SIGNATURES)
 
-Get the secondary code for GPS L1 C/A.
-
-GPS L1 C/A has no secondary code.
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+Get the secondary code for GPS L1 C/A, which has none ([`NoSecondaryCode`](@ref)).
 
 # Examples
 ```julia-repl
@@ -94,10 +84,7 @@ end
 """
 $(SIGNATURES)
 
-Get the nominal chip rate of GPS L1 C/A.
-
-# Returns
-- `Frequency`: 1.023 MHz
+Get the nominal chip rate of GPS L1 C/A (1.023 MHz).
 
 # Examples
 ```julia-repl
@@ -116,9 +103,6 @@ Get the bit rate, as tracked, of GPS L1 C/A.
 
 The LNAV message is broadcast at 50 bit/s with no convolutional code, its Hamming parity
 bits included in that rate.
-
-# Returns
-- `Frequency`: 50 Hz
 
 # Examples
 ```julia-repl

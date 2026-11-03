@@ -1,12 +1,9 @@
-# Internal helpers for building the GPS L1C primary and overlay codes.
-# The output of these helpers is fed into the `GPSL1C_D` and `GPSL1C_P`
-# constructors (in l1c_d.jl and l1c_p.jl).
+# Internal helpers for building the GPS L1C primary and overlay codes for the `GPSL1C_D` and
+# `GPSL1C_P` constructors.
 #
-# Algorithms follow IS-GPS-800G §3.2.2.1.1 (ranging code) and §3.2.2.1.2
-# (overlay code). IRN-IS-800J-003 makes no changes here. The tests in
-# test/gps/l1c_codes.jl verify every PRN's initial 24 chips,
-# final 24 chips, and overlay final 11 bits against the published spec
-# values.
+# Algorithms follow IS-GPS-800G §3.2.2.1.1 (ranging code) and §3.2.2.1.2 (overlay code);
+# IRN-IS-800J-003 makes no changes here. test/gps/l1c_codes.jl checks every PRN's initial
+# and final 24 chips and overlay final 11 bits against the spec values.
 
 """
 $(SIGNATURES)
@@ -39,11 +36,9 @@ $(SIGNATURES)
 Build the per-PRN Weil-code XOR'd with the 7-chip expansion sequence,
 returning a length-10230 `Vector{Int8}` of ±1 chips for one PRN.
 
-Used by both `GPSL1C_D` and `GPSL1C_P`; the only difference is which
-Weil index `w` and insertion index `p` are provided.
-
-`legendre` is the precomputed sequence from [`_l1c_legendre_sequence`](@ref);
-caller passes it in to share the cost across all 63 PRNs.
+Used by both `GPSL1C_D` and `GPSL1C_P`, which differ only in the Weil index `w` and
+insertion index `p`. `legendre` is the sequence from [`_l1c_legendre_sequence`](@ref),
+passed in to share its cost across all 63 PRNs.
 """
 function _l1c_primary_code(legendre::AbstractVector{Bool}, weil_index::Integer, insertion_index::Integer)
     p = L1C_WEIL_LENGTH                    # 10223
@@ -78,8 +73,7 @@ end
 $(SIGNATURES)
 
 Build the L1C primary-code matrix `(L1C_PRIMARY_LENGTH, L1C_NUM_PRNS)` of
-`Int8` ±1 chips, given per-PRN Weil and insertion index arrays. Used by
-the `GPSL1C_D` and `GPSL1C_P` constructors.
+`Int8` ±1 chips, given per-PRN Weil and insertion index arrays.
 """
 function _l1c_build_primary_codes(weil_indices::AbstractVector{<:Integer},
                                   insertion_indices::AbstractVector{<:Integer})
@@ -102,34 +96,27 @@ of `Int8` ±1 chips. Each PRN's overlay is the first 1800 bits of the
 output of an 11-stage LFSR with per-PRN polynomial `mij` and initial
 state `init_11`, both taken from IS-GPS-800G Table 3.2-3.
 
-The LFSR output convention used here is verified against the spec's
-published final-11-bits per PRN.
+The LFSR output convention is verified against the spec's published final 11 bits per PRN.
 """
 function _l1c_build_overlay_codes()
     n = L1C_OVERLAY_LENGTH                 # 1800
     codes = Matrix{Int8}(undef, n, L1C_NUM_PRNS)
     for prn = 1:L1C_NUM_PRNS
-        # mij is stored as a 12-bit value (MSB-first). The lowest-order
-        # coefficient m_{i,0} is dropped (always implicit in the LFSR
-        # convention), leaving 11 tap bits at positions 11..1 of the
-        # 12-bit field.
+        # mij is a 12-bit value (MSB-first); the lowest-order coefficient m_{i,0} is
+        # implicit in the LFSR convention and dropped, leaving 11 tap bits at positions
+        # 11..1 of the field.
         #
-        # We use a left-shift register with the MSB (bit 10) as the
-        # output. The 11-bit state is stored MSB-first in the upper
-        # bits of a UInt16: bit 10 = first output, bit 0 = last output
-        # before any feedback wraps in. This matches the spec convention
-        # where the "initial 11 bits of the sequence" are the first 11
-        # outputs, with the MSB of init_11 emitted first.
+        # Left-shift register with the MSB (bit 10) as output: bit 10 = first output,
+        # bit 0 = last output before feedback wraps in. This matches the spec's "initial
+        # 11 bits of the sequence", with the MSB of init_11 emitted first.
         taps  = (L1C_OVERLAY_MIJ[prn]      >> 1) & 0x07FF
         state =  L1C_OVERLAY_INIT_11[prn]   & 0x07FF
         for i = 1:n
             # Output the MSB of the 11-bit register.
             codes[i, prn] = (state & 0x0400) == 0 ? Int8(1) : Int8(-1)
-            # Feedback bit: parity of (state AND taps). Each tap selects
-            # a register position whose contribution is XOR-summed.
+            # Feedback bit: parity of (state AND taps).
             fb = count_ones(state & taps) & 0x0001
-            # Left-shift the 11-bit register, inject feedback at LSB,
-            # mask to keep 11 bits.
+            # Left-shift, inject feedback at LSB, keep 11 bits.
             state = ((state << 1) | UInt16(fb)) & 0x07FF
         end
     end

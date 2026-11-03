@@ -4,55 +4,44 @@
 # chips-per-sample DDA (so it never drifts). We require oversampling (`step ≤ 1` chip
 # per sample, i.e. `step_num ≤ step_den`), which guarantees a vector of W consecutive
 # samples spans at most W ≤ 64 chips — small enough to read from one 64-chip vpermb
-# window with relative indices 0..63. See the module docstring for the full argument.
-#
-# Index/phase arithmetic uses Int16 (L = 1023 ≪ typemax(Int16)); chips are Int8.
+# window with relative indices 0..63.
 
-# Chip index mod L (L ≤ 10230 for the longest GNSS primary codes ≪ typemax(Int16)) is
-# kept 16-bit (Int32 for the rare long tables) so each phase Vec{64} stays compact.
+# Chip index mod L (L ≤ 10230 for the longest GNSS primary codes) is kept 16-bit (Int32 for
+# the rare long tables) so each phase Vec{64} stays compact.
 #
-# Fixed-point DDA: the chips-per-sample rate is represented as `step_num / 2^_B` with a
-# power-of-two denominator, so the per-lane index/remainder split is a shift (`>> _B`) and
-# a mask (`& (step_den-1)`) — no `div`/`SignedMultiplicativeInverse` needed — and the init
-# can materialise the running product `p = step_num·sample` once and derive both index and
-# remainder from it in a single pass.
+# Fixed-point DDA: the chips-per-sample rate is `step_num / 2^_B` with a power-of-two
+# denominator, so the index/remainder split is a shift (`>> _B`) and a mask (`& (step_den-1)`)
+# — no `div` — and the init can materialise `p = step_num·sample` once and derive both from it.
 #
 # `_RemT` is unsigned so the DDA carry `remainder + frac_step` can't go negative. With
-# `_B = 30` the remainder lives in `[0, 2^30)` and any single advance adds `frac_step < 2^30`,
-# so the (pre-carry) sum stays `< 2^31 < typemax(UInt32)` — no overflow in UInt32. `_B = 30`
-# is the largest that keeps that carry in UInt32 (the bound is `B ≤ 31`); it pins the
-# rate-quantization "drift" to ≤ N·2^-31 chips over an N-sample run (≈1e-4 chips over a
-# 200k-sample epoch — ~250× finer than `_B = 24`). The scalar-tail product `step_num·(N-1)`
-# (step_num < 2^30) stays within Int64 for any realistic N (< 2^33).
+# `_B = 30` the remainder lives in `[0, 2^30)` and a single advance adds `frac_step < 2^30`, so
+# the pre-carry sum stays `< 2^31 < typemax(UInt32)`. `_B = 30` is the largest that keeps that
+# carry in UInt32 (the bound is `B ≤ 31`); it pins the rate-quantization drift to ≤ N·2^-31
+# chips over an N-sample run. The scalar-tail product `step_num·(N-1)` (step_num < 2^30) stays
+# within Int64 for any realistic N (< 2^33).
 const _IndexT = Int16
 const _RemT   = UInt32
 
-# Fixed-point fractional bits and the (power-of-two) DDA denominator. B = 30 is the largest
-# that keeps the DDA carry (rem + frac_step < 2^(B+1)) inside the UInt32 `_RemT`, so the
-# steady-state hot loop is unchanged from B = 24 — only the one-time init widens.
+# Fixed-point fractional bits and the (power-of-two) DDA denominator (see `_RemT` above).
 const _B       = 30
 const _STEP_DEN = Int(1) << _B          # = 2^_B
 
-# Wrap a scalar chip index back into [0, L) with a single conditional subtract instead of
-# an integer `mod` (idiv). Valid whenever the pre-wrap value is < 2L — which holds for the
-# AVX-512 base advance once the per-stride whole-chip step is pre-reduced mod L (so
-# `base + whole + carry ∈ [0, 2L-1]`), exactly the assumption the AVX2/NEON windowed phase
-# DDA already makes. Removes the only idiv from the AVX-512 steady-state loop.
+# Wrap a scalar chip index back into [0, L) with a single conditional subtract instead of an
+# `idiv`. Valid whenever the pre-wrap value is < 2L, which holds once the per-stride whole-chip
+# step is pre-reduced mod L (`base + whole + carry ∈ [0, 2L-1]`).
 @inline _wrapL(x::Int, L::Int) = x >= L ? x - L : x
 
-# Per-lane index vectors `[0, 1, …, W-1]`, built once at load. The AVX-512 init (`_init_rel`)
-# materialises the running product `p = step_num·sample` for all 64 lanes at once with a real
-# SIMD Int64 multiply (AVX-512 has `vpmullq`), then derives rel/remainder from `p` with a
-# vector shift + mask. AVX2/Portable (`_init_state`) has no 64-bit SIMD multiply, so it splits
-# `step_num` into two _B/2-bit halves and reconstructs `p` from Int32 partial products (see
-# there), using these Int32 lanes.
+# Per-lane index vectors `[0, 1, …, W-1]`. The AVX-512 init (`_init_rel`) forms
+# `p = step_num·sample` for all 64 lanes with a real SIMD Int64 multiply (`vpmullq`); AVX2/
+# Portable (`_init_state`) has none, so it rebuilds `p` from Int32 partial products (see there)
+# using the Int32 lanes.
 const _LANES64 = Vec{64,Int64}(ntuple(j -> Int64(j - 1), Val(64)))
 @inline @generated _lanes_i32(::Val{W}) where {W} =
     :(Vec{$W,Int32}($(Expr(:tuple, (Int32(j - 1) for j in 1:W)...))))
 
 # Convert a chips-per-sample rate to the fixed-point `(step_num, step_den)` pair used by the
-# DDA: `step_den = 2^_B`, `step_num = round(cps · 2^_B)`. Drops `rationalize`'s continued
-# fraction (one multiply + round instead). Requires `0 < cps ≤ 1` (oversampling).
+# DDA: `step_den = 2^_B`, `step_num = round(cps · 2^_B)` (one multiply + round, no
+# `rationalize`). Requires `0 < cps ≤ 1` (oversampling).
 @inline function _fixed_point_step(cps::Real)
     sd = _STEP_DEN
     sn = round(Int, cps * sd)
@@ -70,9 +59,8 @@ chips_per_sample(code_frequency, sampling_frequency) = code_frequency / sampling
 
 # Pointer/`VecRange`-safe output targets for the fast kernels (boundary fill + windowed
 # permute), which write through `pointer(out)` / SIMD `VecRange` stores assuming UNIT STRIDE.
-# A plain `Vector` and a unit-stride contiguous `SubArray` satisfy that; strided views (e.g. a
-# matrix row) do NOT — routing them to those kernels clobbers neighbouring memory (issue #103),
-# so callers send them through the plain indexed Portable fallback instead.
+# A `Vector` and a contiguous `SubArray` satisfy that; strided views (e.g. a matrix row) do
+# NOT and would clobber neighbouring memory (#103), so they take the indexed Portable fallback.
 @inline _is_dense_target(::Vector) = true
 @inline _is_dense_target(::Base.FastContiguousSubArray) = true
 @inline _is_dense_target(::AbstractVector) = false
@@ -102,10 +90,8 @@ function generate_code!(out::AbstractVector{<:Integer}, table::CodeTable,
         throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
     sn = Int(step_numerator); sd = Int(step_denominator); ph = Int(phase); r0 = _RemT(rem0)
     if !_is_dense_target(out)
-        # Strided / non-contiguous target (e.g. a matrix row view): the boundary and windowed-
-        # permute kernels write through `pointer(out)` / `VecRange` stores assuming unit stride,
-        # which would corrupt neighbouring memory (issue #103). Walk it with the plain indexed
-        # scalar generator instead — correct for any `AbstractVector`, just slower.
+        # Strided target (e.g. a matrix row view): see `_is_dense_target` (#103). The indexed
+        # scalar generator is correct for any `AbstractVector`, just slower.
         _generate!(out, table, sn, sd, ph, Portable(), r0)
     elseif out isa AbstractVector{Int8} && _use_boundary(sn, sd, backend)
         _generate_boundary!(out, table, sn, sd, ph, r0)
@@ -126,19 +112,18 @@ end
 # Initialise one DDA state of W lanes whose first lane is sample `start_sample`:
 #   phase[j]     = (div(step_num*(start_sample+j), step_den) + phase_offset) mod L
 #   remainder[j] =  mod(step_num*(start_sample+j), step_den)        (j = 0..W-1)
-# Phase type `T` is Int16 for tables that fit (fast), Int32 for longer ones (the AVX2
-# path can't use the scalar-base rel trick — it regressed — so it widens the phase vector
-# instead). AVX-512 uses the rel/scalar-base path (`_init_rel`) and ignores this.
-# `_advance_phase` forms `phase + whole (+1)` in T BEFORE the `≥ Lc` wrap, so T must hold
-# up to `2L-1` (phase ≤ L-1, whole_stride ≤ L-1) — hence Int16 only up to L = 16384.
+# Phase type `T` is Int16 for tables that fit (fast), Int32 for longer ones (AVX2 can't use
+# the scalar-base rel trick — it regressed — so it widens the phase vector instead). AVX-512
+# uses `_init_rel` and ignores this. `_advance_phase` forms `phase + whole (+1)` in T BEFORE
+# the `≥ Lc` wrap, so T must hold up to `2L-1` — hence Int16 only up to L = 16384.
 @inline _phase_type(L) = 2L - 1 <= typemax(Int16) ? Int16 : Int32
 # Fixed-point init: chip index = `p >> _B`, remainder = `p & (step_den-1)`, p = step_num·sample.
 # AVX2 has no 64-bit SIMD multiply and `p` (< 2^37 at _B=30) overflows Int32, so SPLIT
 # `step_num = hi·2^H + lo` (H = _B÷2 = 15): the partial products `hi·s` and `lo·s` both fit
 # Int32 (native `vpmulld`), and `p>>_B` / `p&(2^_B-1)` are reconstructed from them with shifts
-# and masks — no `Vec{W,UInt64}` (which has no AVX2 instruction and wrecked the hot loop's
-# register allocation). `@noinline`: runs ONCE per stream at setup, kept out of line so its
-# temporaries don't bloat the steady-state loops it feeds (`_generate_simd_windowed!`, iterators).
+# and masks — no `Vec{W,UInt64}` (no AVX2 instruction; it wrecked the hot loop's register
+# allocation). `@noinline`: runs once per stream at setup, kept out of line so its temporaries
+# don't bloat the steady-state loops it feeds.
 @noinline function _init_state(::Val{W}, step_num, step_den, L, start_sample, phase_offset, ::Type{T},
                                rem0::_RemT = _RemT(0)) where {W,T}
     H      = _B >> 1                                           # split point (15 for _B = 30)
@@ -158,19 +143,17 @@ end
         idx = vifelse(idx >= Int32(L), idx - Int32(L), idx)        # mod L (one conditional subtract)
         phase = convert(Vec{W,T}, idx)
     end
-    # Seed the fractional sub-chip offset (one DDA micro-step, frac = rem0, whole = 0). Since
-    # rem0 < step_den and each lane's remainder < step_den, the sum < 2·step_den ⇒ carry ∈ {0,1}.
-    # Folding rem0 into the Int32 split-multiply above would overflow `lowB` (near the Int32
-    # edge), so we add it here instead — done once at setup, never in the hot loop.
+    # Seed the fractional sub-chip offset (one DDA micro-step, frac = rem0, whole = 0); the sum
+    # < 2·step_den ⇒ carry ∈ {0,1}. Folding rem0 into the Int32 split-multiply would overflow
+    # `lowB`, so it is added here, once at setup.
     if rem0 != _RemT(0)
         phase, remainder = _seed_micro_phase(phase, remainder, rem0, _RemT(step_den), T(L))
     end
     (phase, remainder)
 end
 
-# One DDA micro-advance (frac = rem0, whole = 0) for the phase-form state. Adds the fractional
-# sub-chip start offset to every lane's running remainder, carrying ≤1 chip. Used to seed a
-# fractional start phase at setup; the steady-state advance is unchanged.
+# One DDA micro-advance (frac = rem0, whole = 0) for the phase-form state: adds the fractional
+# sub-chip start offset to every lane's remainder, carrying ≤1 chip.
 @inline _seed_micro_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, rem0::_RemT,
                           modulus::_RemT, Lc::T) where {W,T} =
     _advance_phase(phase, rem, rem0, zero(T), modulus, Lc)   # whole = 0: pure fractional seed
@@ -188,11 +171,10 @@ end
     _permute(window, index)
 end
 
-# AVX2: vpshufb shuffles each 128-bit lane independently, so we give each lane its OWN
-# 16-chip window — the 32 samples are two independent 16-sample halves (each spans ≤ 15
-# chips when oversampled). No 4×pshufb+blend composition needed: a single vpshufb does
-# both halves at once. `_AVX2_LOW16` selects per-lane base (lane-0 chip for the low half,
-# lane-16 chip for the high half).
+# AVX2: vpshufb shuffles each 128-bit lane independently, so each lane gets its OWN 16-chip
+# window — the 32 samples are two independent 16-sample halves (each spans ≤ 15 chips when
+# oversampled) done by a single vpshufb. `_AVX2_LOW16` selects the per-lane base (lane-0 chip
+# for the low half, lane-16 chip for the high half).
 const _AVX2_LOW16 = Vec{32,Bool}(ntuple(j -> j <= 16, Val(32)))
 @inline function _window_lookup(::AVX2, padded, phase::Vec{32,T}, L) where {T}
     Lc = T(L)
@@ -208,11 +190,9 @@ const _AVX2_LOW16 = Vec{32,Bool}(ntuple(j -> j <= 16, Val(32)))
     _pshufb(window, index)
 end
 
-# NEON: a 128-bit register is 16 bytes, so `tbl1` does a single 16-chip → 16-lane lookup —
-# exactly ONE of AVX2's two `vpshufb` halves. So this is the single-window analogue of the
-# AVX2 two-window lookup: one base (lane-0 chip), one 16-chip window, one `tbl1`. The 16
-# samples span ≤ 15 chips when oversampled, so the relative indices are 0..15 (never the
-# ≥16 out-of-range that `tbl1` zeroes).
+# NEON: `tbl1` is a single 16-chip → 16-lane lookup, the single-window analogue of one AVX2
+# `vpshufb` half: one base (lane-0 chip), one window. The 16 samples span ≤ 15 chips when
+# oversampled, so indices are 0..15 (never the ≥16 that `tbl1` zeroes).
 @inline function _window_lookup(::Neon, padded, phase::Vec{16,T}, L) where {T}
     base = Int(@inbounds phase[1])
     Lc = T(L)
@@ -224,20 +204,19 @@ end
 end
 
 # ── relative-index DDA ───────────────────────────────────────────────────────────────
-# The value the permute consumes is the window-relative index `rel`, which fits Int8 (it
-# is ≤ 63 for AVX-512's single 64-chip window, ≤ 15 per half for AVX2's two 16-chip
-# windows). So instead of carrying the Int16 chip index and subtracting a base every
-# vector, we carry `rel` directly (Int8 → half the registers) plus a scalar base per
-# window, advancing both with the identity  rel[j] += carry[j] − carry[base-of-j],
+# The permute consumes the window-relative index `rel`, which fits Int8 (≤ 63 for AVX-512's
+# 64-chip window, ≤ 15 per half for AVX2's 16-chip windows). Instead of carrying the Int16 chip
+# index and subtracting a base every vector, carry `rel` directly (Int8 → half the registers)
+# plus a scalar base per window, advancing with  rel[j] += carry[j] − carry[base-of-j],
 # base += whole + carry[base-lane]  (mod L). This drops the per-vector subtract, the
-# Int16→Int8 narrow and the lane-0 extract — ~1.8× on AVX-512.
+# Int16→Int8 narrow and the lane-0 extract (~1.8× on AVX-512).
 
 # AVX-512: one 64-chip window per stream → one scalar base.
 @inline function _init_rel(::Val{64}, step_num, step_den, L, start, phase_offset, rem0::_RemT = _RemT(0))
     # Materialise `p = step_num·sample + rem0` for all 64 lanes at once (real SIMD multiply),
     # then derive rel (relative chip index, Int8) and remainder from `p` with a vector shift +
-    # mask. `rem0 ∈ [0, step_den)` is the fixed-point fractional sub-chip start offset, folded
-    # directly into the Int64 product (exact, overflow-safe). rem0 = 0 ⇒ original integer-phase.
+    # mask. `rem0 ∈ [0, step_den)` is the fractional sub-chip start offset, folded into the Int64
+    # product (exact, overflow-safe).
     p = Vec{64,Int64}(Int64(step_num)) * (_LANES64 + Int64(start)) + Int64(rem0)
     d0 = (Int64(step_num) * Int64(start) + Int64(rem0)) >> _B
     rel = convert(Vec{64,Int8},  (p >> _B) - Int64(d0))
@@ -256,10 +235,10 @@ end
 # COMPILE-TIME-CONSTANT per-lane vectors (r < 2^_B and frac_lane[j] < 2^_B ⇒ the sum is a
 # single 0/1 carry mask, no 64-bit product). Only a scalar `(r, base)` pair advances between
 # blocks, so there is no loop-carried per-lane remainder and no lane-0 vector→scalar extract —
-# ~1.4× (AVX-512) / ~1.6× (AVX2) over the previous four-stream phase/rel DDA. `Wstep_whole` is
-# reduced mod L so the single-subtract `_wrapL` stays valid (needs L ≥ W; every GNSS code is
-# ≫ 64). Byte-identical to the Portable oracle. NEON's `tbl1` llvmcall is aarch64-only, but
-# this kernel is only instantiated for `backend = Neon()`, which never happens on x86.
+# ~1.4× (AVX-512) / ~1.6× (AVX2) over a four-stream phase/rel DDA. `Wstep_whole` is reduced
+# mod L so the single-subtract `_wrapL` stays valid (needs L ≥ W; every GNSS code is ≫ 64).
+# Byte-identical to the Portable oracle. NEON's `tbl1` llvmcall is aarch64-only, but this
+# kernel is only instantiated for `backend = Neon()`, never on x86.
 function _generate!(out, table::CodeTable, step_num, step_den, phase_offset, ::AVX512, rem0::_RemT = _RemT(0))
     _generate_simd_single!(out, table, step_num, step_den, phase_offset, AVX512(), Val(64), rem0)
 end
@@ -272,12 +251,11 @@ function _generate_simd_single!(out, table::CodeTable, step_num, step_den, phase
     L = table.length; padded = table.padded
     SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
     base_lane = Vec{W,Int8}(ntuple(j -> Int8((SN * (j - 1)) >> _B), Val(W)))
-    # Carry test rewritten to drop the per-block vector add. `carry[j] = frac_lane[j] + r ≥ 2^_B`
-    # is algebraically `r > (2^_B-1) - frac_lane[j]`, and `nf_lane = (step_den-1) - frac_lane` is a
-    # compile-time-constant vector, so the hot loop is ONE unsigned compare against `r` (NEON `cmhi`
-    # / AVX-512 `vpcmpud`) instead of a broadcast-add + compare — the per-block vector `add`s vanish
-    # (measured: ~27% on Cortex-A78 NEON W=16 tbl1, ~45% on Zen 5 AVX-512 W=64 vpermb where the
-    # dropped add was four zmm ops). Byte-identical to the add form (verified on both ISAs).
+    # Carry test rewritten to drop the per-block vector add: `carry[j] = frac_lane[j] + r ≥ 2^_B`
+    # is `r > (2^_B-1) - frac_lane[j]`, and `nf_lane = (step_den-1) - frac_lane` is a
+    # compile-time-constant vector, so the hot loop is ONE unsigned compare against `r` (NEON
+    # `cmhi` / AVX-512 `vpcmpud`) instead of a broadcast-add + compare (measured: ~27% on
+    # Cortex-A78 NEON, ~45% on Zen 5 AVX-512 where the add was four zmm ops). Byte-identical.
     nf_lane = Vec{W,UInt32}(ntuple(j -> UInt32(mask - ((SN * (j - 1)) & mask)), Val(W)))
     one8 = one(Vec{W,Int8}); zero8 = zero(Vec{W,Int8})
     Wstep = Int64(W) * SN
@@ -301,11 +279,10 @@ end
 # ── one-shot AVX2 kernel (W=32, two `vpshufb` 16-chip windows) ────────────────────────────
 # `vpshufb` shuffles each 128-bit lane independently, so the 32 lanes are TWO independent
 # 16-lane single-window sub-blocks: the low half (lanes 0..15, window `base`) and the high
-# half (lanes 16..31, window `base_hi`) — the latter is the same recurrence advanced 16
-# samples, derived from the shared scalar `r` with one cheap scalar micro-step per block
-# (`r16`, `base_hi`). One `vpshufb` over the packed `[lo;hi]` windows. This split-constant
-# form does NOT carry a per-half remainder vector, so it avoids the "halfcarry" cost that made
-# the earlier phase/rel DDA regress on AVX2 — it is ~1.6× faster than that kernel here.
+# half (lanes 16..31, window `base_hi`) — the same recurrence advanced 16 samples, derived from
+# the shared scalar `r` with one cheap scalar micro-step per block (`r16`, `base_hi`). One
+# `vpshufb` over the packed `[lo;hi]` windows. No per-half remainder vector is carried, which
+# avoids the "halfcarry" cost that made a phase/rel DDA regress on AVX2.
 @inline _rel_lookup_avx2(padded, rel::Vec{32,Int8}, base_lo::Int, base_hi::Int) = begin
     lo16 = @inbounds padded[VecRange{16}(base_lo + 1)]
     hi16 = @inbounds padded[VecRange{16}(base_hi + 1)]
@@ -322,8 +299,7 @@ function _generate_simd_avx2!(out, table::CodeTable, step_num, step_den, phase_o
     SN = Int64(step_num); mask = Int64(step_den - 1); sd = _RemT(step_den)
     # 16-lane constants (each half is relative to its own lane 0)
     base16 = Vec{32,Int8}(ntuple(j -> Int8((SN * ((j - 1) % H)) >> _B), Val(32)))
-    # `nf16 = (step_den-1) - frac16`: same add-dropping rewrite as `_generate_simd_single!` (the
-    # per-half broadcast `rbroad` is compared directly, `rbroad > nf16`, dropping the vector add).
+    # `nf16 = (step_den-1) - frac16`: same add-dropping rewrite as `_generate_simd_single!`.
     nf16 = Vec{32,UInt32}(ntuple(j -> UInt32(mask - ((SN * ((j - 1) % H)) & mask)), Val(32)))
     one8 = one(Vec{32,Int8}); zero8 = zero(Vec{32,Int8})
     Hfrac = _RemT((Int64(H) * SN) & mask); Hwhole = Int((Int64(H) * SN) >> _B) % L   # 16-sample step
@@ -358,9 +334,8 @@ end
 @inline function _generate_tail!(out, table::CodeTable, step_num, step_den, phase_offset, sample,
                                  rem0::_RemT = _RemT(0))
     L = table.length; chips = table.chips
-    # Fixed-point: with step_den = 2^_B the per-sample index is a shift (no idiv); the
-    # step_den arg is unused but kept for the call-site signature. `rem0` is the fractional
-    # sub-chip start offset added inside the floor (rem0 = 0 ⇒ original integer-phase tail).
+    # With step_den = 2^_B the per-sample index is a shift (no idiv); `step_den` is unused. `rem0`
+    # is the fractional sub-chip start offset added inside the floor.
     r0 = Int64(rem0)
     @inbounds while sample <= length(out)
         index = mod((step_num * Int64(sample - 1) + r0) >> _B + phase_offset, L)
@@ -386,16 +361,14 @@ end
 #
 # The ceil-division is EXACT: for non-power-of-two `step_num` it uses the (64+ℓ)-bit
 # round-up magic reciprocal `magic = ⌈2^(64+ℓ)/step_num⌉` (ℓ = ⌊log₂ step_num⌋), which by
-# the classical Granlund–Montgomery bound reproduces ⌈d/step_num⌉ for EVERY dividend
-# d < 2^64 — far above the ≤ L·2^_B < 2^50 a segment can produce. Power-of-two rates are a
-# plain shift. So the output is byte-identical to the permute kernels / Portable oracle for
-# any fill length and any continuation split — unlike the `freqfix` run-fill this replaces,
-# whose rounded reciprocal drifted ~1–2 samples per ~10⁵ chips and needed a `_RUNFILL_MAXFILL`
-# segmentation cap and a `Val{NI}` store-width ladder. One boundary calculation is one
-# independent multiply-high (no loop-carried arithmetic, unrolled 4×), one chip value is one
-# byte load + broadcast, so the steady state is ~1 store per chip at store throughput. There
-# is no vector arithmetic at all — the splat stores are plain unaligned SIMD.jl stores — so
-# this ONE kernel serves every backend (and any table length; no `_check_windowed_length`).
+# the Granlund–Montgomery bound reproduces ⌈d/step_num⌉ for EVERY dividend d < 2^64 — far
+# above the ≤ L·2^_B < 2^50 a segment can produce. Power-of-two rates are a plain shift. So
+# the output is byte-identical to the permute kernels / Portable oracle for any fill length
+# and any continuation split. One boundary calculation is one independent multiply-high (no
+# loop-carried arithmetic, unrolled 4×), one chip value is one byte load + broadcast, so the
+# steady state is ~1 store per chip at store throughput. There is no vector arithmetic — the
+# splat stores are plain unaligned SIMD.jl stores — so this ONE kernel serves every backend
+# and any table length (no `_check_windowed_length`).
 
 # Boundary-step instruction selection: x86 favours the accumulated add/adc product,
 # aarch64 the independent `umulh`s (see the two branches in `_boundary_fill!`). Both are
@@ -430,9 +403,8 @@ const _BOUNDARY_ACCUM = Sys.ARCH in (:x86_64, :i686)
 end
 
 # Core boundary fill from continuation state `(c0, r0)` (chip index, fractional chip phase).
-# Requires a pointer-compatible contiguous Int8 `out` (the same contract as the permute
-# kernels' `VecRange` stores). Writes exactly `length(out)` samples; the caller derives the
-# advanced state arithmetically (see `fill_continue!`).
+# Requires a pointer-compatible contiguous Int8 `out` (see `_is_dense_target`). Writes exactly
+# `length(out)` samples; the caller derives the advanced state arithmetically.
 function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                          ::Val{SW}, ::Val{EXTRAS}) where {SW,EXTRAS}
     lg = _boundary_lg(SN)
@@ -466,8 +438,7 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                     # add/adc (LLVM's Int128 lowering is worse) — the boundary is hi >> lg,
                     # so each chip costs one add/adc + shift instead of a multiply-high.
                     # Bit-identical to `_boundary_ceildiv`; measured ~1.15–1.2× over the
-                    # mulx form on Zen 5 and it recovered the CI AVX2 GPSL1CA @ 5 MHz row
-                    # (0.68 → 0.95 vs run-fill).
+                    # mulx form on Zen 5.
                     Clo = (magic << _B) % UInt64
                     Chi = (magic >>> (64 - _B)) % UInt64
                     P = widemul((((Int64(1) << _B) - r0 - 1)) % UInt64, magic)
@@ -483,9 +454,8 @@ function _boundary_fill!(out, padded, L::Int, SN::Int64, c0::Int, r0::Int64,
                     end
                 else
                     # aarch64: four INDEPENDENT multiply-highs per iteration (`umulh` is
-                    # cheap on Apple Silicon; the add/adc carry chain is what regressed the
-                    # macos benchmark rows from 1.2–1.4× back to ~0.8×, so the ISA picks
-                    # the form — output is bit-identical either way).
+                    # cheap on Apple Silicon; the add/adc carry chain regressed the macOS
+                    # benchmarks from 1.2–1.4× to ~0.8×; output is bit-identical either way).
                     d = (Int64(1) << _B) - r0
                     while i + 3 <= nlim
                         j1 = pos + _boundary_ceildiv(d, lg, magic)
@@ -570,21 +540,17 @@ end
 
 # Store width: smallest power of two ≥ m+2 (a run is m or m+1 samples, +1 slack so one
 # store always covers a run), clamped to [8, 64]. Beyond m = 62 the `EXTRAS` variant adds
-# the strided interior stores. Purely a store-width choice — every variant is exact for
-# every rate, so this ladder (unlike the old `Val{NI}` one) cannot change the output. The
-# SW = 8 rung matters on store-bandwidth-limited cores (CI runners): at m ≈ 5 a 16-wide
-# store is 3.3× write amplification vs 8-wide's 1.6× (measured 1.4–1.6× on the ubuntu
-# benchmark's GPSL1CA @ 5 MHz row).
+# the strided interior stores. Purely a store-width choice — every variant is exact for every
+# rate. The SW = 8 rung matters on store-bandwidth-limited cores: at m ≈ 5 a 16-wide store is
+# 3.3× write amplification vs 8-wide's 1.6× (measured 1.4–1.6×).
 #
-# The rung → (store width, EXTRAS) mapping lives here in one place and is shared by both
-# selection sites (this dispatch and the `FillEngineBoundary` constructor in generator.jl,
-# issue #130). Because the choice never affects output, retuning it at only one site would
-# silently desync one-shot `gen_code!` from the continuing `code_engine` for the same rate —
-# uncatchable by output tests. CPS style (`f` fed the `Val`s) rather than a plain
-# `m -> (Val, Val)` return: five distinct `Val` pairs would form a 5-way union, past Julia's
-# union-splitting limit of 4, forcing dynamic dispatch in `_boundary_dispatch!`. As a
-# `@inline`d continuation `f` is inlined into each branch, so the `Val`s stay compile-time
-# constants — the dispatch stays type-stable and the constructor still stores a concrete `Val`.
+# The rung → (store width, EXTRAS) mapping lives here and is shared by both selection sites
+# (this dispatch and the `FillEngineBoundary` constructor, #130). Since the choice never
+# affects output, retuning only one site would silently desync one-shot `gen_code!` from the
+# continuing `code_engine` — uncatchable by output tests. CPS style (`f` fed the `Val`s)
+# rather than returning `(Val, Val)`: five distinct pairs would form a 5-way union, past
+# Julia's union-splitting limit of 4, forcing dynamic dispatch. As an `@inline`d continuation
+# `f` is inlined into each branch, so the `Val`s stay compile-time constants.
 @inline function _with_boundary_width(f::F, m::Int) where {F}
     if m <= 6
         f(Val(8), Val(false))
@@ -607,8 +573,7 @@ end
     nothing
 end
 
-# One-shot boundary fill from an integer chip phase + fractional sub-chip offset `rem0`
-# (the same seeding as the permute kernels; byte-identical output).
+# One-shot boundary fill from an integer chip phase + fractional sub-chip offset `rem0`.
 function _generate_boundary!(out, table::CodeTable, step_num::Int, step_den::Int,
                              phase_offset::Int, rem0::_RemT = _RemT(0))
     c0 = Int(mod(Int64(rem0) >> _B + phase_offset, table.length))
@@ -622,32 +587,25 @@ end
 # stores (cost ≈ flat per chip), so it scales with the backend's block width — wider
 # vectors amortise the permute over more samples and push the switch to higher m. Values
 # are the measured curve crossings (Zen 5 AVX-512: boundary overtakes the `cmhi` split-constant
-# permute at m ≈ 8; AVX2 = 3, matching the old run-fill values — on the CI AVX2
-# runner the m ≈ 3.9 rows (GPSL5 @ 40 MHz) lose ~20 % when sent to the permute instead).
-# NEON is microarchitecture-split (one constant cannot fit both aarch64 families — their
-# permute/boundary curves cross at OPPOSITE points):
+# permute at m ≈ 8; AVX2 = 3: on a CI AVX2 runner m ≈ 3.9 rows lose ~20 % on the permute).
+# NEON is microarchitecture-split (the two aarch64 families cross at OPPOSITE points):
 #   • Linux aarch64 (Cortex): = 6. Measured directly on a Cortex-A78 (Jetson Orin) with pinned
-#     clocks — the `cmhi` split-constant permute is a flat ~0.20 ns/sample and the `tbl1` (16-wide)
-#     boundary fill only overtakes it at m ≥ 6; at m = 3..5 the 8-wide splat store's write
-#     amplification keeps boundary at 0.22..0.37 ns/sample, slower than the permute.
+#     clocks — the `cmhi` permute is a flat ~0.20 ns/sample and the boundary fill only overtakes
+#     it at m ≥ 6; at m = 3..5 the 8-wide splat store's write amplification keeps boundary at
+#     0.22..0.37 ns/sample.
 #   • Apple Silicon: = 3. Its boundary fill is much faster (the `umulh` ceil-div is cheap — the
 #     same reason `_BOUNDARY_ACCUM` picks the multiply-high branch there), so boundary already wins
-#     from m ≥ 3. The macOS-14 CI benchmark regressed GPS L1 C/A @ 5 MHz (m=4, −24 %), L2C @ 2.5 MHz
-#     and L5 @ 40 MHz (m=3) when they were forced onto the permute path with `= 6`.
+#     from m ≥ 3; forcing m = 3..4 rows onto the permute (`= 6`) regressed the macOS benchmarks
+#     (GPS L1 C/A @ 5 MHz −24 %).
 # `Sys.isapple()` const-folds at precompile; aarch64+macOS ⇒ Apple Silicon, aarch64+Linux ⇒ Cortex
-# (Jetson/Raspberry Pi/Neoverse). Was `= 3` for all NEON (copied untuned from AVX2, which sent the
-# common Cortex GPS L1 C/A / L5 rows to the slower boundary path).
-# AVX-512 = 8 (was 10). Re-measured on a Zen 5 after the `cmhi` permute rewrite (~45% faster
-# there): with a clock stabilised near all-core boost (so the ALU-heavy permute and the store-heavy
-# boundary see the same clock — a single-core-boost measurement biases toward the store kernel), the
-# permute is a flat ~0.025 ns/sample and boundary overtakes it at m ≥ 8 (m=8 boundary 0.0199 vs
-# permute 0.0253, ~21% faster; m=9 ~4%). The old `= 10` left m=8..9 on the now-slower permute. 8 is
-# also safe on Intel AVX-512, where zmm-heavy code down-licenses the core clock and pushes the
-# crossover even lower (boundary favoured), so no x86 AVX-512 part wants a threshold above 8.
-# Near the crossover both kernels are within ~15 % of each other, so the
-# exact values are uncritical — and since both kernels are EXACT and N-independent, the
-# choice affects only speed, never output (the old N-aware short-fill overload is gone:
-# neither kernel has a meaningful setup cost).
+# (Jetson/Raspberry Pi/Neoverse).
+# AVX-512 = 8: measured on a Zen 5 at a clock stabilised near all-core boost (so the ALU-heavy
+# permute and the store-heavy boundary see the same clock): the permute is a flat ~0.025
+# ns/sample and boundary overtakes it at m ≥ 8 (m=8: 0.0199 vs 0.0253, ~21% faster; m=9 ~4%).
+# 8 is also safe on Intel AVX-512, where zmm-heavy code down-licenses the core clock and pushes
+# the crossover lower.
+# Near the crossover both kernels are within ~15 % of each other, and both are EXACT and
+# N-independent, so the choice affects only speed, never output.
 @inline _boundary_min_m(::AVX512)   = 8
 @inline _boundary_min_m(::AVX2)     = 3
 @inline _boundary_min_m(::Neon)     = Sys.isapple() ? 3 : 6

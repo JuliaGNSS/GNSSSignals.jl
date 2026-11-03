@@ -33,31 +33,24 @@ end
 BeiDou B1C pilot signal (the dataless component of B1C, carrying 3/4 of the B1C
 power).
 
-The B1C pilot is specified as QMBOC(6,1,4/33) (BDS-SIS-ICD-B1C-1.0 §4.2, Eq.
-4-10): in the pilot's own complex envelope, a BOC(1,1) subcarrier on the real
-arm and a BOC(6,1) subcarrier in phase quadrature to it, with 4/33 of the pilot
-power on the BOC(6,1) component. This implementation generates a pure
-sine-phased **BOC(1,1)** replica — `get_modulation` returns `BOCsin(1, 1)` and
-`gen_code!` emits it (needing only `fs ≥ 2·1.023 MHz`).
+The B1C pilot is specified as QMBOC(6,1,4/33) (BDS-SIS-ICD-B1C-1.0 §4.2, Eq. 4-10): in
+the pilot's complex envelope, a BOC(1,1) subcarrier on the real arm and a BOC(6,1)
+subcarrier in phase quadrature to it, with 4/33 of the pilot power on BOC(6,1). This
+implementation generates a pure sine-phased **BOC(1,1)** replica (`get_modulation` returns
+`BOCsin(1, 1)`; needs only `fs ≥ 2·1.023 MHz`). It is real-valued and captures the
+principal BOC(1,1) arm, with 29/33 of the pilot power; a full QMBOC replica would be
+complex-valued, unlike the real-valued CBOC replicas of [`GalileoE1B`](@ref) and
+[`GalileoE1C`](@ref).
 
-QMBOC places BOC(1,1) and BOC(6,1) in phase quadrature. This real-valued
-replica captures the principal BOC(1,1) arm, with 29/33 of the pilot power;
-a full QMBOC replica would be complex-valued. In contrast, the full CBOC
-replicas `GalileoE1B(CBOC)` and `GalileoE1C(CBOC)` ([`GalileoE1B`](@ref),
-[`GalileoE1C`](@ref)) combine their two subcarriers in a real-valued CBOC waveform.
+In the B1C composite, Eq. 4-3 is `s_data + j·s_pilot`: the ICD's phase table (Table 4-2)
+puts the data at 0°, the pilot's BOC(1,1) arm at 90° and its minor BOC(6,1) arm back at
+0°. The 90° between this replica and [`BeiDouB1C_D`](@ref) is what
+[`get_carrier_phase_offset`](@ref) reports (`+0.25` cycles).
 
-Where the pilot sits in the B1C *composite*: Eq. 4-3 is `s_data + j·s_pilot`,
-so the `j` rotates the whole pilot envelope — the ICD's own phase table (Table
-4-2) puts the data component at 0°, the pilot's BOC(1,1) arm at 90° and its
-minor BOC(6,1) arm back at 0°. The 90° between this replica and the
-[`BeiDouB1C_D`](@ref) reference is what [`get_carrier_phase_offset`](@ref)
-reports (`+0.25` cycles).
-
-The 10230-chip primary code is a truncated Weil code (same construction as
-[`BeiDouB1C_D`](@ref), with the pilot per-SVID parameters `B1C_PILOT_WEIL_PARAMS`,
-ICD Table 5-3). It is overlaid with an 1800-chip per-SVID secondary code — a
-truncated length-3607 Weil code (ICD Table 5-4) — for an 18 s tiered code,
-exposed via [`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref).
+The 10230-chip primary code is a truncated Weil code (as for [`BeiDouB1C_D`](@ref), with
+the pilot parameters `B1C_PILOT_WEIL_PARAMS`, ICD Table 5-3), overlaid with an 1800-chip
+per-SVID secondary code, a truncated length-3607 Weil code (ICD Table 5-4), for an 18 s
+tiered code, exposed via [`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref).
 PRNs 1-63.
 
 # Example
@@ -114,8 +107,7 @@ end
 function BeiDouB1C_P()
     codes = read_beidou_b1c_p_codes()
     overlay = _build_beidou_b1c_secondary()
-    # The 1800-chip per-SVID overlay is far too long to bake, so it stays residual in the
-    # SignalLUT and is applied per primary period at gen time.
+    # Too long to bake: stays residual in the SignalLUT, applied per primary period.
     lut = build_signal_lut(get_modulation(BeiDouB1C_P), codes, PerPRNSecondaryCode(overlay))
     BeiDouB1C_P(codes, overlay, lut)
 end
@@ -125,19 +117,13 @@ end
 get_modulation(::Type{<:BeiDouB1C_D}) = BOCsin(1, 1)
 get_modulation(::Type{<:BeiDouB1C_P}) = BOCsin(1, 1)   # BOC(1,1) replica of QMBOC(6,1,4/33); see docstring
 
-# B1C data rides the in-phase carrier (default 0); the pilot's BOC(1,1) arm — the one
-# this replica tracks — is in quadrature. BDS-SIS-ICD-B1C-1.0 Eq. 4-3 is
-# `s_data + j·s_pilot` under the same `I·cos − Q·sin` convention as Galileo (Eq. 4-2),
-# and the ICD's own phase table (Table 4-2) puts the data at 0° and the pilot BOC(1,1)
-# arm at 90° → +1/4 cycle. (The pilot's minor BOC(6,1) arm lands back at 0°, but no real
-# replica of it is generated; see the [`BeiDouB1C_P`](@ref) docstring.)
+# Data is the in-phase reference (default 0); the pilot's BOC(1,1) arm, the one this
+# replica tracks, is in quadrature: Eq. 4-3 `s_data + j·s_pilot` with the Galileo
+# `I·cos − Q·sin` convention, Table 4-2 puts it at 90° → +1/4 cycle.
 @inline get_carrier_phase_offset(::Type{<:BeiDouB1C_P}) = 0.25
 
-# The other 75/25 pilot/data split besides GPS L1C: BDS-SIS-ICD-B1C-1.0 §4.2.2 states
-# the data:pilot power ratio as 1:3. Stated as the full ICD component split — not the
-# 29/44 the BOC(1,1) pilot replica captures — matching the GalileoE1C BOC(1,1) replica
-# (the replica changes the correlation shape, not the transmitted split). See
-# [`get_relative_power`](@ref).
+# 75/25 pilot/data split: BDS-SIS-ICD-B1C-1.0 §4.2.2 gives data:pilot 1:3. This is the full
+# ICD component split, not the 29/44 the BOC(1,1) pilot replica captures.
 @inline get_relative_power(::Type{<:BeiDouB1C_D}) = 0.25
 @inline get_relative_power(::Type{<:BeiDouB1C_P}) = 0.75
 
@@ -146,17 +132,11 @@ $(SIGNATURES)
 
 Get the band the signal is transmitted on.
 
-BeiDou B1C shares the L1 carrier frequency (1575.42 MHz), so this returns
-[`L1`](@ref) — band identity is by RF, not by ICD label.
+BeiDou B1C shares the L1 carrier (1575.42 MHz), so this returns [`L1`](@ref).
 """
 @inline get_band(::Type{<:BeiDouB1C_D}) = L1()
 @inline get_band(::Type{<:BeiDouB1C_P}) = L1()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
 @inline get_signal_name(::Type{<:BeiDouB1C_D}) = "BeiDou B1C data"
 @inline get_signal_name(::Type{<:BeiDouB1C_P}) = "BeiDou B1C pilot"
 
@@ -181,9 +161,6 @@ $(SIGNATURES)
 
 Get the bit rate, as tracked, of BeiDou B1C data: 100 bit/s, the symbol rate of the
 LDPC-coded B-CNAV1 message.
-
-# Returns
-- `Frequency`: 100 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB1C_D}) = 100Hz
 
@@ -191,9 +168,6 @@ LDPC-coded B-CNAV1 message.
 $(SIGNATURES)
 
 Get the bit rate, as tracked, of BeiDou B1C pilot: 0 Hz, as it is dataless.
-
-# Returns
-- `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB1C_P}) = 0Hz
 
@@ -202,10 +176,8 @@ $(SIGNATURES)
 
 Get the secondary code for BeiDou B1C data.
 
-The B1C data component has no secondary code (BDS-SIS-ICD-B1C-1.0 Table 5-1).
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+The B1C data component has no secondary code (BDS-SIS-ICD-B1C-1.0 Table 5-1); returns
+[`NoSecondaryCode`](@ref).
 """
 @inline get_secondary_code(::BeiDouB1C_D) = NoSecondaryCode()
 
@@ -215,10 +187,8 @@ $(SIGNATURES)
 Get the secondary code for BeiDou B1C pilot.
 
 Every primary period (10 ms) is overlaid with one chip of an 1800-bit per-SVID
-truncated Weil code (BDS-SIS-ICD-B1C-1.0 §5.2.2), giving an 18 s tiered code.
-
-# Returns
-- [`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix
+truncated Weil code (BDS-SIS-ICD-B1C-1.0 §5.2.2). Returns a [`PerPRNSecondaryCode`](@ref)
+wrapping the 1800 × 63 overlay matrix.
 """
 @inline get_secondary_code(s::BeiDouB1C_P) = PerPRNSecondaryCode(s.overlay_codes)
 

@@ -159,12 +159,6 @@ products of its values cannot overflow), or a floating-point type for CBOC signa
 two subcarriers are weighted by their power split. [`gen_code!`](@ref) always fills
 `Int8`.
 
-# Arguments
-- `signal`: A GNSS signal instance
-
-# Returns
-- `Type`: The element type for code values
-
 # Examples
 ```julia-repl
 julia> get_code_type(GPSL1CA())
@@ -175,9 +169,8 @@ Float32
 """
 get_code_type(signal::T) where {T<:AbstractGNSSSignal} = get_code_type(signal, get_modulation(T))
 
-# `eltype(C)` rather than matching `AbstractMatrix{T}`: `C` is a direct parameter, so it
-# always binds, whereas `T` would be unbound for a UnionAll code type like `GPSL1CA{Matrix}`
-# (`Matrix <: AbstractMatrix` holds without fixing `T` — Aqua's unbound-parameter check).
+# `eltype(C)` rather than matching `AbstractMatrix{T}`: `T` would be unbound for a UnionAll
+# code type like `GPSL1CA{Matrix}` (Aqua's unbound-parameter check).
 get_code_type(signal::AbstractGNSSSignal{C}, modulation) where {C} =
     typeof(_widen_chip(zero(eltype(C))))
 get_code_type(signal::AbstractGNSSSignal{C}, modulation::CBOC) where {C} =
@@ -188,16 +181,9 @@ $(SIGNATURES)
 
 Get the modulation type for a GNSS signal.
 
-# Arguments
-- `signal`: A GNSS signal instance or type
-
-# Returns
-- `Modulation`: The modulation type (`BPSK`, `BOCsin`, `BOCcos`, `CBOC` or `TMBOC`)
-
-Each concrete signal states its modulation once, on its own type
-(`get_modulation(::Type{<:GPSL1CA}) = BPSK()`, in that signal's file) — the form
-the code LUT is baked from; this method forwards an instance to that type, so
-the two can never disagree.
+Returns a `BPSK`, `BOCsin`, `BOCcos`, `CBOC` or `TMBOC` instance. Each concrete signal
+states its modulation once, on its own type (`get_modulation(::Type{<:GPSL1CA}) = BPSK()`),
+the form the code LUT is baked from; the instance method forwards to it.
 
 # Examples
 ```julia-repl
@@ -209,12 +195,9 @@ CBOC{BOCsin{Int64, Int64}, BOCsin{Int64, Int64}}(BOCsin{Int64, Int64}(1, 1), BOC
 """
 @inline get_modulation(signal::T) where {T<:AbstractGNSSSignal} = get_modulation(T)
 
-# The phase is in code chips, as everywhere in the package. A chip of BOC(m, n) spans
-# `2m/n` subcarrier half-periods: the subcarrier runs at m · 1.023 MHz, the code at n · 1.023
-# MHz. The phase is multiplied by that factor rather than divided by `n`: the factor does not
-# depend on the phase, so a loop computes it once, and in the phase's own float type it gives
-# for n = 1 exactly the `phase · 2m` this was before n was carried. An `Int8` sign, so the
-# product keeps the chip's type (`get_code_type`).
+# The phase is in code chips. A chip of BOC(m, n) spans `2m/n` subcarrier half-periods; the
+# phase is multiplied by that phase-independent factor (computed once per loop) rather than
+# divided by `n`. An `Int8` sign, so the product keeps the chip's type (`get_code_type`).
 function get_subcarrier_code(modulation::BOCsin, phase::Real)
     half_periods_per_chip = oftype(float(phase), 2 * modulation.m / modulation.n)
     floored_subcarrier_phase = floor(Int, phase * half_periods_per_chip)
@@ -228,7 +211,7 @@ function get_subcarrier_code(modulation::BOCcos, phase::Real)
     get_subcarrier_code(BOCsin(modulation.m, modulation.n), phase + quarter_period)
 end
 
-# The amplitude is the sqrt of the power see
+# The amplitude is the sqrt of the power, see
 # https://galileosignal.eu/wp-content/uploads/2015/12/Galileo_OS_SIS_ICD_v1.2.pdf
 # Chapter 2.3.3. E1 Signal
 function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
@@ -259,14 +242,11 @@ Returns the spreading code value (including subcarrier modulation for BOC signal
 at the specified code phase. The phase is automatically wrapped to the code length.
 
 # Arguments
-- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
 - `phase`: Code phase in chips
-- `prn`: PRN number of the satellite
 
-# Returns
-- Code value, of type [`get_code_type`](@ref)`(signal)`: `Int`, or `Float32` for CBOC.
-  The stored `Int8` chip is widened, so correlations and sums over `get_code` values
-  cannot overflow.
+Returns a value of type [`get_code_type`](@ref)`(signal)`: `Int`, or `Float32` for CBOC.
+The stored `Int8` chip is widened, so correlations and sums over `get_code` values cannot
+overflow.
 
 # Examples
 ```julia-repl
@@ -282,8 +262,7 @@ function get_code(signal::T, phase, prn::Integer) where {T<:AbstractGNSSSignal}
 end
 
 # An integer chip is widened to `Int`: the built-in matrices store `Int8`, whose sums and
-# products wrap around after 127, and a caller correlating `get_code` values should not
-# have to know that.
+# products wrap around after 127.
 @inline _widen_chip(chip::Integer) = Int(chip)
 @inline _widen_chip(chip) = chip
 
@@ -327,14 +306,6 @@ The phase must be within `[0, code_length * secondary_code_length)`.
 
 !!! warning
     Using phases outside the valid range results in undefined behavior.
-
-# Arguments
-- `signal`: A GNSS signal instance
-- `phase`: Code phase in chips (must be within valid range)
-- `prn`: PRN number of the satellite
-
-# Returns
-- Code value at the given phase
 
 # Examples
 ```julia-repl

@@ -5,14 +5,13 @@ table: the E5a-Q pilot (Galileo OS SIS ICD v2.2 §3.5.2, Table 24) and the E6-C
 pilot (E6-B/C Codes Technical Note §2.4, Table 2, which reproduces the ICD's
 CS100_1-50 verbatim) take codes 1-50, and the E5b-Q pilot takes 51-100. So do
 the E5 primary-code LFSR helpers below, shared by E5a and E5b. One table, one
-generator, so the signals cannot drift apart. =#
+generator. =#
 
 #= CS100_1 .. CS100_100 as 25-hex-character (100-bit) strings, MSB-first (Galileo
 OS SIS ICD v2.2 §3.5.1, Tables 22 and 23). The assignment (§3.5.2, Table 24) is
 CS100_n to SVID n for E5a-Q and E6-C, and CS100_(n+50) to SVID n for E5b-Q — so
 entries 1-50 serve the first two and 51-100 the third. These match the OS SIS ICD
-v2.2 tables; note that some older tables (e.g. GNSS-SDR) carry stale values for
-PRNs 37-47. =#
+v2.2 tables; some older tables (e.g. GNSS-SDR) carry stale values for PRNs 37-47. =#
 const GALILEO_CS100_HEX = [
     "83F6F69D8F6E15411FB8C9B1C", "66558BD3CE0C7792E83350525", "59A025A9C1AF0651B779A8381",
     "D3A32640782F7B18E4DF754B7", "B91FCAD7760C218FA59348A93", "BAC77E933A779140F094FBF98",
@@ -84,9 +83,8 @@ end
 Every E5 primary code — E5a-I, E5a-Q, E5b-I, E5b-Q — is the modulo-2 sum
 (chip-wise product of ±1) of two length-2¹⁴ maximal-length sequences, truncated
 to 10230 chips. Base register 1 starts all-ones for every SVID; base register 2
-carries a per-SVID start value. Only the two feedback polynomials and the start
-values differ between the four components (Table 16 and Tables 17-20), so the
-generator is stated once here and each signal supplies its own parameters. =#
+carries a per-SVID start value. Only the feedback polynomials and start values differ
+between the four components (Table 16 and Tables 17-20). =#
 
 const E5_REGISTER_LENGTH = 14
 const E5_CODE_LENGTH = 10230
@@ -96,9 +94,8 @@ $(SIGNATURES)
 
 Reverse the low `n` bits of `register` (bit 0 ↔ bit n-1).
 
-The ICD numbers shift-register stages and feedback taps MSB-first, whereas the
-generation loop in `_e5_lfsr_bits` shifts LSB-first. This converts a tap mask
-or start value between the two conventions.
+The ICD numbers stages and taps MSB-first, whereas `_e5_lfsr_bits` shifts LSB-first;
+this converts a tap mask or start value between the two.
 """
 function _e5_rev_reg(register, n)
     reversed = 0
@@ -134,9 +131,8 @@ Build the 10230 × 50 primary-code matrix of one Galileo E5 component from its
 two octal feedback polynomials (`x1_tap`, `x2_tap`, ICD Table 16) and its table
 of per-SVID base-register-2 start values (`x2_init_table`, ICD Tables 17-20).
 
-Base register 1 does not depend on the SVID, so it is generated once and reused
-for every PRN. Chips are mapped `0 -> -1`, `1 -> +1` to match the package-wide
-convention (see [`GPSL5I`](@ref)).
+Base register 1 does not depend on the SVID, so it is generated once. Chips are mapped
+`0 -> -1`, `1 -> +1` (see [`GPSL5I`](@ref)).
 """
 function read_galileo_e5_codes(x1_tap, x2_tap, x2_init_table)
     n = E5_REGISTER_LENGTH
