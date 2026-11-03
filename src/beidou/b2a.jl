@@ -5,17 +5,16 @@ include("b2a_constants.jl")
 
 BeiDou B2a data signal (the in-phase, data-carrying component of B2a).
 
-BPSK(10)-modulated 10230-chip primary code at 10.23 Mcps on the B2a frequency —
-which is the 1176.45 MHz GPS L5 / Galileo E5a carrier, so [`get_band`](@ref)
-returns [`L5`](@ref). The data channel carries a fixed 5-bit secondary code
-(`00010`, shared across all SVIDs), giving a 5 ms tiered code, and the B-CNAV2
-navigation message, tracked at 200 bit/s.
+BPSK(10)-modulated 10230-chip primary code at 10.23 Mcps on the B2a frequency (the
+1176.45 MHz GPS L5 / Galileo E5a carrier, so [`get_band`](@ref) returns [`L5`](@ref)).
+The data channel carries a fixed 5-bit secondary code (`00010`, shared across all SVIDs),
+giving a 5 ms tiered code, and the B-CNAV2 message, tracked at 200 bit/s.
 
 The primary code is the modulo-2 sum of two 13-stage shift registers with the
 B2a **data** polynomials (BDS-SIS-ICD-B2a-1.0 §5.2.1, Eq. 5-1): register 1
 (`1+x+x⁵+x¹¹+x¹³`) starts all-ones and is reset after 8190 chips; register 2
 (`1+x³+x⁵+x⁹+x¹¹+x¹²+x¹³`) starts from a per-SVID value (`B2A_DATA_REG2_INIT`,
-ICD Table 5-2). PRNs 1-63 are supported.
+ICD Table 5-2). PRNs 1-63.
 
 # Example
 ```julia
@@ -36,9 +35,9 @@ end
 BeiDou B2a pilot signal (the quadrature, dataless component of B2a).
 
 BPSK(10)-modulated 10230-chip primary code at 10.23 Mcps on the 1176.45 MHz
-carrier (reported as [`L5`](@ref)), overlaid with a per-SVID 100-chip secondary
-code for a 100 ms tiered code. As the pilot component it carries no navigation
-data, so [`get_bit_rate`](@ref) returns 0 Hz.
+carrier (reported as [`L5`](@ref)), overlaid with a per-SVID 100-chip secondary code for
+a 100 ms tiered code. As the pilot it carries no navigation data ([`get_bit_rate`](@ref)
+is 0 Hz).
 
 The primary code uses the B2a **pilot** polynomials (BDS-SIS-ICD-B2a-1.0
 §5.2.1, Eq. 5-2): register 1 `1+x³+x⁶+x⁷+x¹³`, register 2
@@ -112,8 +111,8 @@ end
 function BeiDouB2aQ()
     codes = read_beidou_b2a_q_codes()
     secondary = _build_beidou_b2a_secondary()
-    # The 100-chip per-SVID secondary is too long to bake (100·10230 > typemax(Int16)),
-    # so it stays residual in the SignalLUT and is applied per primary period at gen time.
+    # Too long to bake (100·10230 > typemax(Int16)): stays residual in the SignalLUT,
+    # applied per primary period.
     lut = build_signal_lut(get_modulation(BeiDouB2aQ), codes, PerPRNSecondaryCode(secondary))
     BeiDouB2aQ(codes, secondary, lut)
 end
@@ -123,14 +122,12 @@ end
 get_modulation(::Type{<:BeiDouB2aI}) = BPSK()
 get_modulation(::Type{<:BeiDouB2aQ}) = BPSK()
 
-# B2a data rides the in-phase carrier (default 0); the B2aQ pilot is in quadrature.
-# BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3 uses the same complex-envelope convention as Galileo
-# (`s_data + j·s_pilot`, RF `I·cos − Q·sin`), so the pilot LEADS by 90° → +1/4 cycle, like
-# GalileoE5aQ and opposite in sense to GPSL5Q.
+# Data is the in-phase reference (default 0). BDS-SIS-ICD-B2a-1.0 Eq. 4-2/4-3 uses the
+# Galileo convention (`s_data + j·s_pilot`, RF `I·cos − Q·sin`), so the pilot LEADS by 90°
+# → +1/4 cycle, like GalileoE5aQ and opposite in sense to GPSL5Q.
 @inline get_carrier_phase_offset(::Type{<:BeiDouB2aQ}) = 0.25
 
-# An equal-power composite: BDS-SIS-ICD-B2a-1.0 §4.2.2 states the data:pilot power
-# ratio as 1:1. See [`get_relative_power`](@ref).
+# BDS-SIS-ICD-B2a-1.0 §4.2.2: data:pilot power ratio 1:1.
 @inline get_relative_power(::Type{<:BeiDouB2aI}) = 0.5
 @inline get_relative_power(::Type{<:BeiDouB2aQ}) = 0.5
 
@@ -140,16 +137,11 @@ $(SIGNATURES)
 Get the band the signal is transmitted on.
 
 BeiDou B2a shares the 1176.45 MHz GPS L5 / Galileo E5a carrier, so this returns
-[`L5`](@ref) — band identity is by RF, not by ICD label.
+[`L5`](@ref).
 """
 @inline get_band(::Type{<:BeiDouB2aI}) = L5()
 @inline get_band(::Type{<:BeiDouB2aQ}) = L5()
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
 @inline get_signal_name(::Type{<:BeiDouB2aI}) = "BeiDou B2a data"
 @inline get_signal_name(::Type{<:BeiDouB2aQ}) = "BeiDou B2a pilot"
 
@@ -174,9 +166,6 @@ $(SIGNATURES)
 
 Get the bit rate, as tracked, of BeiDou B2a data: 200 bit/s, the symbol rate of the
 LDPC-coded B-CNAV2 message.
-
-# Returns
-- `Frequency`: 200 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB2aI}) = 200Hz
 
@@ -184,9 +173,6 @@ LDPC-coded B-CNAV2 message.
 $(SIGNATURES)
 
 Get the bit rate, as tracked, of BeiDou B2a pilot: 0 Hz, as it is dataless.
-
-# Returns
-- `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:BeiDouB2aQ}) = 0Hz
 
@@ -195,16 +181,12 @@ $(SIGNATURES)
 
 Get the secondary code for BeiDou B2a data.
 
-A fixed 5-bit sequence `00010` (BDS-SIS-ICD-B2a-1.0 §5.2.2), shared across all
-SVIDs, mapped 0 → -1, 1 → +1 — a 5 ms tiered code.
-
-# Returns
-- [`SharedSecondaryCode`](@ref) of length 5
+A fixed 5-bit sequence `00010` (BDS-SIS-ICD-B2a-1.0 §5.2.2), shared across all SVIDs,
+mapped 0 → -1, 1 → +1. Returns a [`SharedSecondaryCode`](@ref) of length 5.
 """
 @inline get_secondary_code(::BeiDouB2aI) = _beidou_b2a_i_secondary_code()
 
-# Fixed 5-bit data secondary (00010), shared across SVIDs. Factored out so the constructor can
-# build the embedded `SignalLUT` before an instance exists.
+# Factored out so the constructor can build the `SignalLUT` before an instance exists.
 @inline _beidou_b2a_i_secondary_code() =
     SharedSecondaryCode(Int8(-1), Int8(-1), Int8(-1), Int8(1), Int8(-1))
 
@@ -214,11 +196,8 @@ $(SIGNATURES)
 Get the secondary code for BeiDou B2a pilot.
 
 Each SVID overlays its primary code with a 100-chip sequence obtained by
-truncating a length-1021 Weil code (BDS-SIS-ICD-B2a-1.0 §5.2.2, Table 5-4),
-giving a 100 ms tiered code.
-
-# Returns
-- [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 63 secondary matrix
+truncating a length-1021 Weil code (BDS-SIS-ICD-B2a-1.0 §5.2.2, Table 5-4). Returns a
+[`PerPRNSecondaryCode`](@ref) wrapping the 100 × 63 secondary matrix.
 """
 @inline get_secondary_code(s::BeiDouB2aQ) = PerPRNSecondaryCode(s.secondary_codes)
 

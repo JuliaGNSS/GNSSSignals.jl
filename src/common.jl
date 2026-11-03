@@ -13,12 +13,6 @@ Built-in signals store `Int8` chips; sampled generation reads a separate baked L
     Widen first, e.g. `Int.(get_codes(signal))`, or use [`get_code`](@ref), which
     returns `Int`.
 
-# Arguments
-- `signal`: A GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
-
-# Returns
-- `Matrix`: Code matrix of size `(code_length, num_prns)`
-
 # Examples
 ```julia-repl
 julia> codes = get_codes(GPSL1CA())
@@ -47,18 +41,15 @@ $(SIGNATURES)
 Get the `Symbol` identifier of a GNSS signal — the machine-readable per-signal
 key, e.g. `:GPSL1CA`, `:GalileoE1B`, `:GalileoE5aI`.
 
-This is the finest identity level: the same PRN measured on two bands of one
-constellation (e.g. GPS L1 and L5) has two distinct signal ids.
+This is the finest identity level: the same PRN on two bands has two distinct signal ids.
 
 Defaults to `nameof` of the signal type; override `get_signal_id(::Type{MySignal})`
-to pin a different symbol. Replicas of one transmitted component share its id: the
-type parameter that picks a replica's modulation (`GalileoE1B()` replicates BOC(1,1),
-`GalileoE1B(CBOC)` the full CBOC) does not enter `nameof`, so both are `:GalileoE1B`.
-[`get_modulation`](@ref), or the type itself, tells replicas apart. Works on an instance
+to pin a different symbol. Replicas of one transmitted component share its id
+(`GalileoE1B()` and `GalileoE1B(CBOC)` are both `:GalileoE1B`);
+[`get_modulation`](@ref), or the type itself, tells them apart. Works on an instance
 or a type and folds to a compile-time constant.
 
-Distinct from [`get_signal_name`](@ref), which is a human-readable display
-string (`"GPS L1 C/A"`), and finer than [`get_band_id`](@ref) (`:L1`).
+Finer than [`get_band_id`](@ref) (`:L1`); [`get_signal_name`](@ref) is the display string.
 
 ```julia-repl
 julia> get_signal_id(GPSL1CA())
@@ -77,21 +68,16 @@ $(SIGNATURES)
 Get the human-readable name of a GNSS signal, e.g. `"GPS L1 C/A"`,
 `"Galileo E5a-Q"`.
 
-This is the display counterpart to [`get_signal_id`](@ref), at the same (finest)
-identity level: it names one specific transmission, component included. The
-spelling follows the ICD rather than the type name, so it is meant for log lines,
-plot labels and user-facing output — prefer the `Symbol` id when branching or
-keying. Like the id, it names the transmitted component, so the BOC(1,1) and CBOC
-replicas of Galileo E1B are both `"Galileo E1B"`; [`get_modulation`](@ref) says which
-replica a signal is.
+The display counterpart to [`get_signal_id`](@ref), at the same (finest) identity level.
+The spelling follows the ICD rather than the type name, so it is meant for log lines and
+user-facing output; prefer the `Symbol` id when branching or keying. Replicas share the
+name (the BOC(1,1) and CBOC replicas of Galileo E1B are both `"Galileo E1B"`).
 
-Genuinely per signal, so each concrete signal defines one method on its own type
-(`get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"`, in that signal's file),
-mirroring [`get_band`](@ref); the instance method forwards to the type, so the
-name is available without constructing a signal.
+Each concrete signal defines one method on its own type
+(`get_signal_name(::Type{<:GPSL1CA}) = "GPS L1 C/A"`), mirroring [`get_band`](@ref); the
+instance method forwards to the type, so no signal needs constructing.
 
-Finer than [`get_band_name`](@ref) (`"L1"`) and [`get_constellation_name`](@ref)
-(`"GPS"`).
+Finer than [`get_band_name`](@ref) (`"L1"`) and [`get_constellation_name`](@ref) (`"GPS"`).
 
 ```julia-repl
 julia> get_signal_name(GPSL1CA())
@@ -111,19 +97,16 @@ $(SIGNATURES)
 Get the `Symbol` identifier of the GNSS constellation a signal belongs to —
 `:GPS`, `:Galileo` or `:BeiDou`.
 
-This is the coarsest identity level: every signal of one constellation, across
-all bands and PRNs, maps to the same id (GPS L1 C/A, GPS L5I and GPS L1C are all
-`:GPS`). It's the natural key for logging, dictionaries and constellation-level
-branching; for a type-level test prefer `signal isa AbstractGPSSignal`.
+This is the coarsest identity level: every signal of one constellation maps to the same
+id (GPS L1 C/A, GPS L5I and GPS L1C are all `:GPS`). For a type-level test prefer
+`signal isa AbstractGPSSignal`.
 
 Defined once per constellation on the abstract signal type
-(`get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS`), so every concrete
-signal inherits it without constructing a value. Works on an instance or a type
-and folds to a compile-time constant.
+(`get_constellation_id(::Type{<:AbstractGPSSignal}) = :GPS`). Works on an instance or a
+type and folds to a compile-time constant.
 
-Distinct from [`get_time_system`](@ref) (the constellation's reference time
-scale, `GPST()`/`GST()`/`BDT()`), and coarser than [`get_band_id`](@ref) (`:L1`)
-and [`get_signal_id`](@ref) (`:GPSL1CA`).
+Not [`get_time_system`](@ref) (`GPST()`/`GST()`/`BDT()`); coarser than
+[`get_band_id`](@ref) (`:L1`) and [`get_signal_id`](@ref) (`:GPSL1CA`).
 
 ```julia-repl
 julia> get_constellation_id(GPSL1CA())
@@ -144,31 +127,21 @@ $(SIGNATURES)
 Get the human-readable name of the GNSS constellation a signal belongs to —
 `"GPS"`, `"Galileo"` or `"BeiDou"`.
 
-The display counterpart to [`get_constellation_id`](@ref) — same granularity
-(every signal of one constellation returns the same string), but a `String`
-meant for log lines and user-facing output rather than a key to branch or
-dictionary on (prefer the `Symbol` id for that; comparing symbols is cheaper
-and the name is free to be respelled).
+The display counterpart to [`get_constellation_id`](@ref), at the same granularity, but a
+`String` for log lines rather than a key to branch on (prefer the `Symbol` id).
 
-Stated as a literal once per constellation, on the abstract signal type
-(`get_constellation_name(::Type{<:AbstractGPSSignal}) = "GPS"`) as
-[`get_constellation_id`](@ref) is, so every concrete signal inherits the name
-without constructing a value, the call allocates nothing and it folds to a
-compile-time constant. Each literal still spells exactly what `String` of the id
-yields, and a test pins that, so the two layers cannot drift apart.
+Stated as a literal once per constellation on the abstract signal type
+(`get_constellation_name(::Type{<:AbstractGPSSignal}) = "GPS"`), so the call allocates
+nothing and folds to a compile-time constant; a test pins each literal to `String` of the
+id.
 
-A constellation added later needs no method of its own: the
-`String(get_constellation_id(S))` fallback names it for free — at the cost of
-allocating a fresh `String` on every call, for the reason spelled out at
-[`get_band_name`](@ref), whose derived fallback is built the same way. State a
-literal, as the constellations here do, if you are naming one in a hot loop, or
-wherever the display name differs from the id anyway: a future `:NavIC` reading
-`"NavIC (IRNSS)"`.
+A new constellation needs no method of its own: the `String(get_constellation_id(S))`
+fallback allocates a fresh `String` on every call, for the reason given at
+[`get_band_name`](@ref). State a literal for a hot loop, or where the display name differs
+from the id (a future `:NavIC` reading `"NavIC (IRNSS)"`).
 
-Works on an instance or a type.
-
-Coarser than [`get_band_name`](@ref) (`"L1"`) and [`get_signal_name`](@ref)
-(`"GPS L1 C/A"`).
+Works on an instance or a type. Coarser than [`get_band_name`](@ref) (`"L1"`) and
+[`get_signal_name`](@ref) (`"GPS L1 C/A"`).
 
 ```julia-repl
 julia> get_constellation_name(GPSL1CA())
@@ -185,19 +158,17 @@ julia> get_constellation_name(GalileoE1B)
     String(get_constellation_id(S))
 @inline get_constellation_name(s::AbstractGNSSSignal) = get_constellation_name(typeof(s))
 
-# Each concrete signal defines these on `::Type{<:Signal}` (per-signal files);
-# these forward an instance to its type.
+# Each concrete signal defines these on `::Type{<:Signal}`; these forward an instance.
 @inline get_code_length(s::AbstractGNSSSignal) = get_code_length(typeof(s))
 
 """
     get_chip_rate(signal) -> Frequency
 
-The nominal chip rate of a signal's primary ranging code: the chips per second the
-satellite broadcasts, as its ICD states it (1.023 MHz for GPS L1 C/A, 10.23 MHz for GPS
-L5). It is a property of the signal; the rate a receiver's replica runs at is its *code
-frequency*, this rate shifted by the code Doppler, which [`gen_code!`](@ref) and
-[`GNSSSignals.code_engine`](@ref) take as their `code_frequency` argument (defaulting to
-this one). Defined per concrete signal type; works on an instance or a type.
+The nominal chip rate of a signal's primary ranging code, as its ICD states it (1.023 MHz
+for GPS L1 C/A, 10.23 MHz for GPS L5). A receiver's replica runs at its *code frequency*,
+this rate shifted by the code Doppler, which [`gen_code!`](@ref) and
+[`GNSSSignals.code_engine`](@ref) take as `code_frequency` (default: this rate). Defined per
+concrete signal type; works on an instance or a type.
 """
 @inline get_chip_rate(s::AbstractGNSSSignal) = get_chip_rate(typeof(s))
 
@@ -206,19 +177,16 @@ this one). Defined per concrete signal type; works on an instance or a type.
     get_bit_rate(signal, prn) -> Frequency
 
 The rate of navigation bits **as tracked**: the binary signs a tracking loop recovers
-after spreading-code and secondary-code removal, before error-correction decoding. On a
-signal whose message is FEC-encoded (a convolutional or LDPC code), these tracked bits are
-the transmitted channel symbols, so this returns the symbol rate rather than the decoded
-message's information bit rate: GPS L5-I is tracked at 100 bit/s (100 symbols/s), while
-its rate-½ CNAV message carries 50 bit/s. Where the message has no such code (GPS L1 C/A's
-LNAV, BeiDou D1 and D2), the tracked bits are the transmitted message bits themselves;
-their parity bits (LNAV's Hamming code, D1's and D2's BCH(15,11) code) are counted in this
-rate, so the information rate is lower still. `0 Hz` for a dataless pilot.
+after spreading-code and secondary-code removal, before error-correction decoding. These
+are the transmitted channel symbols, so the rate counts the redundancy of whatever code
+protects the message and is not its information rate: GPS L5-I is tracked at 100 bit/s,
+while its rate-½ convolutionally coded CNAV message carries 50 bit/s, and GPS L1 C/A's
+50 bit/s include LNAV's Hamming parity, as BeiDou D1's and D2's rates include their
+BCH(15,11) parity. `0 Hz` for a dataless pilot.
 
 With a `prn`, the rate that satellite broadcasts. It differs from the signal's only on
 BeiDou B1I and B3I, whose GEO satellites ([`is_beidou_geo`](@ref GNSSSignals.is_beidou_geo))
-broadcast the D2 message at 500 Hz where the signal's rate is D1's 50 Hz. Pass the PRN
-wherever the satellite is known.
+broadcast the D2 message at 500 Hz where the signal's rate is D1's 50 Hz.
 
 Defined per concrete signal type; works on an instance or a type.
 
@@ -238,15 +206,14 @@ julia> get_bit_rate(BeiDouB1I(), 6), get_bit_rate(BeiDouB1I(), 1)
     get_code_periods_per_bit(signal, prn) -> Int
 
 The number of primary code periods a navigation bit **as tracked**
-([`get_bit_rate`](@ref)) spans; on a signal with an FEC-encoded message, one tracked bit is
-one transmitted channel symbol. The count is `get_chip_rate / (get_code_length ·
+([`get_bit_rate`](@ref)) spans. The count is `get_chip_rate / (get_code_length ·
 get_bit_rate)`, a whole number for every data signal — 20 for GPS L1 C/A and Galileo
 E5a-I, 10 for GPS L5-I, 5 for BeiDou B2a-I, 4 for Galileo E5b-I, 1 where a tracked bit
-spans one code period (Galileo E1B, GPS L1C-D, …). With a `prn`, that satellite's ([`get_bit_rate`](@ref)`(signal, prn)`): 2 on a
-BeiDou B1I or B3I GEO satellite, whose D2 bits are ten times shorter.
+spans one code period (Galileo E1B, GPS L1C-D, …). With a `prn`, that satellite's
+([`get_bit_rate`](@ref)`(signal, prn)`): 2 on a BeiDou B1I or B3I GEO satellite, whose D2
+bits are ten times shorter.
 
-`0` for a dataless pilot, which broadcasts no navigation bits, as its bit rate is `0 Hz`:
-`iszero` tells a pilot apart on either, and a caller that needs no bit constraint for a
+`0` for a dataless pilot (bit rate `0 Hz`), so a caller needing no bit constraint for a
 pilot gets none (`max(get_secondary_code_length(signal), periods)`). Works on an instance or
 a type.
 
@@ -268,9 +235,8 @@ julia> get_code_periods_per_bit(BeiDouB1I(), 6), get_code_periods_per_bit(BeiDou
     get_code_periods_per_bit(typeof(s), prn)
 
 # In integer Hz, so that a tracked bit rate that does not divide the chip rate into whole
-# periods fails loudly rather than rounding. A rate may be stated as a float, such as n · 1.023 MHz
-# for a non-integer n; it is converted to an `Int` first, and one that is no whole number of
-# Hz is an error.
+# periods fails loudly rather than rounding. A float rate is converted to an `Int` first;
+# one that is no whole number of Hz is an error.
 function _code_periods_per_bit(::Type{S}, bit_rate) where {S<:AbstractGNSSSignal}
     iszero(bit_rate) && return 0
     periods, remainder = divrem(
@@ -296,17 +262,14 @@ $(SIGNATURES)
 Carrier phase, in **cycles**, of the signal's component relative to its band's
 in-phase (I) carrier reference — the carrier the ICD designates as the "in-phase"
 component of that band (GPS L1/L2: the P(Y) carrier; GPS L5: the I5 carrier;
-Galileo E5a: the E5a-I carrier). Two signals on one band share this reference, so
-their offsets are directly comparable. A quarter cycle is 90°; `cispi(2 * offset)`
-rotates by the offset, and `2π * offset` gives it in radians.
+Galileo E5a: the E5a-I carrier). Two signals on one band share this reference. A quarter
+cycle is 90°; `cispi(2 * offset)` rotates by the offset, and `2π * offset` gives radians.
 
-Several bands multiplex components in phase quadrature (QPSK), one on the in-phase
-carrier and one on the quadrature carrier. That 90° offset lives purely in the
-carrier — the spreading codes are real-valued — so it is not otherwise recoverable
-from the signal definition. A receiver that tracks such components jointly off one
-shared carrier loop needs this to keep each on its own decision axis (e.g.
-de-rotating the data prompt when the loop is locked to the pilot); without it a
-quadrature component collapses onto the orthogonal axis and never demodulates.
+Several bands multiplex components in phase quadrature, one on the in-phase carrier and one
+on the quadrature carrier. That offset lives purely in the carrier (the spreading codes are
+real-valued), so a receiver tracking such components jointly off one carrier loop needs
+this to keep each on its own decision axis (e.g. de-rotating the data prompt when the loop
+is locked to the pilot).
 
 The sign follows each ICD's own convention, so it differs by constellation:
 
@@ -354,11 +317,10 @@ of its composite signal, with composites on the same constellation and band scal
 against one another. The value is the ICD power split itself, so the components of
 one composite sum to `1`.
 
-A loop tracking several components of one satellite weights each discriminator
-output by its component's power — `w = map(get_relative_power, signals)`,
-normalised. Only ratios matter, so elevation, satellite block, free-space loss and
-antenna gain cancel; the absolute ICD figures are worst-case floors several dB
-below what a receiver sees, and are deliberately not exposed.
+A loop tracking several components of one satellite can weight each discriminator
+output by `w = map(get_relative_power, signals)`, normalised. Only ratios matter, so
+elevation, satellite block, free-space loss and antenna gain cancel; the absolute ICD
+figures are worst-case floors several dB below what a receiver sees, and are not exposed.
 
 | constellation, band | composite (the unit, `1`) | components |
 |:---|:---|:---|
@@ -377,26 +339,21 @@ Every composite splits evenly except the two modern L1-carrier ones, which are
 75/25 pilot/data: GPS L1C (IS-GPS-800J, Table 3.2-1) and BeiDou B1C
 (BDS-SIS-ICD-B1C-1.0 §4.2.2, data:pilot 1:3). These are payload design constants,
 fixed independently of satellite block and elevation, so each is stated as the
-plain split and comes out exact. `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI` are
-single-component: each is BeiDou's only open-service component on its carrier (the
-quadrature counterparts are not in the OS ICDs), so each is its own composite,
-`1.0`. That the Galileo E5b components share `BeiDouB2bI`'s carrier does not enter
-into it — the scale is per constellation and band, so a BeiDou value is only
-comparable with another BeiDou value.
+plain split and comes out exact. `BeiDouB1I`, `BeiDouB3I` and `BeiDouB2bI` are each
+BeiDou's only open-service component on their carrier, so each is its own composite,
+`1.0`. The scale is per constellation and band, so a BeiDou value is only comparable with
+another BeiDou value.
 
-`GPSL1CA` and `GalileoE5aQP` are the two values that are not bare splits, and the
-reason the scale spans a band rather than a composite: each is a *separate* signal on
-a carrier its composite already occupies, not a further component of that composite,
-so each is scaled against it. C/A is `−158.5 dBW` (IS-GPS-200N, Table 3-Va) against
-L1C's `−157.0 dBW`, i.e. `10^(-0.15)`; E5a-QP is `−160.75 dBW` against E5a's
-`−155.25 dBW` (Galileo OS SIS ICD v2.2, Table 13), i.e. `10^(-0.55)`. That lets a
-joint L1 or E5a loop weight all of a carrier's signals against each other directly.
+`GPSL1CA` and `GalileoE5aQP` are the two values that are not bare splits: each is a
+*separate* signal on a carrier its composite already occupies, so it is scaled against
+that composite. C/A is `−158.5 dBW` (IS-GPS-200N, Table 3-Va) against L1C's `−157.0 dBW`,
+i.e. `10^(-0.15)`; E5a-QP is `−160.75 dBW` against E5a's `−155.25 dBW` (Galileo OS SIS ICD
+v2.2, Table 13), i.e. `10^(-0.55)`. That lets a joint L1 or E5a loop weight all of a
+carrier's signals against each other directly.
 
-Values from different rows are **not** comparable: a ratio across constellations or
-bands would have to account for front-end gain, filter loss and noise figure, which
-can swamp a 1–2 dB difference in transmitted power. `GalileoE1B` and `GPSL5I` both
-being `0.5` says only that each takes half of its own composite. Weight across bands
-from measured C/N₀ instead.
+Values from different rows are **not** comparable: a ratio across constellations or bands
+would have to account for front-end gain, filter loss and noise figure, which can swamp a
+1–2 dB difference in transmitted power. Weight across bands from measured C/N₀ instead.
 
 ```julia-repl
 julia> get_relative_power(GPSL1C_P()), get_relative_power(GPSL1C_D())
@@ -406,9 +363,8 @@ julia> get_relative_power(GPSL1CA())
 0.7079457843841379
 ```
 
-Defined per concrete signal type beside [`get_band`](@ref), with no generic default,
-so a signal without a value raises a `MethodError`. Works on an instance or a type
-and folds to a compile-time constant.
+Defined per concrete signal type, with no generic default (a signal without a value raises
+a `MethodError`). Works on an instance or a type and folds to a compile-time constant.
 """
 @inline get_relative_power(s::AbstractGNSSSignal) = get_relative_power(typeof(s))
 
@@ -417,23 +373,16 @@ $(SIGNATURES)
 
 Generate a sampled code signal for a given PRN.
 
-Allocates a new `Vector{Int8}` and returns the spreading code sampled at the specified
-sampling frequency. Thin allocating wrapper over the in-place [`gen_code!`](@ref); see it for
-the Int8 output semantics (±1, or the CBOC integer approximation), fractional-phase support,
-and the `sampling_frequency ≥ code_frequency · subchip_factor` requirement.
+Allocates a new `Vector{Int8}` of `num_samples` samples. Thin wrapper over the in-place
+[`gen_code!`](@ref); see it for the Int8 output semantics (±1, or the CBOC integer
+approximation), fractional-phase support, and the
+`sampling_frequency ≥ code_frequency · subchip_factor` requirement.
 
 # Arguments
-- `num_samples`: Number of samples to generate
-- `signal`: GNSS signal instance (e.g., `GPSL1CA()`, `GPSL5I()`, `GalileoE1B()`)
-- `prn`: PRN number of the satellite
 - `sampling_frequency`: Sampling frequency (must be ≥ code frequency · subchip_factor)
-- `code_frequency`: Code frequency the replica runs at (default: the signal's nominal chip
-  rate, [`get_chip_rate`](@ref))
+- `code_frequency`: Code frequency the replica runs at (default: [`get_chip_rate`](@ref))
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index`: Index offset (default: 0)
-
-# Returns
-- `Vector{Int8}`: Sampled code signal
 
 # Examples
 ```julia-repl
@@ -459,15 +408,8 @@ end
 """
 $(SIGNATURES)
 
-Get the ratio of chip rate to center frequency.
-
-This ratio is used to compute the code Doppler from the carrier Doppler.
-
-# Arguments
-- `signal`: A GNSS signal instance
-
-# Returns
-- `Float64`: The code-to-center frequency ratio
+Get the ratio of chip rate to center frequency, used to derive the code Doppler from the
+carrier Doppler.
 
 # Examples
 ```julia-repl

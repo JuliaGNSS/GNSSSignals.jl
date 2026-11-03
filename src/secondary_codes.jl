@@ -13,11 +13,9 @@ Three concrete forms cover all currently-defined GNSS signals:
 - [`PerPRNSecondaryCode`](@ref) — long per-PRN overlay (GPS L1C overlay,
   1800 chips per PRN from a per-PRN LFSR).
 
-Receivers should query the secondary code via [`get_secondary_code`](@ref),
-which returns the appropriate `SecondaryCode` instance for the signal, and read
-its chips with [`secondary_value`](@ref GNSSSignals.secondary_value). It is
-typed-dispatched so the no-secondary case folds to the multiplicative identity
-at compile time.
+Query it via [`get_secondary_code`](@ref) and read its chips with
+[`secondary_value`](@ref GNSSSignals.secondary_value). It is type-dispatched so the
+no-secondary case folds to the multiplicative identity at compile time.
 """
 abstract type SecondaryCode end
 
@@ -44,36 +42,27 @@ function secondary_value end
 """
     NoSecondaryCode <: SecondaryCode
 
-Marker type for signals without a secondary code. All
-`secondary_value` lookups return `1`, which the inner code-generation
-loops multiply by — the compiler elides the multiplication entirely.
+Marker type for signals without a secondary code. All `secondary_value` lookups return
+`1`, so the compiler elides the multiplication.
 """
 struct NoSecondaryCode <: SecondaryCode end
 
 @inline secondary_code_length(::NoSecondaryCode) = 1
-# Returning `true` (not `1`) so that `x * true === x` preserves `eltype` for
-# every numeric element type — no widening to `Int64` on a code matrix of
-# `Int16` or `Float32`.
+# `true` (not `1`) so that `x * true === x` preserves `eltype` for every numeric type.
 @inline secondary_value(::NoSecondaryCode, ::Integer, ::Integer) = true
 
 """
     SharedSecondaryCode{N, T<:Integer} <: SecondaryCode
 
-A short secondary code that is identical across all PRNs. Stored as an
-`NTuple{N, T}` so the values are inlined into the type and indexed by the
-compiler at zero runtime cost.
-
-`code` holds the secondary chip values as a tuple of `±1` (or another small
-integer alphabet, depending on the signal's spec).
+A short secondary code that is identical across all PRNs. `code` holds the chips as an
+`NTuple{N, T}` of `±1` (or another small integer alphabet, per the signal's spec), so they
+are inlined into the type.
 """
 struct SharedSecondaryCode{N, T<:Integer} <: SecondaryCode
     code::NTuple{N, T}
 
-    # Inner constructor that takes the chips as varargs (at least one).
-    # Defining any inner constructor suppresses Julia's auto-generated
-    # outer constructor; the `c1::T, crest::T...` signature pins `T`
-    # from the first chip and counts `N` from the splat, keeping both
-    # type parameters bound for Aqua's `unbound_args` check.
+    # Varargs constructor (at least one chip): `c1::T, crest::T...` pins `T` and counts `N`,
+    # keeping both type parameters bound for Aqua's `unbound_args` check.
     function SharedSecondaryCode(c1::T, crest::T...) where {T<:Integer}
         N = 1 + length(crest)
         return new{N, T}((c1, crest...))
@@ -88,12 +77,8 @@ end
 """
     PerPRNSecondaryCode{T<:Integer} <: SecondaryCode
 
-A long secondary code whose values differ per PRN. Stored as a
-`(length, num_prns)` matrix — same layout convention as the primary code
-matrix on the signal.
-
-Used by GPS L1C (1800-chip overlay) and signals with similar per-PRN
-overlays.
+A long secondary code whose values differ per PRN, stored as a `(length, num_prns)`
+matrix like the primary code matrix. Used by GPS L1C (1800-chip overlay).
 """
 struct PerPRNSecondaryCode{T<:Integer, M<:AbstractMatrix{T}} <: SecondaryCode
     codes::M

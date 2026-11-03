@@ -4,23 +4,19 @@
 Galileo E5a-QP signal (E5a Quasi-Pilot), the short-code acquisition aid on the
 E5a carrier.
 
-New in OS SIS ICD Issue 2.2 (§2.3.1.4): a dataless BPSK(5) component at 5.115
-Mcps on 1176.45 MHz ([`L5`](@ref)) whose primary code is only **330 chips**
-long, repeating every 2/31 ms, "designed to enable low complexity acquisition
-capability of Galileo signals". The 330-chip code is repeated 31 times within
-2 ms with no overlay, so there is no secondary code
-([`get_secondary_code`](@ref) is [`NoSecondaryCode`](@ref)) and nothing to tier.
+New in OS SIS ICD Issue 2.2 (§2.3.1.4): a dataless BPSK(5) component at 5.115 Mcps on
+1176.45 MHz ([`L5`](@ref)) whose primary code is only **330 chips** long, repeating every
+2/31 ms, to enable low-complexity acquisition. The code is repeated 31 times within 2 ms
+with no overlay ([`get_secondary_code`](@ref) is [`NoSecondaryCode`](@ref)).
 
-The primary codes are a family of 40 sequences (the ICD caps the family at 40
-for cross-correlation reasons), each the XOR of three short codes of 15, 11 and
-10 chips repeated up to 330 chips (ICD §3.4.2, Table 21). SVID `n` uses code
-`n`, so PRNs 1-40 are supported.
+The primary codes are a family of 40 sequences, each the XOR of three short codes of 15,
+11 and 10 chips repeated up to 330 chips (ICD §3.4.2, Table 21). SVID `n` uses code `n`,
+so PRNs 1-40 are supported.
 
 !!! note
-    E5a-QP is transmitted by a *subset* of the constellation — the current list
-    is published at <https://www.gsc-europa.eu/galileo/services/galileo-open-service/quasipilot>
-    — and the ICD states it will eventually be discontinued, superseded by
-    further quasi-pilot signals in E5 and other bands.
+    E5a-QP is transmitted by a *subset* of the constellation (list at
+    <https://www.gsc-europa.eu/galileo/services/galileo-open-service/quasipilot>), and the
+    ICD states it will eventually be discontinued.
 
 # Example
 ```julia
@@ -40,10 +36,9 @@ const E5A_QP_NUM_PRNS = 40
 
 #= E5a-QP generative short codes (Galileo OS SIS ICD v2.2 §3.4.2, Table 21).
 
-Each row is one code number's (15-chip, 11-chip, 10-chip) triple, in the ICD's
-hexadecimal notation: MSB-first, four chips per hex symbol, the last symbol
-filled up with zeros at the end in time (so 15 chips take 4 symbols with one
-pad chip, 11 chips 3 symbols with one, 10 chips 3 symbols with two). =#
+Each row is one code number's (15-chip, 11-chip, 10-chip) triple in the ICD's hex
+notation: MSB-first, four chips per symbol, the last symbol zero-padded at the end (one
+pad chip for 15 and 11 chips, two for 10). =#
 const E5A_QP_SHORT_CODES = [
     ("335A", "60A", "384"), ("146E", "1C8", "238"), ("3876", "7AE", "4D4"),
     ("499A", "688", "064"), ("3548", "2C0", "588"), ("052E", "504", "070"),
@@ -87,11 +82,9 @@ $(SIGNATURES)
 Build the 330 × 40 Galileo E5a-QP primary code matrix from
 `E5A_QP_SHORT_CODES`.
 
-Each code is the XOR of its three generative short codes, every one of them
-repeated until it reaches the 330-chip code length — 22 times for the 15-chip
-code, 30 for the 11-chip one and 33 for the 10-chip one (Galileo OS SIS ICD
-v2.2 §3.4.2). Chips are mapped `0 -> -1`, `1 -> +1` as elsewhere in the
-package.
+Each code is the XOR of its three short codes, repeated to 330 chips (22, 30 and 33
+times for the 15-, 11- and 10-chip codes; Galileo OS SIS ICD v2.2 §3.4.2). Chips are
+mapped `0 -> -1`, `1 -> +1`.
 """
 function read_galileo_e5a_qp_codes()
     codes = Matrix{Int8}(undef, E5A_QP_CODE_LENGTH, E5A_QP_NUM_PRNS)
@@ -104,8 +97,7 @@ function read_galileo_e5a_qp_codes()
         for chip = 1:E5A_QP_CODE_LENGTH
             bit = Int8(0)
             for s in short
-                # The short codes just repeat, so chip `i` of the generative code is
-                # chip `mod1(i, length)` of the short code.
+                # Short codes repeat: chip `i` is chip `mod1(i, length)` of the short code.
                 @inbounds bit ⊻= s[mod1(chip, length(s))]
             end
             @inbounds codes[chip, prn] = Int8(2) * bit - Int8(1)
@@ -126,15 +118,11 @@ get_modulation(::Type{<:GalileoE5aQP}) = BPSK()
 
 @inline get_band(::Type{<:GalileoE5aQP}) = L5()
 
-#= No carrier phase offset method, so the 0.0 default applies: the ICD describes
-E5a-QP as a component transmitted alongside the E5ab-IQ AltBOC composite
-(§2.3.1, §2.3.1.4) but states no phase relation to the E5a-I reference, so there
-is none to report. =#
+#= No carrier phase offset method, so the 0.0 default applies: the ICD (§2.3.1,
+§2.3.1.4) states no phase relation to the E5a-I reference. =#
 
-# E5a-QP is a separate signal on the E5a carrier rather than a third component of
-# the E5a composite, so — like `GPSL1CA` against L1C — it is scaled against that
-# composite: −160.75 dBW against E5a's −155.25 dBW (Galileo OS SIS ICD v2.2,
-# Table 13), i.e. 5.5 dB below it. See [`get_relative_power`](@ref).
+# A separate signal on the E5a carrier, scaled against the E5a composite (like `GPSL1CA`
+# against L1C): −160.75 dBW against −155.25 dBW (Galileo OS SIS ICD v2.2, Table 13).
 @inline get_relative_power(::Type{<:GalileoE5aQP}) = 10.0^(-0.55)
 
 @inline get_signal_name(::Type{<:GalileoE5aQP}) = "Galileo E5a-QP"
@@ -159,10 +147,7 @@ $(SIGNATURES)
 
 Get the bit rate, as tracked, of Galileo E5a-QP.
 
-The E5a-QP component carries no user data, so its bit rate is 0 Hz.
-
-# Returns
-- `Frequency`: 0 Hz
+E5a-QP carries no user data, so this is 0 Hz.
 """
 @inline get_bit_rate(::Type{<:GalileoE5aQP}) = 0Hz
 
@@ -171,11 +156,8 @@ $(SIGNATURES)
 
 Get the secondary code for Galileo E5a-QP.
 
-There is none: the 330-chip primary code is repeated 31 times within 2 ms
-without any overlay (Galileo OS SIS ICD v2.2, Table 15).
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+There is none: the 330-chip primary code is repeated 31 times within 2 ms without any
+overlay (Galileo OS SIS ICD v2.2, Table 15); returns [`NoSecondaryCode`](@ref).
 """
 @inline get_secondary_code(::GalileoE5aQP) = NoSecondaryCode()
 

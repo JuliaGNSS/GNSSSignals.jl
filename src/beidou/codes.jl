@@ -22,13 +22,12 @@
 # 0 → -1, 1 → +1 (`2b - 1`), matching the package-wide primary-code convention
 # (see `gen_l5_code`, `read_galileo_e5a_codes`).
 
-# Parse an ICD register-state string ("s_1 s_2 … s_n", left to right) into a
-# length-n bit vector indexed by stage number.
+# Parse an ICD register-state string (left to right) into a bit vector by stage number.
 _beidou_state(bits::AbstractString) = Int8[c == '1' ? Int8(1) : Int8(0) for c in bits]
 
-# Advance a Fibonacci LFSR one clock: return the (pre-shift) modulo-2 sum of
-# the `out_taps` stages, then shift the register toward higher stages, feeding
-# the modulo-2 sum of the `fb_taps` stages into stage 1. `state` is mutated.
+# Advance a Fibonacci LFSR one clock: return the (pre-shift) modulo-2 sum of the
+# `out_taps` stages, then shift toward higher stages, feeding the modulo-2 sum of the
+# `fb_taps` stages into stage 1. `state` is mutated.
 @inline function _beidou_lfsr_step!(state::Vector{Int8}, fb_taps, out_taps)
     n = length(state)
     out = Int8(0)
@@ -49,20 +48,17 @@ end
 """
 $(SIGNATURES)
 
-Generate one BeiDou Gold-code period of length `len` as an `Int8` vector of
-±1 chips.
+Generate one BeiDou Gold-code period of length `len` as an `Int8` vector of ±1 chips.
 
-The code is the modulo-2 sum of two Fibonacci LFSRs of length `n`. `fb1`/`fb2`
-are the feedback-tap stage numbers (the polynomial exponents `i` for which the
-coefficient of `Xⁱ` is 1). `out1`/`out2` are the output-tap stage numbers whose
-modulo-2 sum forms each register's output — a single stage `(n,)` for a plain
-maximal-length output, or several stages for a phase-selected output (BeiDou
-B1I selects the G2 phase by tapping different stages). `init1`/`init2` are the
-register start states (stage 1..n).
+The code is the modulo-2 sum of two Fibonacci LFSRs of length `n`. `fb1`/`fb2` are the
+feedback-tap stage numbers (the polynomial exponents `i` with coefficient of `Xⁱ` 1).
+`out1`/`out2` are the output-tap stages whose modulo-2 sum forms each register's output:
+`(n,)` for a plain maximal-length output, or several stages for a phase-selected one
+(B1I's G2). `init1`/`init2` are the register start states (stage 1..n).
 
-If `reset1_at > 0`, register 1 is reset to `init1` immediately after emitting
-chip `reset1_at` (BeiDou B3I/B2a/B2b short-cycle register 1 to a period of 8190
-chips within each 10230-chip code period). Register 2 is never reset mid-period.
+If `reset1_at > 0`, register 1 is reset to `init1` immediately after emitting chip
+`reset1_at` (B3I/B2a/B2b short-cycle register 1 to 8190 chips within each 10230-chip
+period). Register 2 is never reset mid-period.
 """
 function _beidou_gold_code(n, len, fb1, fb2, out1, out2, init1, init2, reset1_at)
     s1 = copy(init1)
@@ -81,12 +77,11 @@ end
 """
 $(SIGNATURES)
 
-Build the length-`N` Legendre sequence used by the BeiDou Weil-code
-construction, as a `BitVector` indexed `L[k+1]` for `k = 0 … N-1`.
+Build the length-`N` Legendre sequence used by the BeiDou Weil codes, as a `BitVector`
+indexed `L[k+1]` for `k = 0 … N-1`.
 
-Per the BDS ICDs (e.g. BDS-SIS-ICD-B1C-1.0 Eq. 5-2): `L(0) = 0`, and for
-`k > 0`, `L(k) = 1` if there exists an integer `x` with `k ≡ x² (mod N)`, else
-`L(k) = 0`.
+Per the BDS ICDs (e.g. BDS-SIS-ICD-B1C-1.0 Eq. 5-2): `L(0) = 0`, and for `k > 0`,
+`L(k) = 1` if some integer `x` has `k ≡ x² (mod N)`, else `0`.
 """
 function _beidou_legendre(N::Integer)
     L = falses(N)
@@ -120,10 +115,8 @@ function _beidou_weil_code(N::Integer, N0::Integer, w::Integer, p::Integer,
 end
 
 # BeiDou Neuman-Hoffman NH20 secondary code (BDS-SIS-ICD-B1I-3.0 §5.2.1 /
-# BDS-SIS-ICD-B3I-1.0 §5.2.1): the 20-bit sequence 0 0 0 0 0 1 0 0 1 1 0 1 0 1
-# 0 0 1 1 1 0, mapped 0 → -1, 1 → +1, modulo-2 added to the ranging code at
-# 1 kHz (one chip per 1 ms primary period) to form the D1 (MEO/IGSO) navigation
-# tiered code.
+# BDS-SIS-ICD-B3I-1.0 §5.2.1): the 20-bit sequence 0 0 0 0 0 1 0 0 1 1 0 1 0 1 0 0 1 1 1 0,
+# mapped 0 → -1, 1 → +1, one chip per 1 ms primary period on the D1 (MEO/IGSO) signals.
 const BEIDOU_NH20_BITS = (0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0)
 
 """
@@ -131,19 +124,17 @@ const BEIDOU_NH20_BITS = (0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 
 
 Whether BeiDou PRN `prn` is a geostationary (GEO) satellite: PRN 1-5 and 59-63, the
 same ranges in the B1I and B3I ICDs (BDS-SIS-ICD-B1I-3.0 / BDS-SIS-ICD-B3I-1.0
-§5.1.1, Table 4-1). On B1I and B3I a GEO satellite broadcasts the D2 navigation message
-at 500 bit/s with no secondary code, where the MEO and IGSO satellites (PRN 6-58)
-broadcast D1 at 50 bit/s under the NH20 overlay; [`get_bit_rate`](@ref)`(signal,
-prn)` and [`get_secondary_code`](@ref) follow it.
+§5.1.1, Table 4-1). On B1I and B3I a GEO satellite broadcasts D2 at 500 bit/s with no
+secondary code, where MEO and IGSO satellites (PRN 6-58) broadcast D1 at 50 bit/s under
+the NH20 overlay; [`get_bit_rate`](@ref)`(signal, prn)` and [`get_secondary_code`](@ref)
+follow it.
 
 Not exported: write `GNSSSignals.is_beidou_geo`.
 """
 @inline is_beidou_geo(prn::Integer) = prn in 1:5 || prn in 59:63
 
-# Build the (20 × num_prns) NH20 overlay matrix exposed via `PerPRNSecondaryCode`:
-# the NH20 sequence (±1) for the MEO/IGSO (D1) PRNs, and an all-ones (no-op)
-# column for the GEO (D2) PRNs, so a GEO PRN's tiered code is just its primary
-# code — matching the ICD (GEO D2 has no NH overlay). See PocketSDR `sec_code_B1I`.
+# Build the (20 × num_prns) NH20 overlay matrix for `PerPRNSecondaryCode`: NH20 (±1) for
+# MEO/IGSO (D1) PRNs, all-ones (no-op) for GEO (D2) PRNs, which have no NH overlay.
 function _beidou_nh20_matrix(num_prns::Integer)
     nh = ntuple(i -> Int8(2 * BEIDOU_NH20_BITS[i] - 1), Val(20))
     m = ones(Int8, 20, num_prns)          # GEO (D2) PRNs: all-ones ⇒ no overlay

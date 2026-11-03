@@ -9,16 +9,14 @@ giving a 20 ms code period (IS-GPS-200N §3.2.1.4). It carries the CNAV
 message, transmitted at 50 symbols/s: the symbol rate of its rate-½ convolutional code,
 the message carrying 25 bit/s (IS-GPS-200N §3.2.2; see [`get_bit_rate`](@ref)).
 
-In the broadcast L2C signal the L2 CM-code is time-division multiplexed
-chip-by-chip with the dataless [`GPSL2CL`](@ref) pilot at 1.023 MHz; like
-GNSS-SDR and PocketSDR this implementation models the CM component on its own
-at its native 511.5 kcps chip rate, which is what a receiver replicates when
-acquiring and tracking L2 CM. There is no secondary/overlay code.
+In the broadcast L2C signal the CM-code is time-division multiplexed chip-by-chip with
+the dataless [`GPSL2CL`](@ref) pilot at 1.023 MHz; like GNSS-SDR and PocketSDR this
+implementation models CM on its own at its native 511.5 kcps. There is no
+secondary/overlay code.
 
-The CM and CL codes share one degree-27 modular shift-register generator
-(IS-GPS-200N §3.3.2.4, `gen_l2c_code`) and differ only in the per-PRN initial
-register state (`GPS_L2CM_INITIAL_STATES`) and the short-cycle period. PRNs
-1-63 are supported.
+CM and CL share one degree-27 modular shift-register generator (IS-GPS-200N §3.3.2.4,
+`gen_l2c_code`) and differ only in the per-PRN initial register state
+(`GPS_L2CM_INITIAL_STATES`) and the short-cycle period. PRNs 1-63 are supported.
 
 # Example
 ```julia
@@ -40,18 +38,16 @@ GPS L2 CL signal (the long, dataless pilot component of the GPS L2 civil
 signal L2C).
 
 BPSK-modulated 767250-chip code at 511.5 kcps on the L2 band (1227.6 MHz),
-giving a 1.5 s code period (IS-GPS-200N §3.2.1.5). As the pilot component it
-carries no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz, and
-it has no secondary/overlay code (the 1.5 s code is itself the long code).
+giving a 1.5 s code period (IS-GPS-200N §3.2.1.5). As the pilot it carries no
+navigation data, so [`get_bit_rate`](@ref) returns 0 Hz, and it has no
+secondary/overlay code (the 1.5 s code is itself the long code).
 
-In the broadcast L2C signal the dataless CL-code is time-division multiplexed
-chip-by-chip with the [`GPSL2CM`](@ref) data component at 1.023 MHz; like
-GNSS-SDR and PocketSDR this implementation models the CL component on its own
-at its native 511.5 kcps chip rate.
+In the broadcast L2C signal CL is time-division multiplexed chip-by-chip with
+[`GPSL2CM`](@ref) at 1.023 MHz; like GNSS-SDR and PocketSDR this implementation models
+CL on its own at its native 511.5 kcps.
 
-The CL code uses the same degree-27 modular shift-register generator as
-[`GPSL2CM`](@ref) (IS-GPS-200N §3.3.2.4, `gen_l2c_code`) and differs only in
-the per-PRN initial register state (`GPS_L2CL_INITIAL_STATES`) and the longer
+CL uses the same generator as [`GPSL2CM`](@ref) (IS-GPS-200N §3.3.2.4, `gen_l2c_code`),
+with its own per-PRN initial register states (`GPS_L2CL_INITIAL_STATES`) and the longer
 767250-chip short-cycle period. PRNs 1-63 are supported.
 
 # Example
@@ -74,13 +70,11 @@ Generate one GPS L2 civil code (CM or CL) from its initial shift-register
 state `initial_state`, returning a length-`code_length` `Vector{Int8}` of ±1
 chips.
 
-The L2 CM- and L2 CL-codes share a single degree-27 modular (Galois)
-shift-register generator (IS-GPS-200N §3.3.2.4); they differ only in the
-per-PRN initial state and the number of chips before the register is
-short-cycled (10230 for CM, 767250 for CL). At each step the register outputs
-its least-significant bit (0 → +1, 1 → −1, the IS-GPS-200N / PocketSDR chip
-convention), then shifts right and XORs the feedback mask
-`GPS_L2C_FEEDBACK_MASK` back in when the output bit was 1.
+The CM- and CL-codes share a degree-27 modular (Galois) shift-register generator
+(IS-GPS-200N §3.3.2.4), differing in the per-PRN initial state and the short-cycle length
+(10230 for CM, 767250 for CL). At each step the register outputs its least-significant
+bit (0 → +1, 1 → −1, the IS-GPS-200N / PocketSDR chip convention), then shifts right and
+XORs `GPS_L2C_FEEDBACK_MASK` back in when the output bit was 1.
 
 ```julia-repl
 julia> code = gen_l2c_code(GPS_L2CM_INITIAL_STATES[1], GPS_L2CM_CODE_LENGTH);
@@ -100,9 +94,8 @@ function gen_l2c_code(initial_state, code_length)
     return code
 end
 
-# Build the `(code_length, GPS_L2C_NUM_PRNS)` primary-code matrix from a
-# per-PRN initial-state table, preallocated and filled column-by-column (the
-# pattern used by `_l1c_build_primary_codes`).
+# Build the `(code_length, GPS_L2C_NUM_PRNS)` primary-code matrix from a per-PRN
+# initial-state table.
 function _build_l2c_codes(initial_states::AbstractVector, code_length::Integer)
     codes = Matrix{Int8}(undef, code_length, GPS_L2C_NUM_PRNS)
     for prn = 1:GPS_L2C_NUM_PRNS
@@ -131,22 +124,20 @@ end
 get_modulation(::Type{<:GPSL2CM}) = BPSK()
 get_modulation(::Type{<:GPSL2CL}) = BPSK()
 
-# IS-GPS-200N Table 3-III designates the L2 P(Y) carrier as the band's in-phase (I)
-# reference; the civil L2C component (the CM/CL chip-by-chip multiplex) rides the
-# quadrature carrier. §3.3.1.5.1 makes this configurable: CNAV Type 10 message bit 273
-# signals either phase quadrature (L2C lagging L2P(Y) by 90° → −1/4 cycle) or in-phase (0);
-# with no CNAV it is "fixed in phase quadrature". We return that nominal/default −1/4 cycle.
+# IS-GPS-200N Table 3-III: the L2 P(Y) carrier is the in-phase (I) reference; L2C (the
+# CM/CL multiplex) rides the quadrature carrier. §3.3.1.5.1: CNAV Type 10 message bit 273
+# signals quadrature (L2C lagging L2P(Y) by 90° → −1/4 cycle) or in-phase (0); with no CNAV
+# it is "fixed in phase quadrature". We return the nominal −1/4 cycle.
 @inline get_carrier_phase_offset(::Type{<:GPSL2CM}) = -0.25
 @inline get_carrier_phase_offset(::Type{<:GPSL2CL}) = -0.25
 
 @inline get_band(::Type{<:GPSL2CM}) = L2()
 @inline get_band(::Type{<:GPSL2CL}) = L2()
 
-# CM and CL are chip-by-chip time-multiplexed, so each carries half the average
-# L2C power. This 50/50 split follows from the multiplexing rather than a tabulated
-# figure — the ICD gives the combined L2C only (−160.0 dBW, IS-GPS-200N, Table 3-Va,
-# IIR-M/IIF worst case), and that total is the unit here. See
-# [`get_relative_power`](@ref).
+# CM and CL are chip-by-chip time-multiplexed, so each carries half the average L2C power.
+# The split follows from the multiplexing, not a tabulated figure: the ICD gives only the
+# combined L2C (−160.0 dBW, IS-GPS-200N, Table 3-Va, IIR-M/IIF worst case), the unit here.
+# See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GPSL2CM}) = 0.5
 @inline get_relative_power(::Type{<:GPSL2CL}) = 0.5
 
@@ -184,10 +175,7 @@ $(SIGNATURES)
 
 Get the secondary code for GPS L2 CM.
 
-The L2 CM-code has no secondary/overlay code.
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+The L2 CM-code has no secondary/overlay code ([`NoSecondaryCode`](@ref)).
 """
 @inline get_secondary_code(::GPSL2CM) = NoSecondaryCode()
 
@@ -196,11 +184,8 @@ $(SIGNATURES)
 
 Get the secondary code for GPS L2 CL.
 
-The L2 CL-code has no secondary/overlay code; the 1.5 s code is itself the
-long code.
-
-# Returns
-- [`NoSecondaryCode`](@ref)
+The L2 CL-code has no secondary/overlay code ([`NoSecondaryCode`](@ref)); the 1.5 s code
+is itself the long code.
 """
 @inline get_secondary_code(::GPSL2CL) = NoSecondaryCode()
 
@@ -226,9 +211,6 @@ Get the bit rate, as tracked, of GPS L2 CM.
 
 The L2 CM-code carries the CNAV message, tracked at 50 bit/s: the symbol rate of its
 rate-½ convolutional code, the message carrying 25 bit/s (IS-GPS-200N §3.2.2).
-
-# Returns
-- `Frequency`: 50 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL2CM}) = 50Hz
 
@@ -238,9 +220,6 @@ $(SIGNATURES)
 Get the bit rate, as tracked, of GPS L2 CL.
 
 The L2 CL-code is a dataless pilot, so its bit rate is 0 Hz.
-
-# Returns
-- `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL2CL}) = 0Hz
 

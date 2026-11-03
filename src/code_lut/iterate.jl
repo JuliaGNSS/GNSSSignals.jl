@@ -12,11 +12,9 @@
 #     end
 
 # ---- stateless primitive: hold the padded code + backend, map a phase Vec -> code Vec ----
-# `V` is parametric so a zero-copy column view of a `SignalLUT` matrix (a unit-stride
-# `SubArray{Int8}`) can be the padded table, not just an owning `Vector{Int8}` — the
-# parametric-inference constructor would otherwise reject the SubArray (unlike a
-# non-parametric struct field, which silently `convert`s/copies it). Backend stays the FIRST
-# parameter so the `(p::PreparedCode{AVX512})(…)` call-method dispatch below is unchanged.
+# `V` is parametric so a zero-copy column view of a `SignalLUT` matrix can be the padded table
+# (a `Vector{Int8}` field would silently copy it). Backend stays the FIRST parameter for the
+# `(p::PreparedCode{AVX512})(…)` call-method dispatch below.
 struct PreparedCode{Backend, V<:AbstractVector{Int8}}
     padded::V
     backend::Backend
@@ -46,9 +44,9 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 # Value-based code engine: a loop-invariant `CodeEngine` (table + baked DDA deltas) plus an
 # isbits `CodeState` (the per-stream DDA position) renewed by value every step. The state
-# holds no table data, so it stays in registers; fuse it straight into a correlation loop.
-# Mirrors SinCosLUT's CarrierEngine/CarrierState. Build one engine per interleave factor `K`
-# (`Val(K)`); hold K states `code_state(eng, k-1)` (W apart) and `code_advance` each per step.
+# holds no table data, so it stays in registers. Mirrors SinCosLUT's CarrierEngine/CarrierState.
+# Build one engine per interleave factor `K` (`Val(K)`); hold K states `code_state(eng, k-1)`
+# (W apart) and `code_advance` each per step.
 #
 # Per-backend by necessity — and the gap is large:
 #   • AVX-512 (`CodeState512`): the incremental rel/scalar-base form. One `vpermb` over a
@@ -61,9 +59,7 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ---- AVX-512 engine + state (incremental rel / scalar base) ----
-# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode` above) so a zero-copy
-# column view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a
-# non-parametric `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+# `padded` is parametric for the same zero-copy reason as in `PreparedCode`.
 struct CodeEngine512{V<:AbstractVector{Int8}}
     padded::V
     step_num::Int
@@ -130,9 +126,8 @@ end
 
 function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, ::AVX512, ::Val{64}) where {K}
     W = 64; stride = K * W
-    # Widen the stride·step_num product to Int64: with step_num up to 2^_B = 2^30 it exceeds
-    # typemax(Int32), so a native-`Int` product overflows on 32-bit Julia (issue #125; residual
-    # gap of #108). Match generator.jl / the fill engines, which already form this in Int64.
+    # Int64 stride·step_num: with step_num up to 2^30 it overflows native `Int` on 32-bit Julia
+    # (#125, #108).
     SSN = Int64(stride) * Int64(sn); sdw = Int64(sd)
     CodeEngine512(table.padded, sn, sd, ph, rem0, _RemT(sd),
         _RemT(mod(SSN, sdw)), Int(div(SSN, sdw) % table.length), table.length)
@@ -140,17 +135,15 @@ end
 function _make_engine(table::CodeTable, sn, sd, ph, rem0::_RemT, ::Val{K}, backend, ::Val{W}) where {K,W}
     backend isa Union{AVX2,Neon} && _check_windowed_length(table, backend)
     stride = K * W; L = table.length; T = _phase_type(L)
-    # `code_state(eng, stream)` seeds the phase engine at first sample `stream·W` (stream =
-    # 0..K-1), so the largest per-lane initial chip index is `K·W - 1`. `_init_state`'s
-    # single-conditional-subtract reduction only holds when that index is `< L`; beyond it
-    # the phase under-reduces and `_window_lookup` reads past the code. AVX-512 (its own
-    # builder above) carries an Int base reduced by `_wrapL` and is immune. (Off the hot path:
-    # this runs once per engine build.)
+    # `code_state(eng, stream)` seeds the first sample at `stream·W` (stream = 0..K-1), so the
+    # largest initial chip index is `K·W - 1`. `_init_state`'s single-conditional-subtract
+    # reduction only holds when that is `< L`; beyond it `_window_lookup` reads past the code.
+    # AVX-512 carries an Int base reduced by `_wrapL` and is immune.
     K * W ≤ L || throw(ArgumentError(
         "code_engine(…, Val(K)): K·W = $(K * W) exceeds code length L = $L (W = $W lanes for " *
         "$(backend_name(backend))); code_state(eng, K-1) would seed a chip index ≥ L. Use K ≤ $(L ÷ W)."))
     prepared = prepare_code(table; backend = backend)
-    # Int64 stride·step_num (2^_B·stride overflows Int32 on 32-bit Julia — issue #125; see above).
+    # Int64 stride·step_num (#125; see above).
     SSN = Int64(stride) * Int64(sn); sdw = Int64(sd)
     CodeEnginePhase{W,T,typeof(prepared)}(prepared, sn, sd, ph, rem0, _RemT(sd),
         _RemT(mod(SSN, sdw)), T(Int(div(SSN, sdw) % L)), L)

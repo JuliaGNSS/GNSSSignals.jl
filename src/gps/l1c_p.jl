@@ -80,10 +80,7 @@ end
 """
 $(SIGNATURES)
 
-Get the primary code length for GPS L1C-P.
-
-# Returns
-- `Int`: 10230 chips
+Get the primary code length for GPS L1C-P (10230 chips).
 """
 @inline get_code_length(::Type{<:GPSL1C_P}) = L1C_PRIMARY_LENGTH
 
@@ -92,22 +89,16 @@ $(SIGNATURES)
 
 Get the secondary code (overlay) for GPS L1C-P.
 
-Per IS-GPS-800G §3.2.2.1.2, every primary period (10 ms) is XOR'd with
-one chip of a 1800-bit per-PRN LFSR-generated overlay code, giving an
-18 s total cycle.
-
-# Returns
-- [`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix
+Per IS-GPS-800G §3.2.2.1.2, every primary period (10 ms) is XOR'd with one chip of a
+1800-bit per-PRN LFSR-generated overlay code (18 s cycle). Returns a
+[`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix.
 """
 @inline get_secondary_code(s::GPSL1C_P) = PerPRNSecondaryCode(s.overlay_codes)
 
 """
 $(SIGNATURES)
 
-Get the nominal chip rate of GPS L1C-P.
-
-# Returns
-- `Frequency`: 1.023 MHz
+Get the nominal chip rate of GPS L1C-P (1.023 MHz).
 """
 @inline get_chip_rate(::Type{<:GPSL1C_P}) = 1_023_000Hz
 
@@ -117,9 +108,6 @@ $(SIGNATURES)
 Get the bit rate, as tracked, of GPS L1C-P.
 
 The pilot component is dataless, so its bit rate is 0 Hz.
-
-# Returns
-- `Frequency`: 0 Hz
 """
 @inline get_bit_rate(::Type{<:GPSL1C_P}) = 0Hz
 
