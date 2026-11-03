@@ -3,20 +3,16 @@
 
 Galileo E5a-I signal (the in-phase, data-carrying component of Galileo E5a).
 
-10230-chip primary code at 10.23 Mcps on the E5 band — which shares the GPS
-L5 carrier at 1176.45 MHz, so [`get_band`](@ref) returns [`L5`](@ref). A 20-bit
-secondary code (CS20, the same for every SVID) overlays the data channel,
-giving a 20 ms tiered code.
+10230-chip primary code at 10.23 Mcps on the E5 band (the GPS L5 carrier at 1176.45 MHz,
+so [`get_band`](@ref) returns [`L5`](@ref)). A 20-bit secondary code (CS20, the same for
+every SVID) overlays the data channel, giving a 20 ms tiered code.
 
-Galileo E5a is one half of the wideband E5 AltBOC(15,10) signal, but like
-GNSS-SDR and PocketSDR this implementation models the E5a sideband on its own
-as BPSK(10) (modulation [`BPSK`](@ref)) — the form used when E5a is acquired
-and tracked as an independent signal.
+E5a is one half of the wideband E5 AltBOC(15,10) signal, but it is modelled on its own as
+BPSK(10) ([`BPSK`](@ref)), as when E5a is tracked as an independent signal.
 
-The primary code is generated from two 14-stage shift registers per the
-Galileo OS SIS ICD (§3.5): a common base register 1 (all-ones start, feedback
-`40503₈`) XOR'd with a per-SVID base register 2 (feedback `50661₈`, start
-values `E5A_I_X2_INIT`), truncated to 10230 chips. PRNs 1-50 are supported.
+The primary code follows the Galileo OS SIS ICD (§3.5): a common base register 1
+(all-ones start, feedback `40503₈`) XOR'd with a per-SVID base register 2 (feedback
+`50661₈`, start values `E5A_I_X2_INIT`), truncated to 10230 chips. PRNs 1-50.
 
 # Example
 ```julia
@@ -37,18 +33,13 @@ end
 Galileo E5a-Q signal (the quadrature, dataless pilot component of Galileo E5a).
 
 10230-chip primary code at 10.23 Mcps on the E5 band (1176.45 MHz, reported as
-[`L5`](@ref)), overlaid with a 100-bit per-SVID secondary code (CS100) for a
-100 ms tiered code. As the pilot component it carries no navigation data, so
-[`get_bit_rate`](@ref) returns 0 Hz.
+[`L5`](@ref)), overlaid with a 100-bit per-SVID secondary code (CS100) for a 100 ms tiered
+code. As the pilot it carries no navigation data ([`get_bit_rate`](@ref) is 0 Hz).
 
-Like [`GalileoE5aI`](@ref) the E5a sideband is modelled on its own as
-BPSK(10) ([`BPSK`](@ref)). The primary code uses the same generator as E5a-I
-(base register 1 feedback `40503₈`, base register 2 feedback `50661₈`) with
-the E5a-Q per-SVID register-2 start values `E5A_Q_X2_INIT`. PRNs 1-50 are
-supported.
-
-The struct stores the CS100 overlay matrix, exposed via
-[`get_secondary_code`](@ref) as a [`PerPRNSecondaryCode`](@ref).
+Like [`GalileoE5aI`](@ref) it is modelled as BPSK(10) ([`BPSK`](@ref)). The primary code
+uses the E5a-I generator (feedbacks `40503₈`, `50661₈`) with the register-2 start values
+`E5A_Q_X2_INIT`. PRNs 1-50. The CS100 overlay is exposed via [`get_secondary_code`](@ref)
+as a [`PerPRNSecondaryCode`](@ref).
 
 # Example
 ```julia
@@ -66,10 +57,8 @@ end
 
 #= E5a primary code generation (Galileo OS SIS ICD v2.2 §3.4.1).
 
-The generator itself — two 14-stage shift registers, base register 1 all-ones
-and base register 2 per-SVID, truncated to 10230 chips — is shared with E5b and
-lives in `galileo/codes.jl`. E5a-I and E5a-Q share the same feedback taps below
-and differ only in the register-2 start values. =#
+The generator is shared with E5b and lives in `galileo/codes.jl`. E5a-I and E5a-Q share
+the feedback taps below and differ only in the register-2 start values. =#
 
 const E5A_X1_TAP = 0o40503   # base register 1 feedback polynomial
 const E5A_X2_TAP = 0o50661   # base register 2 feedback polynomial
@@ -101,8 +90,7 @@ end
 #= E5a-I secondary code (CS20, Galileo OS SIS ICD §3.5).
 
 CS20 = 0x842E9 -> bits 1000 0100 0010 1110 1001 (MSB-first), mapped 0 -> -1,
-1 -> +1. The same 20-bit overlay is used for the E5a-I data channel of every
-SVID, giving a 20 ms tiered code. =#
+1 -> +1. The same overlay is used for every SVID. =#
 const E5A_I_SECONDARY_CHIPS = (
     Int8(1), Int8(-1), Int8(-1), Int8(-1), Int8(-1), Int8(1), Int8(-1), Int8(-1), Int8(-1), Int8(-1),
     Int8(1), Int8(-1), Int8(1), Int8(1), Int8(1), Int8(-1), Int8(1), Int8(-1), Int8(-1), Int8(1),
@@ -110,8 +98,7 @@ const E5A_I_SECONDARY_CHIPS = (
 
 function GalileoE5aQ()
     codes = read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_Q_X2_INIT)
-    # CS100_n to SVID n (Galileo OS SIS ICD v2.2 §3.5.2). The table lives in
-    # `galileo/codes.jl` because the E6-C pilot is assigned the same 50 codes.
+    # CS100_n to SVID n (Galileo OS SIS ICD v2.2 §3.5.2); the table is shared with E6-C.
     secondary = _build_galileo_cs100_secondary(1:50)
     # The 100-chip per-SVID CS100 overlay is too long to bake (100·10230·1 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.
@@ -159,11 +146,8 @@ $(SIGNATURES)
 
 Get the bit rate, as tracked, of Galileo E5a-I.
 
-The E5a-I channel carries the Galileo F/NAV navigation message, tracked at 50 bit/s: the
-symbol rate of its rate-½ convolutional code, the message carrying 25 bit/s.
-
-# Returns
-- `Frequency`: 50 Hz
+The E5a-I channel carries the F/NAV message, tracked at 50 bit/s: the symbol rate of its
+rate-½ convolutional code, the message carrying 25 bit/s.
 """
 @inline get_bit_rate(::Type{<:GalileoE5aI}) = 50Hz
 
@@ -172,7 +156,7 @@ $(SIGNATURES)
 
 Get the bit rate, as tracked, of Galileo E5a-Q.
 
-The E5a-Q component is a dataless pilot, so its bit rate is 0 Hz.
+E5a-Q is a dataless pilot, so this is 0 Hz.
 
 # Returns
 - `Frequency`: 0 Hz
@@ -184,17 +168,13 @@ $(SIGNATURES)
 
 Get the secondary code for Galileo E5a-I.
 
-CS20 is shared across all SVIDs: every 1 ms primary period is overlaid with
-one chip of the 20-bit sequence (Galileo OS SIS ICD §3.5), giving a 20 ms
-tiered code.
-
-# Returns
-- [`SharedSecondaryCode`](@ref) of length 20
+CS20 is shared across all SVIDs: every 1 ms primary period is overlaid with one chip of
+the 20-bit sequence (Galileo OS SIS ICD §3.5). Returns a [`SharedSecondaryCode`](@ref)
+of length 20.
 """
 @inline get_secondary_code(::GalileoE5aI) = _galileo_e5a_i_secondary_code()
 
-# CS20 secondary, shared across SVIDs. Factored out so the `GalileoE5aI` constructor can build
-# the embedded `SignalLUT` (which needs the secondary) before an instance exists.
+# Factored out so the constructor can build the `SignalLUT` before an instance exists.
 @inline _galileo_e5a_i_secondary_code() = SharedSecondaryCode(E5A_I_SECONDARY_CHIPS...)
 
 """
@@ -202,11 +182,8 @@ $(SIGNATURES)
 
 Get the secondary code for Galileo E5a-Q.
 
-Each SVID overlays its primary code with a 100-chip CS100 sequence (Galileo OS
-SIS ICD §3.5), giving a 100 ms tiered code.
-
-# Returns
-- [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 CS100 matrix
+Each SVID overlays its primary code with a 100-chip CS100 sequence (Galileo OS SIS ICD
+§3.5). Returns a [`PerPRNSecondaryCode`](@ref) wrapping the 100 × 50 CS100 matrix.
 """
 @inline get_secondary_code(s::GalileoE5aQ) = PerPRNSecondaryCode(s.secondary_codes)
 

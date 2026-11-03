@@ -3,14 +3,12 @@
 
 Abstract supertype for GNSS RF bands.
 
-A *band* represents a shared RF carrier frequency. Signals that report the
-same band and satellite can share a carrier NCO in a receiver — that is the architectural
-reason this abstraction exists.
+A *band* represents a shared RF carrier frequency. Signals that report the same band and
+satellite can share a carrier NCO in a receiver.
 
-Band identity here is by RF frequency, not by ICD label: GPS L1 and Galileo E1
-both report [`L1`](@ref) because they share 1575.42 MHz. If you need the
-ICD-specific name, look at the concrete signal instead (e.g. via
-[`get_signal_name`](@ref)).
+Band identity is by RF frequency, not by ICD label: GPS L1 and Galileo E1 both report
+[`L1`](@ref) because they share 1575.42 MHz. For the ICD-specific name use
+[`get_signal_name`](@ref).
 """
 abstract type Band end
 
@@ -81,11 +79,9 @@ $(SIGNATURES)
 
 Get the center (carrier) frequency of a band.
 
-One method per concrete [`Band`](@ref) — `L1` 1575.42 MHz, `L2` 1227.6 MHz,
-`L5` 1176.45 MHz, `B1I` 1561.098 MHz, `B3` 1268.52 MHz, `E5b` 1207.14 MHz,
-`E6` 1278.75 MHz.
-Works on a band instance or its type, as [`get_band_id`](@ref) /
-[`get_band_name`](@ref) do.
+One method per concrete [`Band`](@ref): `L1` 1575.42 MHz, `L2` 1227.6 MHz, `L5` 1176.45
+MHz, `B1I` 1561.098 MHz, `B3` 1268.52 MHz, `E5b` 1207.14 MHz, `E6` 1278.75 MHz. Works on a
+band instance or its type.
 
 ```julia-repl
 julia> get_center_frequency(L1())
@@ -109,10 +105,8 @@ $(SIGNATURES)
 
 Get the center (carrier) frequency of a signal.
 
-Dispatches through the signal's band ([`get_band`](@ref)), so all signals on
-the same band return the same value by construction. Works on either a signal
-instance or its type — `get_center_frequency(GPSL1CA)` avoids constructing a
-signal just to read the carrier.
+Dispatches through the signal's band ([`get_band`](@ref)), so all signals on the same band
+return the same value. Works on a signal instance or its type.
 
 ```julia-repl
 julia> get_center_frequency(GPSL1CA())
@@ -132,13 +126,11 @@ $(SIGNATURES)
 Get the [`Band`](@ref) a signal is transmitted on.
 
 Concrete signal types define one method each on the type, e.g.
-`get_band(::Type{<:GPSL1CA}) = L1()`, so the band is available without
-constructing a signal. The instance method forwards to the type.
+`get_band(::Type{<:GPSL1CA}) = L1()`; the instance method forwards to it.
 
-Band identity is by RF frequency, so signals of different constellations sharing
-a carrier report the same band — `get_band(GalileoE1B())` is `L1()`. See
-[`get_band_id`](@ref) / [`get_band_name`](@ref) for the band's key and label, and
-[`get_center_frequency`](@ref) for its carrier frequency.
+Band identity is by RF frequency, so signals of different constellations sharing a carrier
+report the same band: `get_band(GalileoE1B())` is `L1()`. See [`get_band_id`](@ref) /
+[`get_band_name`](@ref) and [`get_center_frequency`](@ref).
 
 # Examples
 ```julia-repl
@@ -158,19 +150,13 @@ $(SIGNATURES)
 
 Get the `Symbol` identifier of a [`Band`](@ref).
 
-This is the machine-readable key for a band (e.g. `:L1`, `:L5`) — the level at
-which signals share a carrier NCO and a receiver shares an inter-frequency bias.
-Because band identity is by RF frequency, every signal on the same carrier maps
-to the same id regardless of constellation: GPS L1 C/A, GPS L1C and Galileo E1
-are all `:L1`.
+The machine-readable key for a band (e.g. `:L1`, `:L5`), the level at which signals share a
+carrier NCO. Every signal on the same carrier maps to the same id regardless of
+constellation: GPS L1 C/A, GPS L1C and Galileo E1 are all `:L1`.
 
-Defaults to `nameof` of the band type, so a new [`Band`](@ref) gets a sensible
-id for free; override `get_band_id(::Type{MyBand})` if you need a different
-symbol. Works on a band or signal, instance or type, and dispatches to a
-compile-time constant.
-
-Distinct from [`get_signal_id`](@ref) (per-signal, e.g. `:GPSL1CA`) and from
-[`get_center_frequency`](@ref) (the band's numeric carrier frequency).
+Defaults to `nameof` of the band type; override `get_band_id(::Type{MyBand})` for a
+different symbol. Works on a band or signal, instance or type, and folds to a compile-time
+constant. Distinct from [`get_signal_id`](@ref) (`:GPSL1CA`).
 
 ```julia-repl
 julia> get_band_id(L1())
@@ -190,28 +176,20 @@ $(SIGNATURES)
 
 Get the human-readable name of a [`Band`](@ref), e.g. `"L1"`, `"L5"`.
 
-The display counterpart to [`get_band_id`](@ref) — same granularity, but a
-`String` meant for log lines and user-facing output rather than a key to
-branch or dictionary on (prefer the `Symbol` id for that; comparing symbols is
-cheaper and the name is free to be respelled).
+The display counterpart to [`get_band_id`](@ref), at the same granularity, but a `String`
+for log lines rather than a key to branch on (prefer the `Symbol` id).
 
-Band identity is by RF frequency, so the name is the *band's* label, not the
-constellation's label for it: `get_band_name(GalileoE1B())` is `"L1"`, not
-`"E1"`. Use [`get_signal_name`](@ref) (`"Galileo E1B"`) when you need the
-ICD-specific naming.
+The name is the *band's* label, not the constellation's: `get_band_name(GalileoE1B())` is
+`"L1"`, not `"E1"`. Use [`get_signal_name`](@ref) (`"Galileo E1B"`) for the ICD-specific
+naming.
 
-Stated as a literal per band — `get_band_name(::Type{L1}) = "L1"` — so naming a
-band is free: the call allocates nothing and folds to a compile-time constant.
-Each literal still spells exactly what `String` of [`get_band_id`](@ref) yields,
-and a test pins that, so the two identity layers cannot drift apart.
+Stated as a literal per band, so the call allocates nothing and folds to a compile-time
+constant; a test pins each literal to `String` of [`get_band_id`](@ref).
 
 A [`Band`](@ref) declared elsewhere needs no method of its own: the
-`String(get_band_id(B))` fallback names it for free. That path allocates a fresh
-`String` on every call (32 bytes, measured) even where the band type is
-statically known, because a heap-allocated `String` — unlike an interned `Symbol`
-or a literal already in the method's source — cannot be baked into the IR as a
-constant. State the name as a literal, as the bands here do, if you are naming
-such a band in a hot loop rather than a log line.
+`String(get_band_id(B))` fallback allocates a fresh `String` on every call (32 bytes),
+because a heap-allocated `String`, unlike a `Symbol` or literal, cannot be baked into the
+IR as a constant. State a literal if naming such a band in a hot loop.
 
 Works on a band or signal, instance or type.
 

@@ -3,7 +3,7 @@ include("b3i_constants.jl")
 """
     BeiDouB3I{C, M} <: AbstractBeiDouSignal{C}
 
-BeiDou B3I signal — the open-service signal on the BeiDou B3 frequency
+BeiDou B3I signal, the open-service signal on the BeiDou B3 frequency
 (1268.52 MHz, reported as the [`B3`](@ref) band).
 
 BPSK-modulated 10230-chip ranging code at 10.23 Mcps (a Gold code). As on
@@ -71,15 +71,10 @@ BeiDou B3I is on the 1268.52 MHz B3 frequency, so this returns [`B3`](@ref).
 """
 @inline get_band(::Type{<:BeiDouB3I}) = B3()
 
-# The only open-service component on the 1268.52 MHz carrier (the B3Q counterpart
-# is not in the OS ICD), so it is its own composite. See [`get_relative_power`](@ref).
+# The only open-service component on the 1268.52 MHz carrier (B3Q is not in the OS ICD),
+# so it is its own composite.
 @inline get_relative_power(::Type{<:BeiDouB3I}) = 1.0
 
-"""
-$(SIGNATURES)
-
-Get the human-readable signal name.
-"""
 @inline get_signal_name(::Type{<:BeiDouB3I}) = "BeiDou B3I"
 
 """
@@ -99,12 +94,8 @@ Get the nominal chip rate of BeiDou B3I (10.23 MHz).
 """
 $(SIGNATURES)
 
-Get the bit rate, as tracked, of BeiDou B3I (D1 navigation message, 50 bit/s). The GEO
-satellites broadcast the D2 message at 500 bit/s; `get_bit_rate(signal, prn)` returns
-the rate of a given satellite.
-
-# Returns
-- `Frequency`: 50 Hz
+Get the bit rate, as tracked, of BeiDou B3I (D1 message, 50 bit/s). The GEO satellites
+broadcast D2 at 500 bit/s; `get_bit_rate(signal, prn)` returns a given satellite's.
 """
 @inline get_bit_rate(::Type{<:BeiDouB3I}) = 50Hz
 @inline get_bit_rate(::Type{<:BeiDouB3I}, prn::Integer) =
@@ -116,11 +107,8 @@ $(SIGNATURES)
 Get the secondary (Neuman-Hoffman NH20) code for BeiDou B3I.
 
 Same per-SVID NH20 overlay as [`BeiDouB1I`](@ref) (BDS-SIS-ICD-B3I-1.0 §5.2.1):
-NH20 on the MEO/IGSO PRNs (6-58, D1) for a 20 ms tiered code, and no overlay
-(all-ones column) on the GEO PRNs (1-5, 59-63, D2).
-
-# Returns
-- [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 overlay matrix
+NH20 on the MEO/IGSO PRNs (6-58, D1), and no overlay (all-ones column) on the GEO PRNs
+(1-5, 59-63, D2). Returns a [`PerPRNSecondaryCode`](@ref) wrapping the 20 × 63 matrix.
 """
 @inline get_secondary_code(s::BeiDouB3I) = PerPRNSecondaryCode(s.secondary_codes)
 

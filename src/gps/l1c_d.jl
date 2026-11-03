@@ -30,10 +30,9 @@ get_modulation(::Type{<:GPSL1C_D}) = BOCsin(1, 1)
 
 @inline get_band(::Type{<:GPSL1C_D}) = L1()
 
-# 25 % of the L1C composite (IS-GPS-800J, Table 3.2-1) — the one non-50/50
-# data/pilot split in the package. Stating the split itself, rather than the ICD's
-# separately tabulated −163.0 dBW, costs 0.02 dB and makes the pilot/data ratio
-# exactly 3. See [`get_relative_power`](@ref).
+# 25 % of the L1C composite (IS-GPS-800J, Table 3.2-1), the one non-50/50 data/pilot split
+# in the package. Using the split rather than the ICD's tabulated −163.0 dBW costs 0.02 dB
+# and makes the pilot/data ratio exactly 3. See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GPSL1C_D}) = 0.25
 
 @inline get_signal_name(::Type{<:GPSL1C_D}) = "GPS L1C-D"
@@ -51,30 +50,21 @@ end
 """
 $(SIGNATURES)
 
-Get the primary code length for GPS L1C-D.
-
-# Returns
-- `Int`: 10230 chips
+Get the primary code length for GPS L1C-D (10230 chips).
 """
 @inline get_code_length(::Type{<:GPSL1C_D}) = L1C_PRIMARY_LENGTH
 
 """
 $(SIGNATURES)
 
-Get the secondary code for GPS L1C-D.
-
-The data component has no secondary code (the overlay applies only to
-the pilot, L1C-P).
+Get the secondary code for GPS L1C-D, which has none (the overlay applies only to L1C-P).
 """
 @inline get_secondary_code(::GPSL1C_D) = NoSecondaryCode()
 
 """
 $(SIGNATURES)
 
-Get the nominal chip rate of GPS L1C-D.
-
-# Returns
-- `Frequency`: 1.023 MHz
+Get the nominal chip rate of GPS L1C-D (1.023 MHz).
 """
 @inline get_chip_rate(::Type{<:GPSL1C_D}) = 1_023_000Hz
 
@@ -85,11 +75,7 @@ Get the bit rate, as tracked, of GPS L1C-D.
 
 Per IS-GPS-800G §3.2.3, each 18 s CNAV-2 frame is 1800 symbols, broadcast at 100 per
 second: 52 for subframe 1 (the 9-bit TOI, BCH-encoded) and 1200 + 548 for subframes 2
-and 3 (rate-½ LDPC). That symbol rate is the bit rate as tracked; the message itself
-carries just under 50 bit/s.
-
-# Returns
-- `Frequency`: 100 Hz
+and 3 (rate-½ LDPC). The message itself carries just under 50 bit/s.
 """
 @inline get_bit_rate(::Type{<:GPSL1C_D}) = 100Hz
 

@@ -1,22 +1,20 @@
 # Value-based, *continuing* code generator (module-internal engine for the fill `gen_code!`).
 #
 # The one-shot `generate_code!` pays a full DDA setup (fixed-point step + four `_init_rel`
-# streams) on every call — overhead that dwarfs the ~120 ns generation at 1 ms sizes. A
-# `FillEngine` pays that setup ONCE (at construction) and then *continues* from an explicit,
-# isbits state across arbitrarily-sized fills, so concatenating consecutive fills equals one
-# big generation. It also vectorises the non-stride-aligned tail (full 4-way strides → W-wide
-# single-window steps → only the final < W samples scalar).
+# streams) on every call, which dwarfs the ~120 ns generation at 1 ms sizes. A `FillEngine`
+# pays that setup ONCE and then *continues* from an explicit isbits state across arbitrarily
+# sized fills, so concatenating consecutive fills equals one big generation. It also vectorises
+# the non-stride-aligned tail (full 4-way strides → W-wide single-window steps → only the final
+# < W samples scalar).
 #
 # State is explicit and immutable: a single canonical "stream 0" `(rel, rem, base)` at the
-# current absolute sample offset (AVX-512 rel/scalar-base form, reusing `CodeState512`), or
-# the phase-based equivalent (`CodeStatePhase`) for AVX2/Portable, or `(c, r)`
-# (`BoundaryState`) for the high-oversampling boundary-fill path. `fill_continue!(out, eng, st)`
-# returns the state advanced by exactly `length(out)`, so the caller threads it — no mutation,
-# no hidden state, and an isbits state means the steady-state fill is allocation-free.
+# current absolute sample offset (AVX-512 form, `CodeState512`), the phase-based equivalent
+# (`CodeStatePhase`) for AVX2/Portable, or `(c, r)` (`BoundaryState`) for the boundary-fill
+# path. `fill_continue!(out, eng, st)` returns the state advanced by exactly `length(out)`; an
+# isbits state keeps the steady-state fill allocation-free.
 #
-# The 4-way streams used for throughput (AVX-512) are *spawned* from the carried stream 0 by
-# three cheap W-window advances (≈20 ns, byte-identical to `_init_rel`) at the start of each
-# fill — not stored in the state.
+# The 4-way AVX-512 streams are *spawned* from the carried stream 0 by three cheap W-window
+# advances (≈20 ns, byte-identical to `_init_rel`) at the start of each fill, not stored.
 
 # ---- per-W single-stream advance (AVX-512 rel/scalar-base form) ----
 # Advance one W=64 stream by exactly W samples. Mirrors `CodeState512`'s state update
@@ -35,15 +33,11 @@
 end
 
 # ---- value-based, continuing fill engine over the AVX-512 rel/scalar-base DDA ----
-# Immutable loop-invariant config: the padded table, the fixed-point step, per-W and
-# per-stride DDA deltas (computed once at construction; no rationalize, no idiv per fill), and
-# the initial phase so `fill_state` can seed the canonical stream-0 state. The four
-# interleaved streams (W apart) used for throughput are spawned from the carried stream-0 at
-# the start of each fill. After a fill of M samples the returned state is stream-0 at absolute
-# offset M, so the next call resumes seamlessly.
-# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode`) so a zero-copy column
-# view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a non-parametric
-# `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+# Immutable loop-invariant config: the padded table, the fixed-point step, per-W and per-stride
+# DDA deltas (computed once; no rationalize, no idiv per fill), and the initial phase so
+# `fill_state` can seed the stream-0 state.
+# `padded` is parametric so a zero-copy column view of a `SignalLUT` matrix is stored as-is; a
+# `Vector{Int8}` field would silently copy the whole column per build.
 struct FillEngine512{V<:AbstractVector{Int8}}
     padded::V
     step_num::Int
@@ -61,9 +55,8 @@ end
 function FillEngine512(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
                        rem0::_RemT = _RemT(0))
     L = table.length; W = 64
-    # Widen the W·step_num / 4W·step_num products to Int64: with step_num up to 2^_B = 2^30 these
-    # exceed typemax(Int32) (4·64·2^30 = 2^38), so a native-`Int` product overflows on 32-bit
-    # Julia (issue #108). The core DDA kernels already form these in Int64; match that here.
+    # Int64 products: with step_num up to 2^_B = 2^30, 4W·step_num = 2^38 overflows native `Int`
+    # on 32-bit Julia (#108).
     WSN = Int64(W) * Int64(step_num); W4SN = Int64(4W) * Int64(step_num); sdw = Int64(step_den)
     FillEngine512(table.padded, step_num, step_den, L,
         _RemT(mod(WSN, sdw)), Int(div(WSN, sdw) % L),
@@ -88,9 +81,8 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngine512, st::
     padded = eng.padded; L = eng.L
     frac_W = eng.frac_W; whole_W = eng.whole_W; modulus = eng.modulus
     fstr = eng.frac_stride; wstr = eng.whole_stride
-    # Strided / non-contiguous target: the `out[VecRange]` stores below are only defined for a
-    # contiguous target (SIMD.jl), so a strided `SubArray` throws. Mirror the boundary engine's
-    # guard (#103) and walk it with the plain indexed per-sample DDA instead (issue #124).
+    # `out[VecRange]` stores are only defined for a contiguous target (SIMD.jl), so a strided
+    # `SubArray` throws; walk it with the indexed per-sample DDA instead (#124, cf. #103).
     _is_dense_target(out) || return _fill_continue_scalar_512!(out, eng, st)
     # Spawn the four interleaved streams (W apart) from the carried stream-0.
     rel1 = st.rel; rem1 = st.rem; b1 = st.base
@@ -140,11 +132,9 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngine512, st::
     return CodeState512(rel1, rem1, b1)
 end
 
-# Non-dense fallback for `fill_continue!` (strided / non-contiguous `out`): a plain indexed
-# per-sample DDA walk over the carried stream-0 state, byte-identical to the SIMD path (just
-# slower). The stream-0 `rel[1]` is invariantly 0 (the base lane), so the current chip index is
-# just `base`; advancing every lane by one sample keeps that invariant and returns the state
-# advanced by exactly `length(out)` (issue #124).
+# Non-dense fallback for `fill_continue!` (strided `out`): an indexed per-sample DDA walk,
+# byte-identical to the SIMD path but slower. Stream-0 `rel[1]` is invariantly 0, so the current
+# chip index is just `base`; advancing every lane by one sample keeps that invariant (#124).
 @inline function _fill_continue_scalar_512!(out, eng::FillEngine512, st::CodeState512)
     padded = eng.padded; L = eng.L; modulus = eng.modulus
     frac1 = _RemT(eng.step_num % eng.step_den); whole1 = eng.step_num ÷ eng.step_den
@@ -180,9 +170,8 @@ end
 end
 
 # ---- AVX2 / Portable continuing fill engine (phase-based, single stream, W at a time) ----
-# Keeps the phase-based DDA (the rel/scalar-base trick regressed AVX2). Correct continuation
-# is the same scheme: carry one canonical phase stream (`CodeStatePhase`), emit W-wide
-# windows, scalar tail. The engine holds the loop-invariant config + initial phase.
+# Keeps the phase-based DDA (the rel/scalar-base trick regressed AVX2): carry one canonical
+# phase stream (`CodeStatePhase`), emit W-wide windows, scalar tail.
 struct FillEnginePhase{W,T,Prep}
     prepared::Prep
     step_num::Int
@@ -196,9 +185,8 @@ struct FillEnginePhase{W,T,Prep}
 end
 
 # Branch on the table length so each arm passes a *literal* phase type (Int16/Int32) into the
-# `_build_phase_engine` barrier. `_phase_type(L)` returns a runtime type *value*; using it
-# directly made construction a dynamic dispatch and boxed the whole engine (the one-shot /
-# threaded allocation hot spot). The two arms give inference a small 2-way Union instead.
+# `_build_phase_engine` barrier: `_phase_type(L)` returns a runtime type value, which would make
+# construction a dynamic dispatch and box the engine. The arms give inference a 2-way Union.
 function FillEnginePhase(table::CodeTable, step_num::Int, step_den::Int, phase_offset::Int,
                          backend::Backend, vw::Val{W}, rem0::_RemT = _RemT(0)) where {W}
     table.length <= typemax(Int16) ?
@@ -210,7 +198,7 @@ end
                                      backend::Backend, ::Val{W}, ::Type{T}, rem0::_RemT = _RemT(0)) where {W,T}
     L = table.length
     prepared = prepare_code(table; backend = backend)
-    # Int64 W·step_num (2^_B·W overflows Int32 on 32-bit Julia — issue #108; see FillEngine512).
+    # Int64 W·step_num (#108; see FillEngine512).
     WSN = Int64(W) * Int64(step_num); sdw = Int64(step_den)
     FillEnginePhase{W,T,typeof(prepared)}(prepared, step_num, step_den,
         T(Int(div(WSN, sdw) % L)), _RemT(mod(WSN, sdw)),
@@ -222,8 +210,7 @@ end
     CodeStatePhase{W,T}(phase, rem)
 end
 
-# One W-window phase advance = the canonical `_advance_phase` (iterate.jl) with the per-window
-# deltas (whole_W / frac_W); kept as a named wrapper for the fill loop's call site.
+# One W-window phase advance: `_advance_phase` (iterate.jl) with the per-window deltas.
 @inline _advance_window_phase(phase::Vec{W,T}, rem::Vec{W,_RemT}, whole_W::T,
                               frac_W::_RemT, modulus::_RemT, Lc::T) where {W,T} =
     _advance_phase(phase, rem, frac_W, whole_W, modulus, Lc)
@@ -231,10 +218,8 @@ end
 function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
     p = eng.prepared; whole_W = eng.whole_W; frac_W = eng.frac_W; modulus = eng.modulus; Lc = eng.code_length
     phase = st.phase; rem = st.rem
-    # Strided / non-contiguous target: the `out[VecRange]` stores below are only defined for a
-    # contiguous target (SIMD.jl), so a strided `SubArray` throws — even at W = 1 (Portable's
-    # `VecRange{1}`). Mirror the boundary engine's guard (#103) and walk it with the plain
-    # indexed per-sample DDA instead (issue #124).
+    # `out[VecRange]` stores are only defined for a contiguous target (SIMD.jl), so a strided
+    # `SubArray` throws, even at W = 1; walk it with the indexed per-sample DDA (#124, cf. #103).
     _is_dense_target(out) || return _fill_continue_scalar_phase!(out, eng, st)
     num = length(out)
     nwin = num ÷ W; ntail = num - nwin * W
@@ -255,11 +240,9 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEnginePhase{W,T
     return CodeStatePhase{W,T}(phase, rem)
 end
 
-# Non-dense fallback for the phase-engine `fill_continue!` (strided / non-contiguous `out`): a
-# plain indexed per-sample DDA walk. Lane 0 of the carried phase is the current sample's chip
-# index, and advancing every lane by one sample keeps that invariant, so `padded[phase[1]+1]`
-# reproduces the windowed lookup byte-for-byte (just slower) and the returned state is advanced
-# by exactly `length(out)` (issue #124).
+# Non-dense fallback for the phase-engine `fill_continue!` (strided `out`). Lane 0 of the phase
+# is the current sample's chip index and advancing every lane keeps that invariant, so
+# `padded[phase[1]+1]` reproduces the windowed lookup byte-for-byte, just slower (#124).
 @inline function _fill_continue_scalar_phase!(out, eng::FillEnginePhase{W,T}, st::CodeStatePhase{W,T}) where {W,T}
     padded = eng.prepared.padded; modulus = eng.modulus; Lc = eng.code_length
     frac1 = _RemT(eng.step_num % eng.step_den); whole1 = T(eng.step_num ÷ eng.step_den)
@@ -283,22 +266,18 @@ end
 
 # ---- continuing boundary fill engine (high-oversampling fast path) ----
 # The continuing counterpart of `_generate_boundary!`: at high oversampling splat-fills one
-# chip run per store instead of paying a permute per W samples (see kernel.jl). Because the
-# boundary arithmetic is EXACT, the carried state is just `(c, r)` — the table chip index
-# and the fractional chip phase — and continuation is byte-identical to one big fill for any
-# chunking (the old run-fill's `(c, acc, pos)` approximate-DDA state and its documented
-# multi-fill drift are gone). The store width `SW` / long-run `EXTRAS` flag are type
-# parameters so `fill_continue!` calls the specialised kernel statically (0-alloc); like the
-# old `Val{NI}` they are fixed at construction, but they are a pure store-width choice — any
-# variant is exact for any rate.
+# chip run per store instead of paying a permute per W samples (see kernel.jl). The boundary
+# arithmetic is EXACT, so the carried state is just `(c, r)` — table chip index and fractional
+# chip phase — and continuation is byte-identical to one big fill for any chunking. The store
+# width `SW` / long-run `EXTRAS` flag are type parameters so `fill_continue!` calls the
+# specialised kernel statically (0-alloc); they are a pure store-width choice, exact for any
+# rate.
 struct BoundaryState
     c::Int                    # current table chip index
     r::_RemT                  # fractional chip phase (< 2^_B)
 end
 
-# `padded` is parametric (`V<:AbstractVector{Int8}`, like `PreparedCode`) so a zero-copy column
-# view of a `SignalLUT` matrix (a unit-stride `SubArray{Int8}`) is stored as-is; a non-parametric
-# `Vector{Int8}` field would silently `convert`/copy the whole column per build.
+# `padded` is parametric for the same zero-copy reason as in `FillEngine512`.
 struct FillEngineBoundary{SW,EXTRAS,V<:AbstractVector{Int8}}
     padded::V
     L::Int
@@ -306,8 +285,7 @@ struct FillEngineBoundary{SW,EXTRAS,V<:AbstractVector{Int8}}
     c0::Int             # initial table chip index (for fill_state)
     r0::_RemT           # initial fractional chip phase (for fill_state)
 end
-# Infer `V` from `padded` so the `SW`/`EXTRAS`-only call sites below stay unchanged (Julia only
-# auto-generates the all-params and no-params constructors, not this partially-applied one).
+# Infers `V` from `padded` (Julia doesn't auto-generate this partially-applied constructor).
 FillEngineBoundary{SW,EXTRAS}(padded::AbstractVector{Int8}, L::Int, step_num::Int, c0::Int,
                               r0::_RemT) where {SW,EXTRAS} =
     FillEngineBoundary{SW,EXTRAS,typeof(padded)}(padded, L, step_num, c0, r0)
@@ -317,9 +295,9 @@ function FillEngineBoundary(table::CodeTable, step_num::Int, step_den::Int, phas
     c0 = Int(mod(Int64(rem0) >> _B + phase_offset, table.length))
     r0 = _RemT(Int64(rem0) & Int64(step_den - 1))
     m = _STEP_DEN ÷ step_num
-    # Same rung → (store width, EXTRAS) ladder as `_boundary_dispatch!`, shared via the one
-    # `_with_boundary_width` helper (issue #130) so the two sites can never silently desync.
-    # `_build_boundary` recovers `SW`/`EXTRAS` by dispatch so the stored `Val`s stay concrete.
+    # Same rung → (store width, EXTRAS) ladder as `_boundary_dispatch!`, via the shared
+    # `_with_boundary_width` helper so the two can't desync (#130). `_build_boundary` recovers
+    # `SW`/`EXTRAS` by dispatch so the stored `Val`s stay concrete.
     _with_boundary_width(m) do sw, extras
         _build_boundary(sw, extras, table.padded, table.length, step_num, c0, r0)
     end
@@ -337,12 +315,10 @@ function fill_continue!(out::AbstractVector{<:Integer}, eng::FillEngineBoundary{
     if _is_dense_target(out)
         _boundary_fill!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), Val(SW), Val(EXTRAS))
     else
-        # Strided / non-contiguous target: `_boundary_fill!`'s pointer stores would corrupt
-        # neighbouring memory (issue #103), so fill via the plain indexed per-sample DDA walk
-        # (`_boundary_scalar_tail!` — byte-identical to the boundary kernel, just slower).
+        # `_boundary_fill!`'s pointer stores would corrupt neighbouring memory on a strided
+        # target (#103); `_boundary_scalar_tail!` is byte-identical, just slower.
         _boundary_scalar_tail!(out, eng.padded, eng.L, SN, st.c, Int64(st.r), 0)
     end
-    # advance the state by exactly length(out) samples, arithmetically (exact)
     tot = Int64(st.r) + Int64(length(out)) * SN
     BoundaryState(Int(mod(Int64(st.c) + (tot >> _B), eng.L)), _RemT(tot & Int64(_STEP_DEN - 1)))
 end
@@ -363,8 +339,8 @@ function make_fill_engine(table::CodeTable, step_num::Integer, step_den::Integer
         throw(ArgumentError("need 0 ≤ rem0 < step_denominator (fractional sub-chip offset)"))
     sn = Int(step_num); sd = Int(step_den); ph = Int(phase); r0 = _RemT(rem0)
     if _use_boundary(sn, sd, backend)
-        # High oversampling: splat-fill chip runs (see `_generate_boundary!`) instead of
-        # paying a permute per window. No windowed-length requirement (no in-register window).
+        # High oversampling: splat-fill chip runs (see `_generate_boundary!`); no windowed-length
+        # requirement (no in-register window).
         FillEngineBoundary(table, sn, sd, ph, r0)
     elseif backend isa AVX512
         FillEngine512(table, sn, sd, ph, r0)

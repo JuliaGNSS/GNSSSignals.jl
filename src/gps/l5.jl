@@ -30,10 +30,9 @@ BPSK-modulated 10230-chip primary code at 10.23 Mcps on the L5 band
 the pilot channel for a 20 ms tiered code. As the pilot component it carries
 no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
 
-The Q5 primary code uses the same XA/XB shift-register generator as
-[`GPSL5I`](@ref) (IS-GPS-705 §3.2.1.1, `gen_l5_code`) and differs only in the
-per-PRN initial XB code state (`INITIAL_XB_CODE_STATES_Q5`). PRNs 1-37 are
-supported, matching [`GPSL5I`](@ref).
+The Q5 primary code uses the same generator as [`GPSL5I`](@ref) (IS-GPS-705 §3.2.1.1,
+`gen_l5_code`) with its own per-PRN initial XB states (`INITIAL_XB_CODE_STATES_Q5`).
+PRNs 1-37 are supported.
 
 # Example
 ```julia
@@ -53,12 +52,9 @@ end
 
 Each L5 primary code is the modulo-2 sum of two 13-stage shift registers, XA
 and XB, truncated to 10230 chips. XA is common to every PRN (all-ones start,
-and short-cycled: reset to all-ones one chip before its natural period); XB
-carries a per-PRN initial state. The I5 and Q5 codes share these identical XA
-and XB generators and differ only in the per-PRN initial XB code state, so
-`gen_l5_code` serves both — the component is selected purely by which
-initial-state table is passed in (`INITIAL_XB_CODE_STATES_I5` for I5,
-`INITIAL_XB_CODE_STATES_Q5` for Q5). =#
+short-cycled: reset to all-ones one chip before its natural period); XB
+carries a per-PRN initial state. I5 and Q5 differ only in that initial XB state,
+so `gen_l5_code` serves both, selected by the table passed in. =#
 
 """
 $(SIGNATURES)
@@ -85,11 +81,8 @@ $(SIGNATURES)
 Calculate a GPS L5 PRN `satellite_code` for the initial XB register states
 `initial_xb_code_states`.
 
-The I5 and Q5 codes share the same XA and XB shift-register generators
-(IS-GPS-705 §3.2.1.1) and differ only in the per-PRN initial XB code state, so
-this generator is used by both [`GPSL5I`](@ref) and [`GPSL5Q`](@ref) — the
-component is selected purely by which initial-state table is passed in
-(`INITIAL_XB_CODE_STATES_I5` for I5, `INITIAL_XB_CODE_STATES_Q5` for Q5).
+Used by both [`GPSL5I`](@ref) and [`GPSL5Q`](@ref) (IS-GPS-705 §3.2.1.1), selected by the
+initial-state table passed in (`INITIAL_XB_CODE_STATES_I5` or `INITIAL_XB_CODE_STATES_Q5`).
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
 julia> prn_code_sat_1_I_signal = gen_l5_code(initial_states_PRN_num_1_I)
@@ -160,12 +153,9 @@ const INITIAL_XB_CODE_STATES_I5 = [             # PRN
 format as `INITIAL_XB_CODE_STATES_I5`: `INITIAL_XB_CODE_STATES_Q5[3][4]`
 is the 4th shift-register stage for the satellite with PRN number 3.
 
-The Q5 code shares the I5 XA/XB generators and differs only in these initial
-XB states (IS-GPS-705 §3.2.1.2). The values equal the all-ones XB register
-advanced by the IS-GPS-705 Q5 "XB code advance" for each PRN (the same advances
-published by GNSS-SDR's `GPS_L5q_INIT_REG` and PocketSDR's `L5Q_XB_adv`); the
-analogous derivation reproduces the I5 table in `INITIAL_XB_CODE_STATES_I5`
-exactly. =#
+The values equal the all-ones XB register advanced by the IS-GPS-705 §3.2.1.2 Q5 "XB code
+advance" for each PRN (the same advances as GNSS-SDR's `GPS_L5q_INIT_REG` and PocketSDR's
+`L5Q_XB_adv`); the analogous derivation reproduces `INITIAL_XB_CODE_STATES_I5` exactly. =#
 const INITIAL_XB_CODE_STATES_Q5 = [             # PRN
     [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0],    #01
     [0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0],    #02
@@ -232,18 +222,16 @@ get_modulation(::Type{<:GPSL5I}) = BPSK()
 get_modulation(::Type{<:GPSL5Q}) = BPSK()
 
 # L5I data rides the in-phase carrier (default 0); L5Q pilot is in quadrature.
-# IS-GPS-705 §3.3.1.5: the Q5 carrier LAGS the I5 carrier by 90° (cos(ωt−π/2) = sin(ωt)),
-# so the offset is −1/4 cycle. This is the opposite sense to Galileo E5aQ, whose ICD (Eq. 1,
-# I·cos − Q·sin) puts the pilot at +1/4 cycle (leading). Same modulation, opposite ICD convention.
+# IS-GPS-705 §3.3.1.5: the Q5 carrier lags I5 by 90° (cos(ωt−π/2) = sin(ωt)), so −1/4 cycle.
+# Opposite to Galileo E5aQ, whose ICD (Eq. 1, I·cos − Q·sin) puts the pilot at +1/4 cycle.
 @inline get_carrier_phase_offset(::Type{<:GPSL5Q}) = -0.25
 
 @inline get_band(::Type{<:GPSL5I}) = L5()
 @inline get_band(::Type{<:GPSL5Q}) = L5()
 
-# An equal-power composite: the ICD tabulates I5 and Q5 at the same −157.9 dBW
-# (IS-GPS-705J, Table 3-III, Block IIF worst case), a 50/50 split. The block
-# dependence drops out — GPS III/IIIF is 0.9 dB stronger at −157.0, but it lifts
-# both components together. See [`get_relative_power`](@ref).
+# The ICD tabulates I5 and Q5 at the same −157.9 dBW (IS-GPS-705J, Table 3-III, Block IIF
+# worst case), a 50/50 split. The block dependence drops out: GPS III/IIIF is 0.9 dB
+# stronger at −157.0 but lifts both components together. See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GPSL5I}) = 0.5
 @inline get_relative_power(::Type{<:GPSL5Q}) = 0.5
 
@@ -286,9 +274,6 @@ Get the bit rate, as tracked, of GPS L5-I.
 The L5-I channel carries the CNAV navigation message, tracked at 100 bit/s: the symbol
 rate of its rate-½ convolutional code, the message carrying 50 bit/s.
 
-# Returns
-- `Frequency`: 100 Hz
-
 # Examples
 ```julia-repl
 julia> get_bit_rate(GPSL5I())
@@ -304,9 +289,6 @@ Get the bit rate, as tracked, of GPS L5-Q.
 
 The Q5 component is a dataless pilot, so its bit rate is 0 Hz.
 
-# Returns
-- `Frequency`: 0 Hz
-
 # Examples
 ```julia-repl
 julia> get_bit_rate(GPSL5Q())
@@ -320,11 +302,9 @@ $(SIGNATURES)
 
 Get the secondary (Neuman-Hofman NH10) code for GPS L5-I.
 
-NH10 is shared across all PRNs: every primary code period (1 ms) is XOR'd
-with one chip of the 10-bit sequence `0000110101`, mapped to `±1`.
-
-# Returns
-- [`SharedSecondaryCode`](@ref) of length 10
+NH10 is shared across all PRNs: every primary code period (1 ms) is XOR'd with one chip
+of the 10-bit sequence `0000110101`, mapped to `±1`. Returns a
+[`SharedSecondaryCode`](@ref) of length 10.
 
 # Examples
 ```julia-repl
@@ -336,8 +316,8 @@ SharedSecondaryCode{10, Int8}((1, 1, 1, 1, -1, -1, 1, -1, 1, -1))
     _gpsl5i_secondary_code()
 end
 
-# NH10 secondary, shared across PRNs. Factored out so the `GPSL5I` constructor can build the
-# embedded `SignalLUT` (which needs the secondary) before an instance exists.
+# NH10 secondary, factored out so the `GPSL5I` constructor can build the `SignalLUT` before
+# an instance exists.
 @inline function _gpsl5i_secondary_code()
     SharedSecondaryCode(
         Int8(1), Int8(1), Int8(1), Int8(1), Int8(-1),
@@ -352,10 +332,8 @@ Get the secondary (Neuman-Hofman NH20) code for GPS L5-Q.
 
 NH20 is shared across all PRNs: every primary code period (1 ms) is XOR'd with
 one chip of the 20-bit sequence `00000100110101001110` (IS-GPS-705 §3.2.1.2),
-mapped to `±1`, giving a 20 ms tiered code.
-
-# Returns
-- [`SharedSecondaryCode`](@ref) of length 20
+mapped to `±1`, giving a 20 ms tiered code. Returns a [`SharedSecondaryCode`](@ref) of
+length 20.
 
 # Examples
 ```julia-repl
@@ -367,8 +345,8 @@ SharedSecondaryCode{20, Int8}((1, 1, 1, 1, 1, -1, 1, 1, -1, -1, 1, -1, 1, -1, 1,
     _gpsl5q_secondary_code()
 end
 
-# NH20 secondary, shared across PRNs. Factored out so the `GPSL5Q` constructor can build the
-# embedded `SignalLUT` (which needs the secondary) before an instance exists.
+# NH20 secondary, factored out so the `GPSL5Q` constructor can build the `SignalLUT` before
+# an instance exists.
 @inline function _gpsl5q_secondary_code()
     SharedSecondaryCode(
         Int8(1), Int8(1), Int8(1), Int8(1), Int8(1),

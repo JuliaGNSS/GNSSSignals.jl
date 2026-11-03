@@ -16,11 +16,10 @@
 #                  positions (the high-rate component sets the resolution)
 #   CBOC:          P = lcm(h1, h2), sub-chip value = a1·BOC(m1,n) ± a2·BOC(m2,n) — a multi-
 #                  level *integer approximation* (e.g. ±(a1±a2)) of the irrational
-#                  sqrt-power CBOC amplitudes. The expanded table holds those Int8 values
-#                  verbatim; the permute/run-fill backends are value-agnostic (they gather
-#                  chips by position, not by value), so the ±1 machinery resamples them
-#                  unchanged. Galileo E1B is CBOC(1,6); the default (a1,a2)=(19,6) ≈
-#                  (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10) and the caller may pick another.
+#                  sqrt-power CBOC amplitudes. The table holds those Int8 values verbatim; the
+#                  backends gather chips by position, not value, so they resample them
+#                  unchanged. Galileo E1B is CBOC(1,6); (a1,a2)=(19,6) ≈ (sqrt(10/11),
+#                  sqrt(1/11)) (ratio 3.167 ≈ √10).
 #
 # A chip of BOC(m,n) spans 2m/n subcarrier half-periods, which must be a whole number for the
 # table to put every subcarrier edge on its sub-chip grid; for n = 1 it is 2m, even, so every
@@ -34,6 +33,10 @@
 # primary-period sign flip — constant over a whole period, so just a range negate.
 
 # ---- modulation descriptors ----
+# These share their names with GNSSSignals' public modulation types but describe what the
+# table bakes: whole sub-chip counts per chip (and integer amplitudes for CBOC), not m and
+# n. `BOC` here is the sine-phased BOC, where GNSSSignals.BOC is the abstract supertype.
+# `_codelut_modulation` in src/code_lut.jl maps the public types onto these.
 abstract type Modulation end
 struct BPSK <: Modulation end                   # no subcarrier
 
@@ -67,9 +70,7 @@ struct TMBOC <: Modulation                      # BOC(m1,n) + BOC(m2,n) at `patt
         collect(Bool, pattern),
     )
 end
-# Composite BOC: a1·BOC(m1,n) + a2·BOC(m2,n) with *integer* amplitudes (an Int8 approximation
-# of the irrational sqrt-power CBOC amplitudes). Galileo E1B is CBOC(m1=1, m2=6); the default
-# (a1,a2)=(19,6) approximates (sqrt(10/11), sqrt(1/11)) (ratio 3.167 ≈ √10).
+# Composite BOC: a1·BOC(m1,n) + a2·BOC(m2,n) with *integer* amplitudes (see the CBOC note above).
 struct CBOC <: Modulation
     halfperiods1::Int
     halfperiods2::Int
@@ -134,8 +135,8 @@ end
 
 A primary code with its subcarrier (and, if short enough, its secondary code) baked into
 a register-resident ±1 `CodeTable`. Build with [`code_replica`](@ref); resample with
-`generate_code!(out, mc; code_frequency, sampling_frequency, …)` (a single windowed-
-permute pass). `code_frequency` is the replica's **primary code frequency**; the table is resampled at
+`generate_code!(out, mc; code_frequency, sampling_frequency, …)` (a single windowed-permute
+pass). `code_frequency` is the replica's **primary code frequency**; the table is resampled at
 `code_frequency · subchip_factor`.
 """
 struct ModulatedCode{T<:CodeTable,S<:AbstractVector{Int8}}
@@ -156,18 +157,15 @@ Build a [`ModulatedCode`](@ref) from a primary ±1 `primary_chips` vector and a
 `modulation` (`BPSK()`, `BOC(m, n)`, `BOCcos(m, n)`, `TMBOC(m1, m2, n, pattern)`, or
 `CBOC(m1, m2, n, a1, a2)`; `n` defaults to 1 in the shorter `BOC(m)`, `BOCcos(m)`,
 `TMBOC(m2, pattern)` and `CBOC(m1, m2, a1, a2)`). The table is ±1 for all but `CBOC`; for
-`CBOC` it holds the multi-level integer composite `a1·BOC(m1,n) ± a2·BOC(m2,n)` (still Int8,
-so all backends resample it unchanged).
-`secondary` is a ±1 overlay
-that multiplies whole primary periods; it is baked into the table when
-`length(secondary)·length(primary)·subchip_factor ≤ max_bake`, otherwise applied per
+`CBOC` it holds the multi-level integer composite `a1·BOC(m1,n) ± a2·BOC(m2,n)` (still Int8).
+`secondary` is a ±1 overlay that multiplies whole primary periods; it is baked into the table
+when `length(secondary)·length(primary)·subchip_factor ≤ max_bake`, otherwise applied per
 period (a cheap range-negate) at generation time.
 
 `max_bake` defaults to `typemax(Int16)` so a baked table never exceeds the AVX2 backend's
-addressable length — e.g. GPS L5I's NH10 secondary is *not* baked (10230·10 > 32767), so
-the table stays 10230 and AVX2 runs at full speed instead of falling back to scalar. Pass
-`max_bake = typemax(Int)` to force baking (single-pass, AVX-512/Portable only) when you
-don't need AVX2.
+addressable length — e.g. GPS L5I's NH10 is *not* baked (10230·10 > 32767), so AVX2 runs at
+full speed instead of falling back to scalar. `max_bake = typemax(Int)` forces baking
+(AVX-512/Portable only).
 """
 function code_replica(primary::AbstractVector{<:Integer}, modulation::Modulation;
                       secondary::AbstractVector{<:Integer} = Int8[1], max_bake::Integer = typemax(Int16))
@@ -205,9 +203,7 @@ function generate_code!(out::AbstractVector{<:Integer}, mc::ModulatedCode;
                         phase::Integer = 0, phase_sub::Integer = Int(phase) * mc.subchip_factor,
                         rem0::Integer = 0, backend::Backend = default_backend(mc.table))
     # `phase_sub` is the integer sub-chip start offset (θ_int); `rem0` the fixed-point
-    # fractional sub-chip residual. Default `phase_sub = phase·P, rem0 = 0` reproduces the
-    # original integer primary-chip phase. The secondary only needs the integer sub-chip
-    # offset (the fractional part never changes which primary period a sample belongs to).
+    # fractional residual. The secondary needs only the integer offset when walking periods.
     generate_code!(out, mc.table;
         code_frequency = code_frequency * mc.subchip_factor, sampling_frequency = sampling_frequency,
         phase = phase_sub, rem0 = rem0, backend = backend)
@@ -216,11 +212,10 @@ function generate_code!(out::AbstractVector{<:Integer}, mc::ModulatedCode;
     out
 end
 
-# Multiply each whole primary period by its secondary chip. The secondary is constant over
-# a period (period_subchips sub-chips), so we negate contiguous sample ranges — a handful
-# of vectorisable negates, not a per-sample multiply. `phase_sub` is the integer sub-chip
-# start offset (θ_int); `rem0` the fractional sub-chip residual seeded into the DDA (both must
-# match the baked-table lookup, or the sign flip lands on the wrong sample at a period edge).
+# Multiply each whole primary period by its secondary chip. The secondary is constant over a
+# period, so we negate contiguous sample ranges (vectorisable) rather than multiply per sample.
+# `phase_sub`/`rem0` must match the baked-table lookup, or the sign flip lands on the wrong
+# sample at a period edge.
 function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub,
                            rem0::_RemT = _RemT(0))
     sn, sd = _fixed_point_step(code_frequency * mc.subchip_factor / sampling_frequency)
@@ -240,23 +235,17 @@ function _apply_secondary!(out, secondary::AbstractVector, per::Int, sn::Int, sd
     # ≥ p·per, i.e. n ≥ cld(T·sd − rem0, sn) (T·sd > rem0 whenever T ≥ 1, since rem0 < sd).
     # Start at the period the first emitted sample (absolute n0) falls in — NOT period 0: a
     # negative start_index_shift puts n0 in a negative period, and start_phase ≥ one code period
-    # in a period ≥ 1; starting at 0 would apply the wrong secondary chip to the leading samples.
+    # in a period ≥ 1.
     #
-    # OVERFLOW SAFETY (issues #102 / #108). Two products used to overflow here:
-    #   • the seed `n0·sn` overflows Int64 once the absolute sample count n0 exceeds
-    #     typemax(Int64) ÷ sn (≈ 2^34 for GPS L5I at 20.46 MHz — ~14 min of streaming); the
-    #     seed p then wraps hugely negative and the period-walk spins ~10^6+ iterations, so
-    #     gen_code! effectively never returns (#102);
-    #   • the per-period products `T·sd` / `Tn·sd` (with sd = _STEP_DEN = 2^30) overflow native
-    #     `Int` on 32-bit Julia for any real T ≥ 2, so cld(…) turns negative and the negate loop
-    #     writes out-of-bounds (#108).
-    # Fix: (a) form the seed in Int128; (b) re-anchor the effective sub-chip phase modulo the
-    # secondary-code period Q = Ls·per sub-chips, so the running period index p — and hence
-    # every per-period product — stays bounded no matter how long streaming continues; (c) do
-    # all per-period arithmetic in explicit Int64 (never native Int), like the core DDA kernels.
-    # Re-anchoring shifts the effective phase by whole multiples of Q = Ls·per sub-chips, i.e.
-    # p by whole multiples of Ls, so `mod(p, Ls)` (the selected secondary chip) is unchanged and
-    # the output is byte-identical to the exact walk for every fill length and continuation n0.
+    # OVERFLOW SAFETY (#102 / #108). The seed `n0·sn` overflows Int64 once n0 exceeds
+    # typemax(Int64) ÷ sn (≈ 2^34 for GPS L5I at 20.46 MHz, ~14 min of streaming), after which the
+    # period-walk spins ~10^6+ iterations (#102); the per-period products `T·sd` (sd = 2^30)
+    # overflow native `Int` on 32-bit Julia for T ≥ 2 and the negate loop writes out-of-bounds
+    # (#108). Hence: (a) form the seed in Int128; (b) re-anchor the effective sub-chip phase
+    # modulo the secondary-code period Q = Ls·per, so p and every per-period product stay bounded
+    # however long streaming continues; (c) do per-period arithmetic in explicit Int64.
+    # Re-anchoring shifts p by whole multiples of Ls, so `mod(p, Ls)` (the secondary chip) is
+    # unchanged and the output is byte-identical to the exact walk.
     snw = Int64(sn); sdw = Int64(sd); perw = Int64(per)
     # Fold n0 (and its fractional residual r0) into an effective integer sub-chip phase at local
     # sample 0: sub(n0+j) = floor((j·sn + R0)/sd) + phase_sub with R0 = n0·sn + r0 (Int128 seed,

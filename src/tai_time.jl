@@ -1,9 +1,8 @@
 using Unitful: Time
 
-# A minimal, trim-safe TAI epoch, standing in for AstroTime.jl's `TAIEpoch`, whose
-# `__init__` a `juliac --trim=safe` build cannot verify (it registers `Dates` format tokens
-# and, through EarthOrientation and RemoteFiles, looks for data files and download tools).
-# With AstroTime loaded, the `GNSSSignalsAstroTimeExt` extension converts between the two.
+# A minimal, trim-safe TAI epoch standing in for AstroTime.jl's `TAIEpoch`, whose
+# `__init__` a `juliac --trim=safe` build cannot verify. With AstroTime loaded, the
+# `GNSSSignalsAstroTimeExt` extension converts between the two.
 
 # J2000, as a TAI calendar label: the origin `second` counts from, as in AstroTime.
 const J2000 = DateTime(2000, 1, 1, 12)
@@ -14,11 +13,11 @@ const J2000 = DateTime(2000, 1, 1, 12)
 
 An epoch on International Atomic Time (TAI): `second` whole seconds after J2000
 (`2000-01-01T12:00:00` TAI) plus `fraction ∈ [0, 1)` of a second, AstroTime's `TAIEpoch`
-layout (with AstroTime loaded, `TAIEpoch(t)` and `TAITime(epoch)`). AstroTime
-may retain an additional compensation term, which is rounded into the `Float64`
-fraction when converting to `TAITime`; conversion back cannot recover lost precision.
-A `fraction` outside `[0, 1)` is normalised into it. The time systems date their
-weeks in it ([`get_week_start_epoch`](@ref)).
+layout (with AstroTime loaded, `TAIEpoch(t)` and `TAITime(epoch)`). AstroTime's
+additional compensation term is rounded into the `Float64` fraction when converting to
+`TAITime`; conversion back cannot recover lost precision. A `fraction` outside `[0, 1)`
+is normalised into it. The time systems date their weeks in it
+([`get_week_start_epoch`](@ref)).
 
 `TAITime(datetime)` reads a `DateTime` as a TAI calendar label (millisecond resolution);
 `Dates.DateTime(t)` gives the TAI calendar label back, rounded to the millisecond. The
@@ -46,8 +45,7 @@ struct TAITime
         # `+ 0.0` turns a `-0.0` fraction into `0.0`, so that equal epochs compare equal.
         rest = Float64(fraction - whole) + 0.0
         # A fraction just below a whole number rounds up to exactly `1.0` in the
-        # subtraction (`-1e-17 - (-1)` is `1.0` in `Float64`), which would escape the
-        # `[0, 1)` invariant; carry it into the whole seconds instead.
+        # subtraction (`-1e-17 - (-1)`); carry it into the whole seconds.
         rest == 1.0 && (whole += 1; rest = 0.0)
         new(Int64(second) + whole, rest)
     end
@@ -75,9 +73,8 @@ Base.:-(t::TAITime, Δ::Time) = t - ustrip(s, Δ)
 
 Base.isless(a::TAITime, b::TAITime) = isless((a.second, a.fraction), (b.second, b.fraction))
 
-# On the difference, with an absolute tolerance. AstroTime compares the seconds since J2000
-# with the default relative tolerance instead, which at today's ~8e8 s takes epochs about
-# ten seconds apart for equal.
+# Absolute tolerance on the difference; a relative one on seconds since J2000 (~8e8 s)
+# would take epochs about ten seconds apart for equal.
 Base.isapprox(a::TAITime, b::TAITime; atol::Real = 1e-9) = abs(a - b) <= atol
 
 Base.show(io::IO, t::TAITime) = print(io, DateTime(t), " TAI")

@@ -5,8 +5,7 @@
 # op (`out[i] = table[index[i] & 63]`). We use it to read a 64-chip *window* of the PRN
 # code at relative indices 0..63 (see kernel.jl for why a 64-entry window suffices).
 #
-# Only the Int8 `vpermb` is wired up here — that is all the code resampler needs. The
-# AVX2 (`vpshufb`) and NEON (`tbl4`) windowed paths are future work; see default_backend.
+# The AVX2 (`vpshufb`) and NEON (`tbl1`) equivalents are below.
 
 @static if Sys.ARCH in (:x86_64, :i686)
 
@@ -46,25 +45,21 @@ function _x86_features()
      avx512vbmi = avx512_os && _bit(ecx, 1))
 end
 
-# Detected once at precompile and baked into a const (like VectorizationBase.jl). Kept only as
-# a seed/hint — it can OVER-claim: if the pkgimage is precompiled on an AVX-512-VBMI host and
-# later loaded on a CPU without VBMI (JULIA_CPU_TARGET=generic, shared/NFS depot, Docker/CI),
-# pkgimage validation checks only cloned code targets, not serialized const data, so this stale
-# const would still say `avx512vbmi = true`. Backend selection therefore consults the RUNTIME
-# feature set below, not this const, so we never emit `vpermb` on a non-VBMI CPU (SIGILL, #104).
+# Detected once at precompile and baked into a const. Only a seed/hint — it can OVER-claim: a
+# pkgimage precompiled on an AVX-512-VBMI host and later loaded on a CPU without VBMI
+# (JULIA_CPU_TARGET=generic, shared/NFS depot, Docker/CI) keeps `avx512vbmi = true`, because
+# pkgimage validation checks only cloned code targets, not serialized const data. Backend
+# selection therefore consults the RUNTIME feature set below (SIGILL otherwise, #104).
 const HOST_FEATURES = _x86_features()
 
-# The CPU features of the machine ACTUALLY running, re-detected once per session in `__init__`
-# (see `default_backend`). Seeded with the precompile-time const so a read before `__init__`
-# (unusual) is still valid; `__init__` overwrites it with a live `cpuid` on the running CPU.
+# CPU features of the machine ACTUALLY running, re-detected in `__init__` (see
+# `default_backend`); seeded with the precompile-time const for any read before `__init__`.
 const RUNTIME_FEATURES = Ref(HOST_FEATURES)
 
-# Re-run CPU-feature detection on the executing machine and store it. Called from `__init__`.
 _refresh_host_features!() = (RUNTIME_FEATURES[] = _x86_features(); nothing)
 
-# Pure backend selection from a CPU-feature set (a plain NamedTuple), split out so it is
-# unit-testable without a live CPU: a non-VBMI set must NEVER yield `AVX512()` (whose `vpermb`
-# would SIGILL), while a VBMI-capable set may (keeping the fast path for capable CPUs). #104.
+# Pure backend selection from a CPU-feature set, split out so it is unit-testable: a non-VBMI
+# set must NEVER yield `AVX512()` (`vpermb` would SIGILL, #104).
 _select_backend(features) =
     features.avx512vbmi ? AVX512() :
     features.avx2       ? AVX2()   : Portable()
@@ -107,9 +102,8 @@ end # @static x86
 # output lanes (`out[i] = table[index[i]]`; out-of-range indices ≥ 16 return 0). It is the
 # single-window analogue of one of AVX2's two `vpshufb` halves: 16 chips → 16 lanes.
 #
-# NOT @static-guarded: defining this llvmcall on x86 is harmless — it only compiles when
-# CALLED, and the Neon backend is never selected/called on x86 (see default_backend). It is
-# validated on macOS-ARM CI. Mirrors the CI-proven SinCosLUT `tbl4` shape (permute_neon.jl).
+# NOT @static-guarded: an llvmcall only compiles when CALLED, and Neon is never selected on
+# x86. Mirrors SinCosLUT's `tbl4` shape (permute_neon.jl).
 const _TBL1_IR = """
 declare <16 x i8> @llvm.aarch64.neon.tbl1(<16 x i8>, <16 x i8>)
 define <16 x i8> @entry(<16 x i8> %t, <16 x i8> %i) #0 {
