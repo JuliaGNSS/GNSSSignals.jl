@@ -1,5 +1,12 @@
 @testset "GPS L1 C/A" begin
     gpsl1ca = GPSL1CA()
+    # PRN 1 reference code (1023 chips, packed ±1 hex). Provenance: carried over
+    # from the former `test_codes.jl` literal `L1_SAT1_CODE`, whose original
+    # source is not recorded in the repository history (it was added in #28).
+    l1_sat1_code = _load_packed_hex_fixture(
+        joinpath(@__DIR__, "fixtures", "gps_l1ca_prn1_primary.hex.gz"),
+        1023,
+    )
     @test @inferred(get_band(gpsl1ca)) == L1()
     @test @inferred(get_center_frequency(gpsl1ca)) == 1.57542e9Hz
     @test @inferred(get_code_length(gpsl1ca)) == 1023
@@ -10,7 +17,7 @@
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl1ca, 0.0, 1)) == 1
     @test @inferred(get_bit_rate(gpsl1ca)) == 50Hz
     @test @inferred(get_chip_rate(gpsl1ca)) == 1023e3Hz
-    @test get_code.(gpsl1ca, 0:1022, 1) == L1_SAT1_CODE
+    @test get_code.(gpsl1ca, 0:1022, 1) == l1_sat1_code
     @test @inferred(get_modulation(gpsl1ca)) == GNSSSignals.BPSK()
     @test get_signal_name(gpsl1ca) == "GPS L1 C/A"
 

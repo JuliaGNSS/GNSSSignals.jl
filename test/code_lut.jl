@@ -1496,3 +1496,59 @@ end
     @test collect(v) == ref
     @test all(==(0), @view A[2, :])
 end
+
+# Sub-chips per chip the lookup table bakes: 2m/n subcarrier half-periods for sine phase,
+# 4m/n quarter periods for cosine phase.
+_subchips(m::BOCsin) = 2 * m.m / m.n
+_subchips(m::BOCcos) = 4 * m.m / m.n
+
+@testset "BOC(m, n): the code lookup table matches the closed form" begin
+    pattern = ntuple(k -> (k - 1) ∈ (0, 4, 6, 29), 33)
+    modulations = (
+        BOCsin(10, 5), BOCcos(15, 2.5), BOCcos(3, 1), BOCcos(6, 1),
+        # 3 half-periods per chip: a chip starts mid-period, so the sign parity alternates.
+        BOCsin(1.5, 1),
+        TMBOC(BOCsin(1, 2), BOCsin(6, 2), pattern),
+    )
+    @testset "$modulation" for modulation in modulations
+        signal = TestBOCSignal(modulation)
+        P = signal.lut.subchip_factor
+        modulation isa TMBOC || @test P == _subchips(modulation)
+        fc = get_chip_rate(signal)
+        L = get_code_length(signal)
+        # Sampling frequencies whose step is an exact binary fraction of a sub-chip (3/8, 5/16,
+        # 7/64 per sample), started half a step-grid unit off the sub-chip grid: the table's
+        # fixed-point step is then exact and no sample falls on a sub-chip edge, so the closed
+        # form `get_code` at each sample's phase and the table must agree on every sample.
+        for (step_num, log2_den) in ((3, 3), (5, 4), (7, 6))
+            step = step_num / 2^log2_den
+            fs = fc * P / step
+            start_phase = 1 / (2^(log2_den + 1) * P)
+            N = ceil(Int, 2 * L * P / step)                   # two code periods
+            for prn in (1, 2)
+                table = gen_code(N, signal, prn, fs, fc, start_phase)
+                closed_form = [get_code(signal, start_phase + i * fc / fs, prn) for i in 0:N-1]
+                @test table == closed_form
+            end
+        end
+    end
+end
+
+@testset "BOC(m, n): a chip spanning no whole number of sub-chips cannot be baked" begin
+    CL = GNSSSignals.CodeLUT
+    @test_throws ArgumentError CL.BOC(3, 4)              # 2m/n = 1.5 half-periods per chip
+    @test_throws ArgumentError CL.BOCcos(1, 3)           # 4m/n = 4/3 quarter periods per chip
+    @test_throws ArgumentError TestBOCSignal(BOCsin(3, 4))
+    @test_throws ArgumentError TestBOCSignal(BOCcos(1, 3))
+    # The composites bake sine-phased components only.
+    pattern = ntuple(k -> isodd(k), 4)
+    @test_throws ArgumentError TestBOCSignal(TMBOC(BOCsin(1, 1), BOCcos(2, 1), pattern))
+    @test_throws ArgumentError TestBOCSignal(CBOC(BOCcos(1, 1), BOCsin(6, 1), 10 / 11))
+    # A code period must hold whole subcarrier periods for a one-period table to repeat: 255
+    # chips of BOC(1.5, 1) end half a period in (255 · 1.5 = 382.5 periods).
+    @test_throws ArgumentError TestBOCSignal(BOCsin(1.5, 1); code_length = 255)
+    @test TestBOCSignal(BOCsin(1.5, 1); code_length = 256).lut.subchip_factor == 3
+    # The ones that do divide are accepted, n integer or not.
+    @test TestBOCSignal(BOCsin(10, 5)).lut.subchip_factor == 4
+    @test TestBOCSignal(BOCcos(15, 2.5)).lut.subchip_factor == 24
+end
