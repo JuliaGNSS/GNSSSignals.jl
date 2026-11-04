@@ -8,7 +8,7 @@
 # `GPS_L5q_INIT_REG` and PocketSDR's `L5I_XB_adv` / `L5Q_XB_adv`). Agreement
 # between the two formulations validates the initial-state tables independently
 # of the implementation under test. For I5, PRN 1 is additionally anchored to
-# the external `L5_SAT1_CODE` reference, pinning this generator to ground truth.
+# the external `gps_l5_i_prn1_primary.hex.gz` reference, pinning this generator to ground truth.
 const L5I_XB_ADVANCE = [    # IS-GPS-705 I5 XB code advance, PRN 1-37
     266, 365, 804, 1138, 1509, 1559, 1756, 2084, 2170, 2303,
     2527, 2687, 2930, 3471, 3940, 4132, 4332, 4924, 5343, 5443,
@@ -63,6 +63,13 @@ end
 
 @testset "GPS L5-I" begin
     gpsl5i = GPSL5I()
+    # PRN 1 reference code (10230 chips, packed ±1 hex). Provenance: carried over
+    # from the former `test_codes.jl` literal `L5_SAT1_CODE`, whose original
+    # source is not recorded in the repository history (it was added in #28).
+    l5_sat1_code = _load_packed_hex_fixture(
+        joinpath(@__DIR__, "fixtures", "gps_l5_i_prn1_primary.hex.gz"),
+        10230,
+    )
     @test @inferred(get_band(gpsl5i)) == L5()
     @test @inferred(get_center_frequency(gpsl5i)) == 1.17645e9Hz
     @test @inferred(get_code_length(gpsl5i)) == 10230
@@ -73,7 +80,7 @@ end
     @test @inferred(GNSSSignals.get_code_unsafe(gpsl5i, 0.0, 1)) == 1
     @test @inferred(get_bit_rate(gpsl5i)) == 100Hz
     @test @inferred(get_chip_rate(gpsl5i)) == 10230e3Hz
-    @test get_code.(gpsl5i, 0:10229, 1) == L5_SAT1_CODE
+    @test get_code.(gpsl5i, 0:10229, 1) == l5_sat1_code
     @test get_signal_name(gpsl5i) == "GPS L5-I"
     @test @inferred(get_modulation(gpsl5i)) == GNSSSignals.BPSK()
     @test get_code_type(gpsl5i) === Int
@@ -91,7 +98,7 @@ end
 @testset "GPS L5-I primary codes match the IS-GPS-705 reference" begin
     # Cross-check every supported PRN against the independent advance-offset
     # generator (a different algorithm from `gen_l5_code`). PRN 1 is also
-    # pinned to L5_SAT1_CODE above, anchoring the reference to ground truth.
+    # pinned to the `gps_l5_i_prn1_primary.hex.gz` fixture above, anchoring the reference to ground truth.
     gpsl5i = GPSL5I()
     for prn = 1:37
         @test get_codes(gpsl5i)[:, prn] == _reference_l5_code(L5I_XB_ADVANCE[prn])

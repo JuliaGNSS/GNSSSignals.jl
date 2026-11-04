@@ -79,6 +79,33 @@ function _load_packed_hex_fixture(filename::AbstractString, n_samples::Integer)
     out
 end
 
+using Random: MersenneTwister
+
+# BOC(m, n) for n ≠ 1: subcarrier frequency m · 1.023 MHz, chip rate n · 1.023 MHz, the phase
+# counted in code chips. No defined signal uses such a modulation, so a test-only signal carries
+# it: the modulation is a type parameter (an isbits value), the code a random ±1 sequence.
+struct TestBOCSignal{Mod,C<:AbstractMatrix} <: GNSSSignals.AbstractGNSSSignal{C}
+    codes::C
+    lut::GNSSSignals.SignalLUT
+end
+# 330 chips: a whole number of subcarrier periods for every modulation below (330 · m/n), and
+# of the 33-chip TMBOC pattern, so the code, its subcarrier and the pattern repeat together.
+function TestBOCSignal(modulation; code_length = 330)
+    primary = rand(MersenneTwister(11), Int8[-1, 1], code_length, 2)
+    codes = primary
+    lut = GNSSSignals.build_signal_lut(modulation, codes, NoSecondaryCode())
+    TestBOCSignal{modulation,typeof(codes)}(codes, lut)
+end
+GNSSSignals.get_modulation(::Type{<:TestBOCSignal{Mod}}) where {Mod} = Mod
+_chip_rate_multiplier(modulation::GNSSSignals.BOC) = modulation.n
+_chip_rate_multiplier(modulation::Union{TMBOC,CBOC}) = modulation.boc1.n
+GNSSSignals.get_chip_rate(::Type{<:TestBOCSignal{Mod}}) where {Mod} =
+    _chip_rate_multiplier(Mod) * 1_023_000Hz
+GNSSSignals.get_code_length(signal::TestBOCSignal) = size(signal.codes, 1)
+GNSSSignals.get_secondary_code(::TestBOCSignal) = NoSecondaryCode()
+GNSSSignals.get_bit_rate(::Type{<:TestBOCSignal}) = 0Hz
+GNSSSignals.get_signal_name(::Type{<:TestBOCSignal}) = "test BOC signal"
+
 # The AVX-512 SDE-emulation CI job sets `GNSS_TEST_SIMD_ONLY` and exists only to exercise the
 # SIMD backends (`code_lut.jl` forces every host backend). The rest of the suite is CPU-agnostic
 # and fully covered by the native CI matrix, so scope the emulated run to the SIMD tests: under
@@ -91,12 +118,12 @@ if !SIMD_ONLY
         Aqua.test_all(GNSSSignals; deps_compat=(check_extras=false,))
     end
 
-    include("test_codes.jl")
     include("bands.jl")
     include("tai_time.jl")
     include("time_systems.jl")
     include("modulation.jl")
-    include("boc_mn.jl")
+    include("spectrum.jl")
+    include("code_access.jl")
     include("gps/l1ca.jl")
     include("gps/l5.jl")
     include("gps/l1c_codes.jl")
@@ -110,7 +137,7 @@ if !SIMD_ONLY
     include("galileo/e5b.jl")
     include("galileo/e6.jl")
     include("beidou/beidou.jl")
-    include("common.jl")
+    include("signal_properties.jl")
     include("api.jl")
 end
 

@@ -167,104 +167,107 @@ end
     end
 end
 
-# The PSD of a random ±1 code is |P(f)|² / T_c of its chip pulse P, here a chip of equal
-# segments with the given signs. With an odd number of half-periods per chip the subcarrier
-# flips the pulse's sign from one chip to the next, which leaves a random code's PSD as is.
-function chip_pulse_psd(signs, chip_rate, f)
-    d = 1 / (chip_rate * length(signs))
-    P = sum(s * d * sinc(f * d) * cispi(-2f * (j - 0.5) * d) for (j, s) in enumerate(signs))
-    return abs2(P) * chip_rate
-end
-
-@testset "BOC spectrum for k = $k subcarrier half-periods per chip" for k in 1:7
-    fc = 1.023e6
-    fs = k * fc / 2
-    sine_signs = [iseven(j) ? 1 : -1 for j in 0:k-1]
-    cosine_signs = [mod(q, 4) in (0, 3) ? 1 : -1 for q in 0:2k-1]  # quarter periods
-    fs_grid = range(-20fc, 20fc; length = 801) .+ 123.4  # off the 0/0 points
-    for (spectrum, signs) in ((GNSSSignals.get_code_spectrum_BOCsin, sine_signs),
-                              (GNSSSignals.get_code_spectrum_BOCcos, cosine_signs))
-        expected = [chip_pulse_psd(signs, fc, f) for f in fs_grid]
-        got = [spectrum(fc, fs, f) for f in fs_grid]
-        @test maximum(abs.(got .- expected)) <= 1e-9 * maximum(expected)
-        @test spectrum(fc, fs, 0.0) ≈ chip_pulse_psd(signs, fc, 0.0) atol = 1e-20
+@testset "BOC(m, n): the cosine subcarrier is the sine one n/(4m) chips later" begin
+    for modulation in (BOCcos(15, 2.5), BOCcos(3, 1), BOCcos(6, 1), BOCcos(10, 5), BOCcos(1, 1))
+        (; m, n) = modulation
+        sine = BOCsin(m, n)
+        quarters_per_chip = 4m / n
+        for φ in range(0, 5; length = 2003)
+            # The middle of a quarter period, clear of either sign's edges.
+            φ_mid = (floor(φ * quarters_per_chip) + 0.5) / quarters_per_chip
+            @test GNSSSignals.get_subcarrier_code(modulation, φ_mid) ==
+                  GNSSSignals.get_subcarrier_code(sine, φ_mid + n / 4m)
+        end
+        # +1 for the first quarter subcarrier period, -1 for the next two, +1 for the last.
+        quarter = n / 4m
+        @test [GNSSSignals.get_subcarrier_code(modulation, (j + 0.5) * quarter) for j in 0:3] ==
+              [1, -1, -1, 1]
     end
 end
 
-@testset "BOC spectrum rejects a fractional number of half-periods per chip" begin
-    @test_throws ArgumentError GNSSSignals.get_code_spectrum_BOCsin(1.023e6, 0.75 * 1.023e6, 0.0)
-    @test_throws ArgumentError GNSSSignals.get_code_spectrum_BOCcos(1.023e6, 0.75 * 1.023e6, 0.0)
+# Counting the phase in chips and carrying n through changes nothing for the signals the package
+# defines, all n = 1. Their generated code is pinned by checksums taken before that change: the
+# one-shot `gen_code` and a continuing `code_engine` fill, at three sampling frequencies, two PRNs
+# and three start phases each. Exact Int8 output, so the checksums hold on any machine.
+_output_checksum(v) = foldl(
+    (acc, (i, x)) -> acc * 0x100000001b3 ⊻ (UInt64(i) * 0x9e3779b97f4a7c15 + reinterpret(UInt8, Int8(x))),
+    enumerate(v); init = UInt64(length(v)))
+function _signal_output_checksum(signal)
+    chip_rate = get_chip_rate(signal)
+    P = signal.lut.subchip_factor
+    acc = UInt64(0)
+    for kind in (:gen, :engine), (fs_multiple, prn) in ((1.3, 1), (2.7, 2), (5.1, 1)),
+        start_phase in (0.0, 0.37, 123.81)
+
+        fs = fs_multiple * P * chip_rate
+        output = if kind === :gen
+            gen_code(3000, signal, prn, fs, chip_rate + 1234.5Hz, start_phase)
+        else
+            engine = GNSSSignals.code_engine(signal, prn, fs, chip_rate - 77Hz; start_phase)
+            first_fill, second_fill = zeros(Int8, 1700), zeros(Int8, 1300)
+            state = gen_code!(first_fill, engine, GNSSSignals.code_state(engine))
+            gen_code!(second_fill, engine, state)
+            vcat(first_fill, second_fill)
+        end
+        acc = acc * 0x100000001b3 ⊻ _output_checksum(output)
+    end
+    acc
+end
+const _OUTPUT_CHECKSUMS_BEFORE_BOC_MN = Dict(
+        "BeiDouB1C_D" => 0x24f7e3101ac0ed5c,
+        "BeiDouB1C_P" => 0x3114f26e31854d9e,
+        "BeiDouB1I" => 0x3cdfd21947597fd4,
+        "BeiDouB2aI" => 0xd36ae4e9b84c791a,
+        "BeiDouB2aQ" => 0x16289042cfb6a822,
+        "BeiDouB2bI" => 0xef31b0d7a738dca0,
+        "BeiDouB3I" => 0x2074e6a33068e70a,
+        "GPSL1CA" => 0xdd13225653451bce,
+        "GPSL1C_D" => 0xc9320bea1c05c354,
+        "GPSL1C_P(TMBOC)" => 0x6fbf2ce8b86b5e5e,
+        "GPSL2CL" => 0x1650bbe438e8c388,
+        "GPSL2CM" => 0x030686fa055d78d6,
+        "GPSL5I" => 0xe1f91276c27c5948,
+        "GPSL5Q" => 0x6bb8b1c51563d5da,
+        "GalileoE1B(CBOC)" => 0x0d7ca4bcad554266,
+        "GalileoE1B" => 0xbe79c0e19b459348,
+        "GalileoE1C(CBOC)" => 0xb39a74bc995eccfa,
+        "GalileoE1C" => 0x53f2023f5ee5b236,
+        "GalileoE5aI" => 0xcef044e1447ba264,
+        "GalileoE5aQ" => 0xdd88612a620117c4,
+        "GalileoE5aQP" => 0xd698d8875b2bd194,
+        "GalileoE5bI" => 0x275c2b3f1b41981c,
+        "GalileoE5bQ" => 0xcde355db4b2c3e0a,
+        "GalileoE6B" => 0x1e34f18e30df5254,
+        "GalileoE6C" => 0xcfea8d536ac3b64a,
+)
+
+# The spectrum as it was wired before: the BOC components took `n · f_c` and `m · f_c` from the
+# signal's chip rate f_c, which is the same for n = 1.
+_spectrum_before(::GNSSSignals.BPSK, signal, f) = GNSSSignals.get_code_spectrum_BPSK(get_chip_rate(signal), f)
+_spectrum_before(m::BOCsin, signal, f) =
+    GNSSSignals.get_code_spectrum_BOCsin(m.n * get_chip_rate(signal), m.m * get_chip_rate(signal), f)
+_spectrum_before(m::BOCcos, signal, f) =
+    GNSSSignals.get_code_spectrum_BOCcos(m.n * get_chip_rate(signal), m.m * get_chip_rate(signal), f)
+_spectrum_before(m::CBOC, signal, f) =
+    _spectrum_before(m.boc1, signal, f) * m.boc1_power +
+    _spectrum_before(m.boc2, signal, f) * (1 - m.boc1_power)
+function _spectrum_before(m::TMBOC{B1,B2,N}, signal, f) where {B1,B2,N}
+    boc2_frac = count(m.pattern) / N
+    _spectrum_before(m.boc1, signal, f) * (1 - boc2_frac) +
+    _spectrum_before(m.boc2, signal, f) * boc2_frac
 end
 
-@testset "Spectrum functions with units" begin
-    # Test BPSK spectrum with different unit combinations
-    fc = 1.023e6
-    f = 500e3
-
-    # All numbers
-    psd1 = GNSSSignals.get_code_spectrum_BPSK(fc, f)
-    @test psd1 > 0
-
-    # fc with units, f number
-    psd2 = GNSSSignals.get_code_spectrum_BPSK(fc * 1Hz, f)
-    @test psd2 ≈ psd1
-
-    # fc number, f with units
-    psd3 = GNSSSignals.get_code_spectrum_BPSK(fc, f * 1Hz)
-    @test psd3 ≈ psd1
-
-    # Both with units
-    psd4 = GNSSSignals.get_code_spectrum_BPSK(fc * 1Hz, f * 1Hz)
-    @test psd4 ≈ psd1
-end
-
-@testset "BOC spectrum functions with units" begin
-    fc = 1.023e6
-    fs = 1.023e6
-    f = 500e3
-
-    # BOCsin spectrum
-    psd_sin1 = GNSSSignals.get_code_spectrum_BOCsin(fc, fs, f)
-    @test psd_sin1 >= 0
-
-    psd_sin2 = GNSSSignals.get_code_spectrum_BOCsin(fc * 1Hz, fs * 1Hz, f)
-    @test psd_sin2 ≈ psd_sin1
-
-    psd_sin3 = GNSSSignals.get_code_spectrum_BOCsin(fc, fs, f * 1Hz)
-    @test psd_sin3 ≈ psd_sin1
-
-    psd_sin4 = GNSSSignals.get_code_spectrum_BOCsin(fc * 1Hz, fs * 1Hz, f * 1Hz)
-    @test psd_sin4 ≈ psd_sin1
-
-    # BOCcos spectrum
-    psd_cos1 = GNSSSignals.get_code_spectrum_BOCcos(fc, fs, f)
-    @test psd_cos1 >= 0
-
-    psd_cos2 = GNSSSignals.get_code_spectrum_BOCcos(fc * 1Hz, fs * 1Hz, f)
-    @test psd_cos2 ≈ psd_cos1
-
-    psd_cos3 = GNSSSignals.get_code_spectrum_BOCcos(fc, fs, f * 1Hz)
-    @test psd_cos3 ≈ psd_cos1
-
-    psd_cos4 = GNSSSignals.get_code_spectrum_BOCcos(fc * 1Hz, fs * 1Hz, f * 1Hz)
-    @test psd_cos4 ≈ psd_cos1
-end
-
-@testset "get_code_spectrum for different modulations" begin
-    # Test spectrum through get_code_spectrum interface
-    gpsl1ca = GPSL1CA()
-    gpsl5i = GPSL5I()
-    gal_e1b = GalileoE1B(CBOC)
-
-    # BPSK signals should have peak at DC
-    @test get_code_spectrum(gpsl1ca, 0) ≈ 1.0Hz / get_chip_rate(gpsl1ca)
-    @test get_code_spectrum(gpsl5i, 0) ≈ 1.0Hz / get_chip_rate(gpsl5i)
-
-    # CBOC has zero at DC
-    @test get_code_spectrum(gal_e1b, 0) == 0.0
-
-    # All spectra should be non-negative at non-zero frequencies
-    @test get_code_spectrum(gpsl1ca, 100e3) >= 0
-    @test get_code_spectrum(gpsl5i, 100e3) >= 0
-    @test get_code_spectrum(gal_e1b, 100e3) >= 0
+@testset "BOC(m, n): existing replica outputs and all signal spectra" begin
+    # The new L1C-P BOC(1,1) replica has independent primary/overlay checks in gps/l1c_p.jl.
+    @test Set(keys(_OUTPUT_CHECKSUMS_BEFORE_BOC_MN)) ==
+          Set(signal_label(S) for S in ALL_SIGNALS if S !== GPSL1C_P)
+    @testset "$(signal_label(S))" for S in ALL_SIGNALS
+        signal = make_signal(S)
+        if haskey(_OUTPUT_CHECKSUMS_BEFORE_BOC_MN, signal_label(S))
+            @test _signal_output_checksum(signal) == _OUTPUT_CHECKSUMS_BEFORE_BOC_MN[signal_label(S)]
+        end
+        modulation = get_modulation(signal)
+        @test all(f -> get_code_spectrum(signal, f) === _spectrum_before(modulation, signal, f),
+            range(-20e6, 20e6; length = 4001))
+    end
 end
