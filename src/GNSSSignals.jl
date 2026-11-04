@@ -151,62 +151,13 @@ Base.Broadcast.broadcastable(s::AbstractGNSSSignal) = Ref(s)
 
 Base.show(io::IO, x::AbstractGNSSSignal) = print(io, "$(typeof(x))()")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# `SignalLUT`: per-signal embedded LUT holding all PRNs' baked code tables as one matrix.
-#
-# Defined before the signal structs that embed it (`lut::SignalLUT`); built and consumed by
-# `code_lut.jl` (`build_signal_lut`, `gen_code!`). The metadata is identical across a
-# signal's PRNs, so one `padded` matrix (column `prn` = that PRN's baked table) plus the
-# shared metadata is stored. `gen_code!` resamples it zero-copy.
-# ─────────────────────────────────────────────────────────────────────────────
-struct SignalLUT
-    padded::Matrix{Int8}      # (table_length + WINDOW_PAD) × num_prns; column prn = that PRN's padded baked table
-    subchip_factor::Int       # P
-    # Residual non-baked secondary applied per primary period, as a (Ls × n) matrix; a single
-    # row of 1 when none/baked. A long per-PRN overlay (GPS L1C-P's 1800 chips) is stored per
-    # column and applied at runtime, since baking it would grow the matrix ~1800×. A shared
-    # secondary (GPS L5I's NH10) stores one column reused for all PRNs.
-    secondary::Matrix{Int8}
-    table_length::Int         # L·P (length of one PRN's baked table, i.e. column length minus WINDOW_PAD)
-    period_subchips::Int      # sub-chips per primary period (Lp·P), for secondary application
-    # RMS amplitude of the baked code, `sqrt(mean(code^2))` over one primary table. Exactly
-    # `1` for ±1 codes (BPSK/BOC/TMBOC); for the multi-level CBOC Int8 approximation it is
-    # `sqrt(a1^2 + a2^2)` (≈ 19.92 for E1B's baked (19, 6)) and tracks any `cboc_amplitudes`
-    # override. PRN-independent. Read via `get_code_amplitude`; divide correlation results
-    # by it to get a unit-power scale.
-    code_amplitude::Float64
-end
-
-# Residual secondary column for PRN `prn` (a shared secondary has one column for all PRNs).
-@inline _signal_lut_secondary(lut::SignalLUT, prn::Int) =
-    @view lut.secondary[:, size(lut.secondary, 2) == 1 ? 1 : prn]
-
-"""
-$(SIGNATURES)
-
-Read codes of the given type from a binary file, returning a `Matrix{type}` of size
-`(code_length, num_prns)`.
-
-# Examples
-```julia-repl
-julia> read_in_codes(Int8, "/data/gpsl1cacodes.bin", 32, 1023)
-```
-"""
-function read_in_codes(::Type{T}, filename, num_prns, code_length) where {T}
-    # Two-argument `open` and explicit `close`, not the `do`-block form: its keyword
-    # plumbing is the one call Julia's `--trim=safe` verifier cannot resolve.
-    file_stream = open(filename, "r")
-    try
-        read!(file_stream, Array{T}(undef, code_length, num_prns))
-    finally
-        close(file_stream)
-    end
-end
-
 include("modulation.jl")
 include("bands.jl")
 include("secondary_codes.jl")
+include("code_lut.jl")
+include("code_access.jl")
 include("gps/l1ca.jl")
+include("gps/l5_constants.jl")
 include("gps/l5.jl")
 include("gps/l1c_constants.jl")
 include("gps/l1c_codes.jl")
@@ -229,7 +180,6 @@ include("beidou/b2a.jl")
 include("beidou/b1c.jl")
 include("tai_time.jl")
 include("time_systems.jl")
-include("common.jl")
+include("signal_properties.jl")
 include("spectrum.jl")
-include("code_lut.jl")
 end
