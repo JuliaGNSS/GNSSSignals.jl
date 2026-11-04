@@ -1,30 +1,4 @@
 """
-$(SIGNATURES)
-
-Get the full code matrix for a GNSS signal.
-
-Returns the primary codes as a matrix where each column represents a PRN.
-Built-in signals store `Int8` chips; sampled generation reads a separate baked LUT.
-
-!!! warning "Widen before correlating"
-    `Int8` arithmetic wraps around silently, and a product or sum of two `Int8`s stays
-    `Int8`. `dot(a, b)`, `a' * b`, `codes' * codes` and `reduce(+, a)` over more than 127
-    chips therefore return wrong values without an error (`sum` is safe: it widens).
-    Widen first, e.g. `Int.(get_codes(signal))`, or use [`get_code`](@ref), which
-    returns `Int`.
-
-# Examples
-```julia-repl
-julia> codes = get_codes(GPSL1CA())
-julia> size(codes)
-(1023, 37)
-```
-"""
-function get_codes(signal::AbstractGNSSSignal)
-    signal.codes
-end
-
-"""
     get_supported_prns(signal)
 
 Return the PRN numbers for which primary codes are implemented. `signal` may be
@@ -367,43 +341,6 @@ Defined per concrete signal type, with no generic default (a signal without a va
 a `MethodError`). Works on an instance or a type and folds to a compile-time constant.
 """
 @inline get_relative_power(s::AbstractGNSSSignal) = get_relative_power(typeof(s))
-
-"""
-$(SIGNATURES)
-
-Generate a sampled code signal for a given PRN.
-
-Allocates a new `Vector{Int8}` of `num_samples` samples. Thin wrapper over the in-place
-[`gen_code!`](@ref); see it for the Int8 output semantics (±1, or the CBOC integer
-approximation), fractional-phase support, and the
-`sampling_frequency ≥ code_frequency · subchip_factor` requirement.
-
-# Arguments
-- `sampling_frequency`: Sampling frequency (must be ≥ code frequency · subchip_factor)
-- `code_frequency`: Code frequency the replica runs at (default: [`get_chip_rate`](@ref))
-- `start_phase`: Initial code phase in chips (default: 0.0)
-- `start_index`: Index offset (default: 0)
-
-# Examples
-```julia-repl
-julia> using Unitful: MHz
-julia> sampled_code = gen_code(4000, GPSL1CA(), 1, 4MHz)
-julia> length(sampled_code)
-4000
-```
-"""
-function gen_code(
-    num_samples::Integer,
-    signal::AbstractGNSSSignal,
-    prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency = get_chip_rate(signal),
-    start_phase = 0.0,
-    start_index::Integer = 0,
-)
-    code = zeros(Int8, num_samples)
-    gen_code!(code, signal, prn, sampling_frequency, code_frequency, start_phase, start_index)
-end
 
 """
 $(SIGNATURES)
