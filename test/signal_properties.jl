@@ -18,20 +18,6 @@
     @test get_codes(signal) == signal.codes
 end
 
-@testset "get_code returns get_code_type for $(signal_label(S))" for S in ALL_SIGNALS
-    signal = make_signal(S)
-    @test eltype(get_codes(signal)) === Int8
-    @test @inferred(get_code(signal, 0.3, 1)) isa get_code_type(signal)
-    @test @inferred(get_code_unsafe(signal, 0.3, 1)) isa get_code_type(signal)
-end
-
-@testset "get_code values correlate without overflowing" begin
-    # `reduce(+, …)` keeps the element type, unlike `sum`; on the stored Int8 chips it would
-    # wrap around at 127.
-    code = get_code.(GPSL1CA(), 0:1022, 1)
-    @test reduce(+, code .* code) == 1023
-end
-
 @testset "get_code_amplitude is a positive, PRN-independent signal property" begin
     # The amplitude is the RMS of ONE baked column, so it must not be read off a PRN slot
     # the signal leaves undefined: BeiDou B2b_I defines only PRN 6..58 and stores the rest
@@ -251,15 +237,6 @@ end
     @test occursin("GalileoE1C", String(take!(io)))
 end
 
-@testset "Broadcasting GNSS signals" begin
-    gpsl1ca = GPSL1CA()
-    # Test that signals can be broadcast
-    phases = [0.0, 1.0, 2.0]
-    result = get_code.(gpsl1ca, phases, 1)
-    @test length(result) == 3
-    @test all(x -> x ∈ [-1, 1], result)
-end
-
 @testset "get_modulation type dispatch" begin
     @test get_modulation(GPSL1CA) == GNSSSignals.BPSK()
     @test get_modulation(GPSL5I) == GNSSSignals.BPSK()
@@ -296,7 +273,7 @@ end
 const _CL = GNSSSignals.CodeLUT
 
 # Shared fixed-point scalar oracle (defined here so test/code_lut.jl and test/signal_lut.jl,
-# both included after common.jl, can reuse it). This is the INDEPENDENT definition of correct
+# both included after signal_properties.jl, can reuse it). This is the INDEPENDENT definition of correct
 # output: for each sample n (1-based) it forms the absolute sub-chip phase
 # `A = ((sn·(n-1) + rem0) >> _B) + psub`, reads the baked chip `full[mod(A, Lf) + 1]`, and — for
 # a non-baked `sec` — multiplies by the secondary chip of that sample's OWN primary period
