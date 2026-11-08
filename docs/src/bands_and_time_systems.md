@@ -18,13 +18,13 @@ GNSSSignals.get_band_name
 
 ## Time Systems
 
-The offset of a time scale from TAI, [`get_tai_offset`](@ref), is Unitful seconds, and
-the UTC dates of the scales' epochs are `DateTime` labels. Everything added to or
-compared with a time of week is plain seconds, so that it keeps full `Float64`
-resolution: a [`TAITime`](@ref), such as [`get_week_start_epoch`](@ref) returns, is
-shifted by plain seconds or Unitful durations and differenced into plain seconds,
-[`get_time_of_week`](@ref) and [`get_time_system_offset`](@ref) return them, and
+Every time quantity here is plain seconds, so that it keeps full `Float64` resolution: a
+[`TAITime`](@ref), such as [`get_week_start_epoch`](@ref) returns, is shifted by plain
+seconds or Unitful durations and differenced into plain seconds,
+[`get_time_of_week`](@ref), [`get_time_system_offset`](@ref) and
+[`GNSSSignals.get_tai_offset`](@ref) return them, and
 [`GNSSSignals.SECONDS_PER_WEEK`](@ref) and [`fold_week_crossover`](@ref) work in them.
+The UTC dates of the scales' epochs are `DateTime` labels.
 
 ```@docs
 GNSSSignals.TimeSystem
