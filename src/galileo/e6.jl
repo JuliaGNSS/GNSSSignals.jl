@@ -103,12 +103,12 @@ get_modulation(::Type{<:GalileoE6C}) = BPSK()
 @inline get_band(::Type{<:GalileoE6B}) = E6()
 @inline get_band(::Type{<:GalileoE6C}) = E6()
 
-# OS SIS ICD v2.2 Eq. 10 subtracts the pilot: s_E6 = (e_E6-B − e_E6-C)/√2. Unlike E1,
+# OS SIS ICD Issue 2.2 Eq. 10 subtracts the pilot: s_E6 = (e_E6-B − e_E6-C)/√2. Unlike E1,
 # where the anti-phase sits in the CBOC(−) code, the plain-BPSK E6-C code carries no
 # sign, so the 180° lives here.
 @inline get_carrier_phase_offset(::Type{<:GalileoE6C}) = 0.5
 
-# 50/50 E6-B/E6-C power sharing (Galileo OS SIS ICD v2.2 §2.3.2), of the E6 composite
+# 50/50 E6-B/E6-C power sharing (Galileo OS SIS ICD Issue 2.2 §2.3.2), of the E6 composite
 # whose −155.25 dBW total (Table 13) is the unit here.
 @inline get_relative_power(::Type{<:GalileoE6B}) = 0.5
 @inline get_relative_power(::Type{<:GalileoE6C}) = 0.5
@@ -128,7 +128,7 @@ Get the code length for Galileo E6 (5115 chips, both components).
 $(SIGNATURES)
 
 Get the nominal chip rate of Galileo E6 (5.115 MHz, both components — Galileo
-OS SIS ICD v2.2, Table 9).
+OS SIS ICD Issue 2.2, Table 9).
 """
 @inline get_chip_rate(::Type{<:GalileoE6B}) = 5_115_000Hz
 @inline get_chip_rate(::Type{<:GalileoE6C}) = 5_115_000Hz
@@ -139,7 +139,7 @@ $(SIGNATURES)
 Get the bit rate, as tracked, of Galileo E6-B.
 
 The E6-B channel carries the C/NAV message, tracked at 1000 bit/s (Galileo OS SIS ICD
-v2.2, Table 9): the symbol rate of its rate-½ convolutional code, the message carrying
+Issue 2.2, Table 9): the symbol rate of its rate-½ convolutional code, the message carrying
 500 bit/s.
 """
 @inline get_bit_rate(::Type{<:GalileoE6B}) = 1000Hz

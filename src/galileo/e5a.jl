@@ -55,7 +55,7 @@ struct GalileoE5aQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSigna
     lut::SignalLUT        # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-#= E5a primary code generation (Galileo OS SIS ICD v2.2 §3.4.1).
+#= E5a primary code generation (Galileo OS SIS ICD Issue 2.2 §3.4.1).
 
 The generator is shared with E5b and lives in `galileo/codes.jl`. E5a-I and E5a-Q share
 the feedback taps below and differ only in the register-2 start values. =#
@@ -98,7 +98,7 @@ const E5A_I_SECONDARY_CHIPS = (
 
 function GalileoE5aQ()
     codes = read_galileo_e5_codes(E5A_X1_TAP, E5A_X2_TAP, E5A_Q_X2_INIT)
-    # CS100_n to SVID n (Galileo OS SIS ICD v2.2 §3.5.2); the table is shared with E6-C.
+    # CS100_n to SVID n (OS SIS ICD Issue 2.2 §3.5.2); the table is shared with E6-C.
     secondary = _build_galileo_cs100_secondary(1:50)
     # The 100-chip per-SVID CS100 overlay is too long to bake (100·10230·1 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.
@@ -118,7 +118,7 @@ get_modulation(::Type{<:GalileoE5aQ}) = BPSK()
 @inline get_band(::Type{<:GalileoE5aQ}) = L5()
 
 # 50/50 I/Q power sharing of the E5a composite, whose −155.25 dBW total (Galileo OS
-# SIS ICD v2.2, Table 13) is the unit here. See [`get_relative_power`](@ref).
+# SIS ICD Issue 2.2, Table 13) is the unit here. See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GalileoE5aI}) = 0.5
 @inline get_relative_power(::Type{<:GalileoE5aQ}) = 0.5
 

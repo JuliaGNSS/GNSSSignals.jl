@@ -24,7 +24,7 @@ abstract type TimeSystem end
     GPST <: TimeSystem
 
 GPS Time. Epoch `1980-01-06T00:00:00` UTC, `GPST = TAI − 19 s`, no leap
-seconds (IS-GPS-200). Used by every GPS signal.
+seconds (IS-GPS-200N §3.3.4). Used by every GPS signal.
 """
 struct GPST <: TimeSystem end
 
@@ -133,7 +133,7 @@ const SECONDS_PER_WEEK = 604_800
     fold_week_crossover(Δt) -> seconds
 
 Fold a difference `Δt` of two seconds-of-week counts into `[-302400, 302400]`: across a
-week crossover (IS-GPS-200 §20.3.3.3.3.1) the raw difference is off by ±604800 s.
+week crossover (IS-GPS-200N §20.3.3.3.3.1) the raw difference is off by ±604800 s.
 The result has the type of `Δt`, so integer seconds stay integer.
 Use it only for counts within half a week of each other; a difference meant to span
 whole weeks must not pass through it (a broadcast inter-system time offset adds the weeks
@@ -201,9 +201,9 @@ scales too: it is what converts a week and time of week from one scale to anothe
 leap-second table is consulted, so it is safe at precompile time. Works on a [`TimeSystem`](@ref), or on a
 signal / signal type (which forwards through [`get_time_system`](@ref)).
 
-The ICDs state the origins as UTC labels: `1980-01-06T00:00:00` for GPST (IS-GPS-200),
-`1999-08-21T23:59:47` for GST, 13 s before midnight (Galileo OS SIS ICD, Issue 2.2,
-§5.1.2), and `2006-01-01T00:00:00` for BDT. They are stated here on TAI rather than
+The ICDs state the origins as UTC labels: `1980-01-06T00:00:00` for GPST (IS-GPS-200N
+§3.3.4), `1999-08-21T23:59:47` for GST, 13 s before midnight (Galileo OS SIS ICD, Issue
+2.2, §5.1.2), and `2006-01-01T00:00:00` for BDT. They are stated here on TAI rather than
 derived from those labels, which would need a leap-second table, and because GST's is not
 derivable from this package's other constants: the Galileo ICD anchors the GST epoch to
 GPS Time at the week-1024 rollover (`GST − UTC` was already 13 s at the epoch), so its

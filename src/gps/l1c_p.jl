@@ -5,13 +5,13 @@
     GPSL1C_P(TMBOC)
 
 GPS L1C pilot signal (the dataless component of L1C, carrying 75% of
-the L1C power per IS-GPS-800G; broadcast by Block III/IIIF satellites).
+the L1C power per IS-GPS-800J; broadcast by Block III/IIIF satellites).
 
 Broadcast as TMBOC(6,1,4/33) on the L1 band (1575.42 MHz): every 33
 primary chips, four positions `{0, 4, 6, 29}` use BOC(6,1) and the
 rest use BOC(1,1). 10230-chip primary code at 1.023 Mcps (same Weil
 construction as L1C-D, different per-PRN parameters), modulo-2 added
-with an 18 s, 1800-bit per-PRN overlay code (IS-GPS-800G §3.2.2.1.2)
+with an 18 s, 1800-bit per-PRN overlay code (IS-GPS-800J §3.2.2.1.2)
 exposed here as a [`PerPRNSecondaryCode`](@ref).
 
 The replica's modulation is chosen at construction and carried in the type parameter `R`:
@@ -89,7 +89,7 @@ $(SIGNATURES)
 
 Get the secondary code (overlay) for GPS L1C-P.
 
-Per IS-GPS-800G §3.2.2.1.2, every primary period (10 ms) is XOR'd with one chip of a
+Per IS-GPS-800J §3.2.2.1.2, every primary period (10 ms) is XOR'd with one chip of a
 1800-bit per-PRN LFSR-generated overlay code (18 s cycle). Returns a
 [`PerPRNSecondaryCode`](@ref) wrapping the 1800 × 63 overlay matrix.
 """

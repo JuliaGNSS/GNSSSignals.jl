@@ -125,7 +125,7 @@ get_secondary_code(gpsl5i)        # (1, 1, 1, 1, -1, -1, 1, -1, 1, -1)
 
 ### GPS L1C-D
 
-GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800G). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and broadcasts the CNAV-2 message, tracked at 100 bit/s (the symbol rate of its rate-½ LDPC code; the message carries 50 bit/s). It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
+GPS L1C-D is the data-carrying component of GPS L1C (IS-GPS-800J). It uses BOC(1,1) modulation with a 10230-chip Weil-based primary code and broadcasts the CNAV-2 message, tracked at 100 bit/s (the symbol rate of its rate-½ LDPC code; the message carries 50 bit/s). It is broadcast by Block III/IIIF satellites and supports PRNs 1-63:
 
 ```julia
 gpsl1c_d = GPSL1C_D()
@@ -140,7 +140,7 @@ get_modulation(gpsl1c_d)            # BOCsin(1, 1)
 
 ### GPS L1C-P
 
-GPS L1C-P is the pilot (dataless) component of GPS L1C. It carries 75% of the L1C power per IS-GPS-800G and uses TMBOC(6,1,4/33) modulation: every 33 primary chips, four positions (`{0, 4, 6, 29}`) use BOC(6,1) and the rest use BOC(1,1). It shares the same 10230-chip Weil construction as L1C-D (different per-PRN parameters) and adds an 18-second 1800-bit per-PRN overlay (exposed as a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode)):
+GPS L1C-P is the pilot (dataless) component of GPS L1C. It carries 75% of the L1C power per IS-GPS-800J and uses TMBOC(6,1,4/33) modulation: every 33 primary chips, four positions (`{0, 4, 6, 29}`) use BOC(6,1) and the rest use BOC(1,1). It shares the same 10230-chip Weil construction as L1C-D (different per-PRN parameters) and adds an 18-second 1800-bit per-PRN overlay (exposed as a [`PerPRNSecondaryCode`](@ref GNSSSignals.PerPRNSecondaryCode)):
 
 ```julia
 gpsl1c_p = GPSL1C_P()

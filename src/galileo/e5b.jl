@@ -10,7 +10,7 @@ Galileo E5b-I signal (the in-phase, data-carrying component of Galileo E5b).
 symbol rate of its rate-½ convolutional code).
 
 E5b is one half of the wideband E5 AltBOC(15,10) signal. The ICD allows processing E5a and
-E5b "independently ... as though they were two separate QPSK signals" (OS SIS ICD v2.2
+E5b "independently ... as though they were two separate QPSK signals" (OS SIS ICD Issue 2.2
 §2.3.1.2), which is modelled here: the E5b sideband alone as BPSK(10) ([`BPSK`](@ref)),
 like [`GalileoE5aI`](@ref) for E5a.
 
@@ -43,8 +43,8 @@ As the pilot it carries no navigation data ([`get_bit_rate`](@ref) is 0 Hz).
 Like [`GalileoE5bI`](@ref) it is modelled as BPSK(10) ([`BPSK`](@ref)). The primary code
 uses base register 1 (feedback `64021₈`) with the E5b-Q register 2 (feedback `43143₈`) and
 start values `E5B_Q_X2_INIT`. The secondary codes are CS100 codes 51-100, CS100₍ₙ₊₅₀₎ to
-SVID `n` (OS SIS ICD v2.2 §3.5.2), the other half of the table [`GalileoE5aQ`](@ref) uses.
-PRNs 1-50.
+SVID `n` (OS SIS ICD Issue 2.2 §3.5.2), the other half of the table
+[`GalileoE5aQ`](@ref) uses. PRNs 1-50.
 
 # Example
 ```julia
@@ -60,7 +60,7 @@ struct GalileoE5bQ{C<:AbstractMatrix, M<:AbstractMatrix} <: AbstractGalileoSigna
     lut::SignalLUT        # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-#= E5b primary code generation (Galileo OS SIS ICD v2.2 §3.4.1, Table 16).
+#= E5b primary code generation (Galileo OS SIS ICD Issue 2.2 §3.4.1, Table 16).
 
 The generator is shared with E5a (`galileo/codes.jl`); E5b differs in both feedback
 polynomials, and its two components differ in the register-2 polynomial as well as the
@@ -96,7 +96,7 @@ end
 
 function GalileoE5bQ()
     codes = read_galileo_e5_codes(E5B_X1_TAP, E5B_Q_X2_TAP, E5B_Q_X2_INIT)
-    # CS100_(n+50) to SVID n (Galileo OS SIS ICD v2.2 §3.5.2).
+    # CS100_(n+50) to SVID n (Galileo OS SIS ICD Issue 2.2 §3.5.2).
     secondary = _build_galileo_cs100_secondary(51:100)
     # The 100-chip per-SVID overlay is too long to bake (100·10230·1 > typemax(Int16)),
     # so it stays residual in the SignalLUT and is applied per primary period at gen time.
@@ -110,7 +110,7 @@ get_modulation(::Type{<:GalileoE5bI}) = BPSK()
 get_modulation(::Type{<:GalileoE5bQ}) = BPSK()
 
 # E5b-I is the in-phase reference (default 0); the E5b-Q pilot LEADS it by 90°, the same
-# `(I + jQ)` convention as E5a (OS SIS ICD v2.2 Eq. 2).
+# `(I + jQ)` convention as E5a (OS SIS ICD Issue 2.2 Eq. 2).
 @inline get_carrier_phase_offset(::Type{<:GalileoE5bQ}) = 0.25
 
 """
@@ -125,7 +125,7 @@ Galileo E5b sits at 1207.14 MHz, shared exactly with BeiDou B2b, so both report
 @inline get_band(::Type{<:GalileoE5bQ}) = E5b()
 
 # 50/50 I/Q power sharing of the E5b composite, whose −155.25 dBW total (Galileo
-# OS SIS ICD v2.2, Table 13) is the unit here. See [`get_relative_power`](@ref).
+# OS SIS ICD Issue 2.2, Table 13) is the unit here. See [`get_relative_power`](@ref).
 @inline get_relative_power(::Type{<:GalileoE5bI}) = 0.5
 @inline get_relative_power(::Type{<:GalileoE5bQ}) = 0.5
 
@@ -154,8 +154,8 @@ $(SIGNATURES)
 Get the bit rate, as tracked, of Galileo E5b-I.
 
 The E5b-I channel carries the Galileo I/NAV navigation message, tracked at 250 bit/s
-(Galileo OS SIS ICD v2.2, Table 5): the symbol rate of its rate-½ convolutional code, the
-message carrying 125 bit/s.
+(Galileo OS SIS ICD Issue 2.2, Table 5): the symbol rate of its rate-½ convolutional code,
+the message carrying 125 bit/s.
 """
 @inline get_bit_rate(::Type{<:GalileoE5bI}) = 250Hz
 
@@ -174,7 +174,7 @@ $(SIGNATURES)
 Get the secondary code for Galileo E5b-I.
 
 CS4 is shared across all SVIDs: every 1 ms primary period is overlaid with one chip of
-the 4-bit sequence `E` → `1110` (Galileo OS SIS ICD v2.2 §3.5.1). Returns a
+the 4-bit sequence `E` → `1110` (Galileo OS SIS ICD Issue 2.2 §3.5.1). Returns a
 [`SharedSecondaryCode`](@ref) of length 4.
 """
 @inline get_secondary_code(::GalileoE5bI) = _galileo_e5b_i_secondary_code()
@@ -190,7 +190,7 @@ $(SIGNATURES)
 Get the secondary code for Galileo E5b-Q.
 
 Each SVID overlays its primary code with the 100-chip CS100₍ₙ₊₅₀₎ sequence
-(Galileo OS SIS ICD v2.2 §3.5.2). Returns a [`PerPRNSecondaryCode`](@ref) wrapping the
+(Galileo OS SIS ICD Issue 2.2 §3.5.2). Returns a [`PerPRNSecondaryCode`](@ref) wrapping the
 100 × 50 secondary matrix.
 """
 @inline get_secondary_code(s::GalileoE5bQ) = PerPRNSecondaryCode(s.secondary_codes)
