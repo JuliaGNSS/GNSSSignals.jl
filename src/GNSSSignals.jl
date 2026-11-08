@@ -83,7 +83,6 @@ export AbstractGNSSSignal,
     get_time_of_week,
     fold_week_crossover,
     TAITime,
-    get_tai_offset,
     get_modulation,
     get_secondary_code
 

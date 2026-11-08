@@ -36,5 +36,6 @@
         :get_code_spectrum_BOCcos,
         :SECONDS_PER_WEEK,
         :is_beidou_geo,
+        :get_tai_offset,
     ])
 end

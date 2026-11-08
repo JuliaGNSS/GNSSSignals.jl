@@ -47,38 +47,38 @@ import Random
     @test get_time_system(BeiDouB1I()) === get_time_system(BeiDouB1I) === BDT()
 
     # The offset is defined on the time system.
-    @test @inferred(get_tai_offset(GPST())) == 19s
-    @test @inferred(get_tai_offset(GST())) == 19s
-    @test @inferred(get_tai_offset(BDT())) == 33s
+    @test @inferred(GNSSSignals.get_tai_offset(GPST())) === 19
+    @test @inferred(GNSSSignals.get_tai_offset(GST())) === 19
+    @test @inferred(GNSSSignals.get_tai_offset(BDT())) === 33
 
     # Signal-level access forwards through the time system, on type or instance.
     for S in gps_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(GPST(), 0)
         @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
-        @test get_tai_offset(S) == 19s
+        @test GNSSSignals.get_tai_offset(S) === 19
     end
     for S in galileo_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(GST(), 0)
         @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
-        @test get_tai_offset(S) == 19s
+        @test GNSSSignals.get_tai_offset(S) === 19
     end
     for S in beidou_signals
         @test get_week_start_epoch(S, 0) == get_week_start_epoch(BDT(), 0)
         @test get_week_start_epoch(make_signal(S), 0) == get_week_start_epoch(S, 0)
-        @test get_tai_offset(S) == 33s
+        @test GNSSSignals.get_tai_offset(S) === 33
     end
 
     # GPS and Galileo share the TAI − 19 s offset; BeiDou uses TAI − 33 s.
     gps_gal = (gps_signals..., galileo_signals...)
-    @test length(unique(get_tai_offset(S) for S in gps_gal)) == 1
+    @test length(unique(GNSSSignals.get_tai_offset(S) for S in gps_gal)) == 1
 
     # GPS and Galileo share the offset but differ in epoch / time system.
-    @test get_tai_offset(GPSL1CA) == get_tai_offset(GalileoE1B)
+    @test GNSSSignals.get_tai_offset(GPSL1CA) == GNSSSignals.get_tai_offset(GalileoE1B)
     @test get_week_start_epoch(GPSL1CA, 0) != get_week_start_epoch(GalileoE1B, 0)
     @test get_time_system(GPSL1CA) !== get_time_system(GalileoE1B)
 
     # BeiDou differs from both GPS and Galileo in offset, epoch and time system.
-    @test get_tai_offset(BeiDouB1I) != get_tai_offset(GPSL1CA)
+    @test GNSSSignals.get_tai_offset(BeiDouB1I) != GNSSSignals.get_tai_offset(GPSL1CA)
     @test get_time_system(BeiDouB1I) !== get_time_system(GalileoE1B)
 end
 
@@ -130,7 +130,7 @@ end
         @test get_time_system_name(T) != String(get_time_system_id(T))
         # The two constants a time scale is fixed by.
         @test get_week_start_epoch(T(), 0) isa TAITime
-        @test get_tai_offset(T()) isa Time
+        @test GNSSSignals.get_tai_offset(T()) isa Int
     end
 end
 
@@ -177,7 +177,7 @@ end
         BDT => DateTime(2006, 1, 1),
     )
     for T in ALL_TIME_SYSTEMS
-        naive = TAITime(utc_label[T]) + Unitful.ustrip(s, get_tai_offset(T()))
+        naive = TAITime(utc_label[T]) + GNSSSignals.get_tai_offset(T())
         @test get_week_start_epoch(T(), 0) - naive == (T === GST ? 13 : 0)
         @test @inferred(get_week_start_epoch(T(), 0)) isa TAITime
         # The weeks are whole, exact seconds.
