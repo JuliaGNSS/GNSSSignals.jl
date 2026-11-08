@@ -49,8 +49,8 @@ get_modulation(::Type{<:GalileoE1B{<:AbstractMatrix,CBOC}}) =
 
 @inline get_band(::Type{<:GalileoE1B}) = L1()
 
-# 50/50 E1-B/E1-C power sharing of the E1 composite, whose −157.25 dBW total
-# (Galileo OS SIS ICD v2.2, Table 13) is the unit here. The 10/11 CBOC split *within* each
+# 50/50 E1-B/E1-C power sharing of the E1 composite, whose −157.25 dBW total (Galileo OS
+# SIS ICD Issue 2.2, Table 13) is the unit here. The 10/11 CBOC split *within* each
 # component lives in [`get_modulation`](@ref). A BOC(1,1) replica carries the same power.
 @inline get_relative_power(::Type{<:GalileoE1B}) = 0.5
 

@@ -120,7 +120,7 @@ BOC variant to apply at chip-position `k - 1`: `true` for `boc2`,
 
 For GPS L1C-P specifically, the pattern is TMBOC(6,1,4/33): every
 33 primary chips, the four positions `{0, 4, 6, 29}` use BOC(6,1) and
-the remaining 29 use BOC(1,1). See IS-GPS-800G §3.3.
+the remaining 29 use BOC(1,1). See IS-GPS-800J §3.3.
 
 # Arguments
 - `boc1`: BOC variant for the majority positions (`pattern[k] == false`)
@@ -212,8 +212,7 @@ function get_subcarrier_code(modulation::BOCcos, phase::Real)
 end
 
 # The amplitude is the sqrt of the power, see
-# https://galileosignal.eu/wp-content/uploads/2015/12/Galileo_OS_SIS_ICD_v1.2.pdf
-# Chapter 2.3.3. E1 Signal
+# Galileo OS SIS ICD Issue 2.2, §2.3.3 (E1 signal), Eq. 12.
 function get_subcarrier_code(modulation::CBOC, phase::T) where {T<:Real}
     get_subcarrier_code(modulation.boc1, phase) * sqrt(modulation.boc1_power) +
     modulation.boc2_sign *

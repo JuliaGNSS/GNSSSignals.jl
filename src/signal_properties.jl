@@ -250,7 +250,7 @@ The sign follows each ICD's own convention, so it differs by constellation:
 - **GPS** puts the civil components on the *quadrature* carrier, *lagging* the
   band's P(Y) in-phase reference by 90° → `−0.25`: `GPSL1CA` (IS-GPS-200N §3.3.1.5.1),
   `GPSL2CM`/`GPSL2CL` (IS-GPS-200N §3.3.1.5.1; nominal — CNAV Type 10 bit 273 can
-  command L2C in-phase, `0.0`), and `GPSL5Q` (IS-GPS-705 §3.3.1.5). `GPSL5I` is the
+  command L2C in-phase, `0.0`), and `GPSL5Q` (IS-GPS-705J §3.3.1.5). `GPSL5I` is the
   L5 in-phase reference (`0.0`).
 - **GPS L1C** (`GPSL1C_D`, `GPSL1C_P`) rides the *same* P(Y) in-phase carrier
   (IS-GPS-800J §3.2.1.6.1) → `0.0`; hence L1C sits 90° off C/A on the same band.
@@ -322,7 +322,7 @@ another BeiDou value.
 *separate* signal on a carrier its composite already occupies, so it is scaled against
 that composite. C/A is `−158.5 dBW` (IS-GPS-200N, Table 3-Va) against L1C's `−157.0 dBW`,
 i.e. `10^(-0.15)`; E5a-QP is `−160.75 dBW` against E5a's `−155.25 dBW` (Galileo OS SIS ICD
-v2.2, Table 13), i.e. `10^(-0.55)`. That lets a joint L1 or E5a loop weight all of a
+Issue 2.2, Table 13), i.e. `10^(-0.55)`. That lets a joint L1 or E5a loop weight all of a
 carrier's signals against each other directly.
 
 Values from different rows are **not** comparable: a ratio across constellations or bands

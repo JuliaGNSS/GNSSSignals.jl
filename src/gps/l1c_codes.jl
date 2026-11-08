@@ -1,9 +1,9 @@
 # Internal helpers for building the GPS L1C primary and overlay codes for the `GPSL1C_D` and
 # `GPSL1C_P` constructors.
 #
-# Algorithms follow IS-GPS-800G §3.2.2.1.1 (ranging code) and §3.2.2.1.2 (overlay code);
-# IRN-IS-800J-003 makes no changes here. test/gps/l1c_codes.jl checks every PRN's initial
-# and final 24 chips and overlay final 11 bits against the spec values.
+# Algorithms follow IS-GPS-800J §3.2.2.1.1 (ranging code) and §3.2.2.1.2 (overlay code);
+# its amendments IRN-IS-800J-003 and -004 change neither. test/gps/l1c_codes.jl checks every
+# PRN's initial and final 24 chips and overlay final 11 bits against the spec values.
 
 """
 $(SIGNATURES)
@@ -11,7 +11,7 @@ $(SIGNATURES)
 Generate the length-10223 Legendre sequence used by the L1C Weil-code
 construction.
 
-Per IS-GPS-800G §3.2.2.1.1:
+Per IS-GPS-800J §3.2.2.1.1:
 - `L(0) = 0`
 - `L(t) = 1` if `t` is a quadratic residue mod 10223 (i.e. there exists
   an integer `x` such that `t ≡ x² (mod 10223)`), else 0.
@@ -43,7 +43,7 @@ passed in to share its cost across all 63 PRNs.
 function _l1c_primary_code(legendre::AbstractVector{Bool}, weil_index::Integer, insertion_index::Integer)
     p = L1C_WEIL_LENGTH                    # 10223
     n = L1C_PRIMARY_LENGTH                 # 10230
-    ins = insertion_index                  # 1-based per IS-GPS-800G
+    ins = insertion_index                  # 1-based per IS-GPS-800J
 
     out = Vector{Int8}(undef, n)
 
@@ -94,7 +94,7 @@ $(SIGNATURES)
 Build the L1C-P overlay-code matrix `(L1C_OVERLAY_LENGTH, L1C_NUM_PRNS)`
 of `Int8` ±1 chips. Each PRN's overlay is the first 1800 bits of the
 output of an 11-stage LFSR with per-PRN polynomial `mij` and initial
-state `init_11`, both taken from IS-GPS-800G Table 3.2-3.
+state `init_11`, both taken from IS-GPS-800J Table 3.2-3.
 
 The LFSR output convention is verified against the spec's published final 11 bits per PRN.
 """

@@ -1,30 +1,30 @@
 # Per-PRN constants for the GPS L1C signal (PRNs 1-63).
 #
-# Source: IS-GPS-800G, Tables 3.2-2 and 3.2-3 (14 May 2020).
+# Source: IS-GPS-800J, Tables 3.2-2 and 3.2-3 (1 August 2022).
 #
-# IRN-IS-800J-003 makes no changes to L1C code parameters.
+# Its amendments IRN-IS-800J-003 and -004 change no L1C code parameter.
 
 # Number of PRN signal numbers covered (Table 3.2-2). PRNs 64-210 (Table
 # 6.3-1) are not implemented in this package.
 const L1C_NUM_PRNS = 63
 
 # Length of the per-PRN Weil-code sequence before the 7-bit expansion is
-# inserted (IS-GPS-800G §3.2.2.1.1).
+# inserted (IS-GPS-800J §3.2.2.1.1).
 const L1C_WEIL_LENGTH = 10223
 
 # Total chips in one primary period: Weil length + 7-chip expansion.
 const L1C_PRIMARY_LENGTH = 10230
 
 # Expansion sequence inserted at the per-PRN insertion index
-# (IS-GPS-800G §3.2.2.1.1 lines 720-726, binary 0110100).
+# (IS-GPS-800J §3.2.2.1.1, binary 0110100).
 const L1C_EXPANSION_SEQUENCE = (Int8(0), Int8(1), Int8(1), Int8(0),
                                 Int8(1), Int8(0), Int8(0))
 
-# Length of one overlay-code period in primary periods (IS-GPS-800G
+# Length of one overlay-code period in primary periods (IS-GPS-800J
 # §3.2.2.1.2; truncated from 2047 to 1800).
 const L1C_OVERLAY_LENGTH = 1800
 
-# TMBOC parameters (IS-GPS-800G §3.3). Within every 33 primary chips,
+# TMBOC parameters (IS-GPS-800J §3.3). Within every 33 primary chips,
 # positions 0, 4, 6, 29 use BOC(6,1); the rest use BOC(1,1).
 const L1C_TMBOC_PERIOD = 33
 const L1C_TMBOC_BOC6_POSITIONS = (0, 4, 6, 29)
@@ -73,7 +73,7 @@ const L1C_P_INSERTION_INDEX = Int[
     9937, 430, 5, 355, 909, 1622, 6284
 ]
 
-# Overlay LFSR configuration (IS-GPS-800G Table 3.2-3).
+# Overlay LFSR configuration (IS-GPS-800J Table 3.2-3).
 # 12-bit polynomial coefficient mij and 11-bit initial state for each PRN.
 const L1C_OVERLAY_MIJ = UInt16[
     0x0a49, 0x0b11, 0x0b41, 0x0b03, 0x0d0f, 0x0c61, 0x0ce9, 0x0d41,

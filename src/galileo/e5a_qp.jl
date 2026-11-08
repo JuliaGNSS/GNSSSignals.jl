@@ -34,7 +34,7 @@ end
 const E5A_QP_CODE_LENGTH = 330
 const E5A_QP_NUM_PRNS = 40
 
-#= E5a-QP generative short codes (Galileo OS SIS ICD v2.2 §3.4.2, Table 21).
+#= E5a-QP generative short codes (Galileo OS SIS ICD Issue 2.2 §3.4.2, Table 21).
 
 Each row is one code number's (15-chip, 11-chip, 10-chip) triple in the ICD's hex
 notation: MSB-first, four chips per symbol, the last symbol zero-padded at the end (one
@@ -83,7 +83,7 @@ Build the 330 × 40 Galileo E5a-QP primary code matrix from
 `E5A_QP_SHORT_CODES`.
 
 Each code is the XOR of its three short codes, repeated to 330 chips (22, 30 and 33
-times for the 15-, 11- and 10-chip codes; Galileo OS SIS ICD v2.2 §3.4.2). Chips are
+times for the 15-, 11- and 10-chip codes; Galileo OS SIS ICD Issue 2.2 §3.4.2). Chips are
 mapped `0 -> -1`, `1 -> +1`.
 """
 function read_galileo_e5a_qp_codes()
@@ -122,7 +122,7 @@ get_modulation(::Type{<:GalileoE5aQP}) = BPSK()
 §2.3.1.4) states no phase relation to the E5a-I reference. =#
 
 # A separate signal on the E5a carrier, scaled against the E5a composite (like `GPSL1CA`
-# against L1C): −160.75 dBW against −155.25 dBW (Galileo OS SIS ICD v2.2, Table 13).
+# against L1C): −160.75 dBW against −155.25 dBW (Galileo OS SIS ICD Issue 2.2, Table 13).
 @inline get_relative_power(::Type{<:GalileoE5aQP}) = 10.0^(-0.55)
 
 @inline get_signal_name(::Type{<:GalileoE5aQP}) = "Galileo E5a-QP"
@@ -138,7 +138,7 @@ Get the code length for Galileo E5a-QP (330 chips — 2/31 ms at 5.115 Mcps).
 $(SIGNATURES)
 
 Get the nominal chip rate of Galileo E5a-QP (5.115 MHz, Galileo OS SIS ICD
-v2.2, Table 8).
+Issue 2.2, Table 8).
 """
 @inline get_chip_rate(::Type{<:GalileoE5aQP}) = 5_115_000Hz
 
@@ -157,7 +157,7 @@ $(SIGNATURES)
 Get the secondary code for Galileo E5a-QP.
 
 There is none: the 330-chip primary code is repeated 31 times within 2 ms without any
-overlay (Galileo OS SIS ICD v2.2, Table 15); returns [`NoSecondaryCode`](@ref).
+overlay (Galileo OS SIS ICD Issue 2.2, Table 15); returns [`NoSecondaryCode`](@ref).
 """
 @inline get_secondary_code(::GalileoE5aQP) = NoSecondaryCode()
 

@@ -30,7 +30,7 @@ BPSK-modulated 10230-chip primary code at 10.23 Mcps on the L5 band
 the pilot channel for a 20 ms tiered code. As the pilot component it carries
 no navigation data, so [`get_bit_rate`](@ref) returns 0 Hz.
 
-The Q5 primary code uses the same generator as [`GPSL5I`](@ref) (IS-GPS-705 §3.2.1.1,
+The Q5 primary code uses the same generator as [`GPSL5I`](@ref) (IS-GPS-705J §3.2.1.1,
 `gen_l5_code`) with its own per-PRN initial XB states (`INITIAL_XB_CODE_STATES_Q5`).
 PRNs 1-37 are supported.
 
@@ -48,7 +48,7 @@ struct GPSL5Q{C<:AbstractMatrix} <: AbstractGPSSignal{C}
     lut::SignalLUT    # embedded per-signal LUT, always populated; see `build_signal_lut` / `gen_code!`
 end
 
-#= GPS L5 primary code generation (IS-GPS-705 §3.2.1.1).
+#= GPS L5 primary code generation (IS-GPS-705J §3.3.2.2).
 
 Each L5 primary code is the modulo-2 sum of two 13-stage shift registers, XA
 and XB, truncated to 10230 chips. XA is common to every PRN (all-ones start,
@@ -81,7 +81,7 @@ $(SIGNATURES)
 Calculate a GPS L5 PRN `satellite_code` for the initial XB register states
 `initial_xb_code_states`.
 
-Used by both [`GPSL5I`](@ref) and [`GPSL5Q`](@ref) (IS-GPS-705 §3.2.1.1), selected by the
+Used by both [`GPSL5I`](@ref) and [`GPSL5Q`](@ref) (IS-GPS-705J §3.2.1.1), selected by the
 initial-state table passed in (`INITIAL_XB_CODE_STATES_I5` or `INITIAL_XB_CODE_STATES_Q5`).
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
@@ -131,8 +131,9 @@ get_modulation(::Type{<:GPSL5I}) = BPSK()
 get_modulation(::Type{<:GPSL5Q}) = BPSK()
 
 # L5I data rides the in-phase carrier (default 0); L5Q pilot is in quadrature.
-# IS-GPS-705 §3.3.1.5: the Q5 carrier lags I5 by 90° (cos(ωt−π/2) = sin(ωt)), so −1/4 cycle.
-# Opposite to Galileo E5aQ, whose ICD (Eq. 1, I·cos − Q·sin) puts the pilot at +1/4 cycle.
+# IS-GPS-705J §3.3.1.5: the Q5 carrier lags I5 by 90° (cos(ωt−π/2) = sin(ωt)), so
+# −1/4 cycle. Opposite to Galileo E5aQ, whose ICD (Eq. 1, I·cos − Q·sin) puts the pilot
+# at +1/4 cycle.
 @inline get_carrier_phase_offset(::Type{<:GPSL5Q}) = -0.25
 
 @inline get_band(::Type{<:GPSL5I}) = L5()
@@ -240,7 +241,7 @@ $(SIGNATURES)
 Get the secondary (Neuman-Hofman NH20) code for GPS L5-Q.
 
 NH20 is shared across all PRNs: every primary code period (1 ms) is XOR'd with
-one chip of the 20-bit sequence `00000100110101001110` (IS-GPS-705 §3.2.1.2),
+one chip of the 20-bit sequence `00000100110101001110` (IS-GPS-705J §3.3.2.3),
 mapped to `±1`, giving a 20 ms tiered code. Returns a [`SharedSecondaryCode`](@ref) of
 length 20.
 

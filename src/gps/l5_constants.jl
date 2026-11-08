@@ -46,9 +46,9 @@ const INITIAL_XB_CODE_STATES_I5 = [             # PRN
 format as `INITIAL_XB_CODE_STATES_I5`: `INITIAL_XB_CODE_STATES_Q5[3][4]`
 is the 4th shift-register stage for the satellite with PRN number 3.
 
-The values equal the all-ones XB register advanced by the IS-GPS-705 §3.2.1.2 Q5 "XB code
-advance" for each PRN (the same advances as GNSS-SDR's `GPS_L5q_INIT_REG` and PocketSDR's
-`L5Q_XB_adv`); the analogous derivation reproduces `INITIAL_XB_CODE_STATES_I5` exactly. =#
+The values equal the all-ones XB register advanced by the Q5 "XB code advance" of
+IS-GPS-705J Table 3-Ia for each PRN (the same advances as GNSS-SDR's `GPS_L5q_INIT_REG`
+and PocketSDR's `L5Q_XB_adv`); the analogous derivation reproduces `INITIAL_XB_CODE_STATES_I5` exactly. =#
 const INITIAL_XB_CODE_STATES_Q5 = [             # PRN
     [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0],    #01
     [0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0],    #02
