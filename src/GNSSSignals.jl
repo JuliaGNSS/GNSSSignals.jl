@@ -5,8 +5,6 @@ using DocStringExtensions
 using SIMD: Vec, vload, vstore, vifelse, shufflevector
 using Unitful: Frequency, Hz, s, upreferred, ustrip, @u_str
 
-import Base.show
-
 export AbstractGNSSSignal,
     AbstractGPSSignal,
     AbstractGalileoSignal,
