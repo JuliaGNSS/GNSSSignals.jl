@@ -63,7 +63,7 @@ Takes the status of the registers as an Int `register`, and an array of register
 `indices` to calculate and return the register output and the new register value.
 
 ```julia-repl
-julia> output, register = shift_register(8191, [9, 10, 12, 13])
+julia> output, register = GNSSSignals.shift_register(8191, [9, 10, 12, 13])
 (1, 4095)
 ```
 """
@@ -85,7 +85,7 @@ Used by both [`GPSL5I`](@ref) and [`GPSL5Q`](@ref) (IS-GPS-705J §3.2.1.1), sele
 initial-state table passed in (`INITIAL_XB_CODE_STATES_I5` or `INITIAL_XB_CODE_STATES_Q5`).
 ```julia-repl
 julia> initial_states_PRN_num_1_I = [0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0]
-julia> prn_code_sat_1_I_signal = gen_l5_code(initial_states_PRN_num_1_I)
+julia> prn_code_sat_1_I_signal = GNSSSignals.gen_l5_code(initial_states_PRN_num_1_I)
 ```
 """
 function gen_l5_code(initial_xb_code_states)

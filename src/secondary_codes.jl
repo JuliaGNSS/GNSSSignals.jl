@@ -43,7 +43,8 @@ function get_secondary_code_chip end
     NoSecondaryCode <: SecondaryCode
 
 Marker type for signals without a secondary code. All `get_secondary_code_chip` lookups return
-`1`, so the compiler elides the multiplication.
+`true`, so multiplying by it keeps the other factor and its type (`x * true === x`) and the
+compiler elides the multiplication.
 """
 struct NoSecondaryCode <: SecondaryCode end
 

@@ -53,7 +53,7 @@ number in Hz.
 # Examples
 ```julia-repl
 julia> using Unitful: MHz, kHz
-julia> get_code_spectrum_BPSK(1.023MHz, 0kHz)
+julia> GNSSSignals.get_code_spectrum_BPSK(1.023MHz, 0kHz)
 9.775171065493646e-7
 ```
 """

@@ -77,7 +77,8 @@ bit (0 → +1, 1 → −1, the IS-GPS-200N / PocketSDR chip convention), then sh
 XORs `GPS_L2C_FEEDBACK_MASK` back in when the output bit was 1.
 
 ```julia-repl
-julia> code = gen_l2c_code(GPS_L2CM_INITIAL_STATES[1], GPS_L2CM_CODE_LENGTH);
+julia> code = GNSSSignals.gen_l2c_code(GNSSSignals.GPS_L2CM_INITIAL_STATES[1],
+                                       GNSSSignals.GPS_L2CM_CODE_LENGTH);
 
 julia> length(code)
 10230

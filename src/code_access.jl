@@ -4,10 +4,7 @@ $(SIGNATURES)
 Get the code value at a given phase for a specific PRN.
 
 Returns the spreading code value (including subcarrier modulation for BOC signals)
-at the specified code phase. The phase is automatically wrapped to the code length.
-
-# Arguments
-- `phase`: Code phase in chips
+at `phase`, in code chips. The phase is automatically wrapped to the code length.
 
 Returns a value of type [`get_code_type`](@ref)`(signal)`: `Int`, or `Float32` for CBOC.
 The stored `Int8` chip is widened, so correlations and sums over `get_code` values cannot
