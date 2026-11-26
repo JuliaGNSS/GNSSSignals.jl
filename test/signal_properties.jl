@@ -299,23 +299,24 @@ function _gen_code_scalar_oracle(full, sn::Int, sd::Int, rem0::Int, psub::Int, N
 end
 
 # Returns the oracle::Vector{Int8} for `signal`/`prn` at the given rate/phase.
-function _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
+function _gen_code_oracle(signal, prn, sampling_freq, code_freq, sp, sis, N)
     lut = signal.lut
     P = lut.subchip_factor; Lf = lut.table_length; per = lut.period_subchips
     full = lut.padded[1:Lf, prn]
     sec = GNSSSignals._signal_lut_secondary(lut, prn)
-    fcv = Float64(GNSSSignals._to_hz(fc_u)); fsv = Float64(GNSSSignals._to_hz(fs_u))
-    sn, sd = _CL._fixed_point_step((fcv * P) / fsv)
-    psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, fcv, fsv, P, sd)
+    code_freq_hz = Float64(GNSSSignals._to_hz(code_freq))
+    sampling_freq_hz = Float64(GNSSSignals._to_hz(sampling_freq))
+    sn, sd = _CL._fixed_point_step((code_freq_hz * P) / sampling_freq_hz)
+    psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, code_freq_hz, sampling_freq_hz, P, sd)
     _gen_code_scalar_oracle(full, sn, sd, rem0, psub, N, collect(Int8, sec), per)
 end
 
 # Assert the embedded gen_code! equals the oracle — byte-exact in BOTH regimes (the exact
 # boundary fill removed the old run-fill's ≤2-sample tolerance).
-function _check_gen_code(signal, prn, fs_u, fc_u, sp, sis, N)
+function _check_gen_code(signal, prn, sampling_freq, code_freq, sp, sis, N)
     out = Vector{Int8}(undef, N)
-    gen_code!(out, signal, prn, fs_u, fc_u, sp, sis)
-    @test out == _gen_code_oracle(signal, prn, fs_u, fc_u, sp, sis, N)
+    gen_code!(out, signal, prn, sampling_freq, code_freq, sp, sis)
+    @test out == _gen_code_oracle(signal, prn, sampling_freq, code_freq, sp, sis, N)
     out
 end
 
@@ -340,12 +341,12 @@ end
                                                           [GalileoE1B(CBOC), GalileoE1C(CBOC), GPSL1CA(), GPSL5I()]
     sampling_rate = 25e6Hz
     samples = 4000
-    fc = get_chip_rate(signal)
-    out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
+    code_freq = get_chip_rate(signal)
+    out = _check_gen_code(signal, 1, sampling_rate, code_freq, 0.0, 0, samples)
     @test eltype(out) === Int8
     # gen_code (non-bang) allocates Int8 and matches the in-place fill.
-    @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0)
-    @test eltype(gen_code(samples, signal, 1, sampling_rate, fc, 0.0)) === Int8
+    @test out == gen_code(samples, signal, 1, sampling_rate, code_freq, 0.0)
+    @test eltype(gen_code(samples, signal, 1, sampling_rate, code_freq, 0.0)) === Int8
 end
 
 @testset "Small code generation $(get_signal_name(signal))" for signal in [
@@ -383,10 +384,10 @@ end
     GPSL5I(),
     GPSL1C_P(TMBOC),
 ]
-    fc = get_chip_rate(signal)
+    code_freq = get_chip_rate(signal)
     P = signal.lut.subchip_factor
     per = signal.lut.period_subchips
-    sampling_rate = fc * P * 5 // 2                       # permute regime, sub-chip oversampled
+    sampling_rate = code_freq * P * 5 // 2                       # permute regime, sub-chip oversampled
     sec = GNSSSignals._signal_lut_secondary(signal.lut, 1); Ls = length(sec)
     # Size the buffer to cross the first secondary sign transition (a couple of periods past it),
     # so the test is non-vacuous for both the 10-chip NH10 (L5I) and the 1800-chip overlay
@@ -397,9 +398,9 @@ end
     samples_per_period = per * 5 ÷ 2                      # per / cps, cps = 2/5
     num_samples = (flip + 2) * samples_per_period
     for (sp, sis) in ((0.3, 0), (0.7, 0), (1.7, 0), (0.0, -1), (2.4, 3))
-        one = _check_gen_code(signal, 1, sampling_rate, fc, sp, sis, num_samples)
+        one = _check_gen_code(signal, 1, sampling_rate, code_freq, sp, sis, num_samples)
         # continuing engine (chunked) must reproduce the one-shot across period + call boundaries
-        eng = code_engine(signal, 1, sampling_rate, fc; start_phase = sp, start_index_shift = sis)
+        eng = code_engine(signal, 1, sampling_rate, code_freq; start_phase = sp, start_index_shift = sis)
         st = code_state(eng); got = Int8[]
         h = num_samples ÷ 2
         for ch in (1, h, 64, num_samples - 1 - h - 64)
@@ -413,18 +414,18 @@ end
     sampling_rate = 25MHz
     signal = GPSL1CA()
     samples = 1000
-    fc = get_chip_rate(signal)
-    out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, 0, samples)
-    @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0)
+    code_freq = get_chip_rate(signal)
+    out = _check_gen_code(signal, 1, sampling_rate, code_freq, 0.0, 0, samples)
+    @test out == gen_code(samples, signal, 1, sampling_rate, code_freq, 0.0)
 end
 
 @testset "Code generation with start_phase bigger than code_length" begin
     signal = GPSL1CA()
     sampling_rate = 2.5e6Hz
     num_samples = 4000
-    fc = get_chip_rate(signal)
-    out = _check_gen_code(signal, 1, sampling_rate, fc, 2065.0, 0, num_samples)
-    @test out == gen_code(num_samples, signal, 1, sampling_rate, fc, 2065.0)
+    code_freq = get_chip_rate(signal)
+    out = _check_gen_code(signal, 1, sampling_rate, code_freq, 2065.0, 0, num_samples)
+    @test out == gen_code(num_samples, signal, 1, sampling_rate, code_freq, 2065.0)
 end
 
 @testset "Code generation $(get_signal_name(signal)) with different index" for signal in [
@@ -435,9 +436,9 @@ end
 ]
     sampling_rate = 25e6Hz
     samples = 4002
-    fc = get_chip_rate(signal)
-    out = _check_gen_code(signal, 1, sampling_rate, fc, 0.0, -1, samples)
-    @test out == gen_code(samples, signal, 1, sampling_rate, fc, 0.0, -1)
+    code_freq = get_chip_rate(signal)
+    out = _check_gen_code(signal, 1, sampling_rate, code_freq, 0.0, -1, samples)
+    @test out == gen_code(samples, signal, 1, sampling_rate, code_freq, 0.0, -1)
 end
 
 @testset "Code generation with large start_phase (no overflow / BoundsError)" begin
@@ -445,19 +446,19 @@ end
     # indices; the LUT DDA wraps mod table length. Still must run cleanly and match the oracle.
     signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
-    code_frequency = 1.0230022937236385e6Hz  # Actual value from tracking crash
+    code_freq = 1.0230022937236385e6Hz  # Actual value from tracking crash
     start_phase = 14113.513288791713
     start_index_shift = -2
-    @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_frequency, start_phase, start_index_shift, 1023)
+    @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_freq, start_phase, start_index_shift, 1023)
 end
 
 @testset "Code generation with negative start_phase (no overflow / BoundsError)" begin
     signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
-    code_frequency = get_chip_rate(signal) + 4000Hz * get_chip_rate_to_center_frequency_ratio(signal)
+    code_freq = get_chip_rate(signal) + 4000Hz * get_chip_rate_to_center_frequency_ratio(signal)
     start_phase = -1000.0
     start_index_shift = 0
-    @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_frequency, start_phase, start_index_shift, 1023)
+    @test_nowarn _check_gen_code(signal, 1, sampling_freq, code_freq, start_phase, start_index_shift, 1023)
 end
 
 # Secondary-code application across small / tail-only buffers: a buffer at

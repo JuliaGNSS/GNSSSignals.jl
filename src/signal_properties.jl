@@ -141,7 +141,7 @@ julia> get_constellation_name(GalileoE1B)
 The nominal chip rate of a signal's primary ranging code, as its ICD states it (1.023 MHz
 for GPS L1 C/A, 10.23 MHz for GPS L5). A receiver's replica runs at its *code frequency*,
 this rate shifted by the code Doppler, which [`gen_code!`](@ref) and
-[`GNSSSignals.code_engine`](@ref) take as `code_frequency` (default: this rate). Defined per
+[`GNSSSignals.code_engine`](@ref) take as `code_freq` (default: this rate). Defined per
 concrete signal type; works on an instance or a type.
 """
 @inline get_chip_rate(s::AbstractGNSSSignal) = get_chip_rate(typeof(s))

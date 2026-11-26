@@ -526,7 +526,7 @@ const _BACKENDS = (CL.Portable(),
         # GPS L5I NH10 residual secondary; primary 10230 chips, P = 1 ⇒ period_subchips = 10230.
         sec = Int8[1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
         per = 10230
-        sn = 536870912; sd = 1073741824             # fs = 2·fc·P (20.46 MHz): sn = 2^29, sd = 2^30
+        sn = 536870912; sd = 1073741824             # sampling_freq = 2·code_freq·P (20.46 MHz): sn = 2^29, sd = 2^30
         # BigInt-exact reference for `out` initialised to all +1s (so out[j+1] == the sign applied
         # to sample j): p and the sub-chip are computed exactly, so no intermediate can overflow.
         secref(sn, sd, ps, r0, n0, N) =
@@ -695,10 +695,10 @@ end
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
-        fc = get_chip_rate(signal)
-        # A couple of rates, all satisfying fs ≥ fc·P.
-        for fs in (fc * P, fc * P * 2.5)
-            eng = code_engine(signal, prn, fs, fc, Val(1))
+        code_freq = get_chip_rate(signal)
+        # A couple of rates, all satisfying sampling_freq ≥ code_freq·P.
+        for sampling_freq in (code_freq * P, code_freq * P * 2.5)
+            eng = code_engine(signal, prn, sampling_freq, code_freq, Val(1))
             W = code_width(eng)
             @test W == Wdef
             nsteps = 6
@@ -706,7 +706,7 @@ end
 
             # Byte-exact oracle: the embedded-LUT one-shot gen_code!.
             oracle = Vector{Int8}(undef, num_samples)
-            gen_code!(oracle, signal, prn, fs, fc)
+            gen_code!(oracle, signal, prn, sampling_freq, code_freq)
 
             # K=1: one stream reproduces the oracle chunk by chunk.
             out = Vector{Int8}(undef, num_samples)
@@ -722,7 +722,7 @@ end
             @test out == oracle
 
             # K=4 interleaved: 4 states W apart, each advancing 4·W samples per step.
-            eng4 = code_engine(signal, prn, fs, fc, Val(4))
+            eng4 = code_engine(signal, prn, sampling_freq, code_freq, Val(4))
             @test code_width(eng4) == W
             out4 = Vector{Int8}(undef, num_samples)
             sts = ntuple(k -> code_state(eng4, k - 1), 4)
@@ -743,9 +743,9 @@ end
     @testset "allocation-free steady iteration" begin
         signal = GPSL1CA(); prn = 1
         P = signal.lut.subchip_factor
-        fc = get_chip_rate(signal)
-        fs = fc * P
-        eng = code_engine(signal, prn, fs, fc, Val(1))
+        code_freq = get_chip_rate(signal)
+        sampling_freq = code_freq * P
+        eng = code_engine(signal, prn, sampling_freq, code_freq, Val(1))
         # Drive the value-based loop inside a barrier so the engine type is concrete at
         # the @allocated site — both lookup and the renew-by-value advance must be 0-alloc.
         function drive(eng, n)
@@ -769,7 +769,7 @@ end
         l5i = GPSL5I()
         fc5 = get_chip_rate(l5i)
         @test_throws ErrorException code_engine(l5i, 1, fc5 * l5i.lut.subchip_factor, fc5, Val(1))
-        # fs < fc·subchip_factor → error.
+        # sampling_freq < code_freq·subchip_factor → error.
         l1cd = GPSL1C_D()   # BOC(1,1) → subchip_factor 2
         P = l1cd.lut.subchip_factor
         @test P > 1
@@ -786,14 +786,14 @@ end
     @testset "fill-engine run-fill at high oversampling (L1CA + L5I secondary)" begin
         for (signal, osr) in ((GPSL1CA(), 40), (GPSL5I(), 32))   # L5I carries the NH10 secondary
             prn = 1
-            fc = get_chip_rate(signal)
-            fs = fc * osr * signal.lut.subchip_factor
+            code_freq = get_chip_rate(signal)
+            sampling_freq = code_freq * osr * signal.lut.subchip_factor
             N = 7000
             # one-shot embedded gen_code! (builds + run-fills from phase 0)
             oneshot = Vector{Int8}(undef, N)
-            gen_code!(oneshot, signal, prn, fs, fc)
+            gen_code!(oneshot, signal, prn, sampling_freq, code_freq)
             # warm continuing fill engine, single fill of N
-            eng = code_engine(signal, prn, fs, fc)
+            eng = code_engine(signal, prn, sampling_freq, code_freq)
             warm = Vector{Int8}(undef, N)
             gen_code!(warm, eng, code_state(eng))
             @test warm == oneshot
@@ -819,21 +819,23 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "engine construction is zero-copy (issue #107)" begin
     sig = GPSL2CL(); prn = 1                    # 767250-chip code → ~750 KB padded column
-    fc = get_chip_rate(sig)
+    code_freq = get_chip_rate(sig)
     coltot = size(sig.lut.padded, 1)            # bytes copied if the field is concrete
     # Barriers so the built engine type is concrete at the @allocated site.
     build_fill(s, p, fsx, fcx) = code_engine(s, p, fsx, fcx)
     build_val(s, p, fsx, fcx)  = code_engine(s, p, fsx, fcx, Val(1))
-    fs_mod  = fc * 4.9                           # ~4.9 samples/chip → FillEngine512 / CodeEngine512
-    fs_high = fc * 12                            # ≥10 samples/chip → FillEngineBoundary
+    sampling_freq_mod  = code_freq * 4.9   # ~4.9 samples/chip → FillEngine512 / CodeEngine512
+    sampling_freq_high = code_freq * 12    # ≥10 samples/chip → FillEngineBoundary
     # A zero-copy build allocates only the small transient view/engine (a few KB); the concrete
     # field copies the whole column. Assert well under a full-column copy.
     bound = 64 * 1024
     @test bound < coltot                         # the copy really is much larger than the bound
-    build_fill(sig, prn, fs_mod, fc); build_fill(sig, prn, fs_high, fc); build_val(sig, prn, fs_mod, fc)
-    @test (@allocated build_fill(sig, prn, fs_mod,  fc)) < bound   # FillEngine512
-    @test (@allocated build_fill(sig, prn, fs_high, fc)) < bound   # FillEngineBoundary
-    @test (@allocated build_val(sig, prn, fs_mod,   fc)) < bound   # CodeEngine512
+    build_fill(sig, prn, sampling_freq_mod, code_freq)
+    build_fill(sig, prn, sampling_freq_high, code_freq)
+    build_val(sig, prn, sampling_freq_mod, code_freq)
+    @test (@allocated build_fill(sig, prn, sampling_freq_mod,  code_freq)) < bound   # FillEngine512
+    @test (@allocated build_fill(sig, prn, sampling_freq_high, code_freq)) < bound   # FillEngineBoundary
+    @test (@allocated build_val(sig, prn, sampling_freq_mod,   code_freq)) < bound   # CodeEngine512
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -846,7 +848,7 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "Galileo E1B CBOC (LUT integer approximation)" begin
     signal = GalileoE1B(CBOC); prn = 1
-    fc = get_chip_rate(signal)
+    code_freq = get_chip_rate(signal)
     P = 12                                            # 2·lcm(1,6)
     Lp = get_code_length(signal)
     # Primary ±1 chips for this PRN (sign of the stored chips), as the embedded bake uses.
@@ -898,20 +900,21 @@ end
     end
 
     @testset "matches float CBOC (signs exact; correlation tracks the amplitude ratio)" begin
-        # At fs = fc·P (integer ratio P) every sample is exactly one sub-chip, so the LUT and
+        # At sampling_freq = code_freq·P (integer ratio P) every sample is exactly one sub-chip, so the LUT and
         # the float CBOC align sub-chip-for-sub-chip: the sign pattern is identical for ALL
         # amplitudes, and the normalized correlation equals the cosine between (a1,a2) and the
         # float (√10, 1) — ~1 for (19,6), degrading gracefully for coarser ratios. The float
         # reference is the package's own `get_code` CBOC value at each sub-chip phase.
-        fs = fc * P
+        sampling_freq = code_freq * P
         N = Lp * P                                   # one full code period
-        fcv = GNSSSignals._to_hz(fc); fsv = GNSSSignals._to_hz(fs)
-        phase = (0:N-1) .* (fcv / fsv)
+        code_freq_hz = GNSSSignals._to_hz(code_freq)
+        sampling_freq_hz = GNSSSignals._to_hz(sampling_freq)
+        phase = (0:N-1) .* (code_freq_hz / sampling_freq_hz)
         flt = Float32.(get_code.(signal, phase, prn))
         for (amps, mincorr) in (((19, 6), 0.9999), ((3, 1), 0.9998), ((2, 1), 0.987))
             mc = cboc_mc(amps...)
             lut = Vector{Int8}(undef, N)
-            CL.generate_code!(lut, mc; code_frequency = fcv, sampling_frequency = fsv,
+            CL.generate_code!(lut, mc; code_frequency = code_freq_hz, sampling_frequency = sampling_freq_hz,
                               backend = CL.default_backend())
             @test sign.(lut) == Int8.(sign.(flt))    # signs identical to the spec
             rho = sum(Float64.(lut) .* flt) /
@@ -936,10 +939,10 @@ end
     end
 
     @testset "high-oversampling run-fill: one-shot == warm == chunked (multi-level)" begin
-        fs = fc * P * 10                              # broadcast run-fill regime
+        sampling_freq = code_freq * P * 10                              # broadcast run-fill regime
         N = 9000
-        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, signal, prn, fs, fc)
-        eng = code_engine(signal, prn, fs, fc)
+        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, signal, prn, sampling_freq, code_freq)
+        eng = code_engine(signal, prn, sampling_freq, code_freq)
         warm = Vector{Int8}(undef, N); gen_code!(warm, eng, code_state(eng))
         @test warm == oneshot
         st = code_state(eng); got = Int8[]
@@ -950,8 +953,8 @@ end
         @test all(in((-25, -13, 13, 25)), oneshot)   # run-fill preserves the multi-level values
     end
 
-    @testset "fs < fc·subchip_factor errors" begin
-        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, fc * (P - 1), fc)
+    @testset "sampling_freq < code_freq·subchip_factor errors" begin
+        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, code_freq * (P - 1), code_freq)
     end
 end
 
@@ -960,7 +963,7 @@ end
 # carry-advance (`_advance_phase` / `_advance_window_512` and the scalar-tail loops that now
 # call them) and the secondary-code period-walk (`_apply_secondary!` one-shot vs
 # `_apply_secondary_continue!`). Real secondary-code signals are filled at MODERATE
-# oversampling (fs = fc·P·osr with 1 < osr < 2) so every backend takes the windowed permute
+# oversampling (sampling_freq = code_freq·P·osr with 1 < osr < 2) so every backend takes the windowed permute
 # regime — NOT the high-oversampling boundary fast path, whose DDA is separate exact
 # arithmetic. Reference = the one-shot full-length `gen_code!`; a chunked continuation whose
 # chunk sizes straddle both SIMD-window and secondary-period boundaries must reproduce it
@@ -971,16 +974,16 @@ end
     for signal in sigs
         prn = 1
         P = signal.lut.subchip_factor
-        fc = get_chip_rate(signal)
+        code_freq = get_chip_rate(signal)
         @test length(signal.lut.secondary) > 1                # residual (non-baked) secondary
         for osr in (1.5, 1.75)                                 # windowed permute regime on every backend
-            fs = Float64(fc) * P * osr
+            sampling_freq = Float64(code_freq) * P * osr
             N = 40000                                          # spans several secondary periods
             # one-shot: windowed DDA + one-shot `_apply_secondary!` (the reference).
             oneshot = Vector{Int8}(undef, N)
-            gen_code!(oneshot, signal, prn, fs, fc)
+            gen_code!(oneshot, signal, prn, sampling_freq, code_freq)
             # a single warm fill (absolute offset 0) must match the one-shot exactly.
-            eng = code_engine(signal, prn, fs, fc)
+            eng = code_engine(signal, prn, sampling_freq, code_freq)
             warm = Vector{Int8}(undef, N)
             gen_code!(warm, eng, code_state(eng))
             @test warm == oneshot
@@ -1001,12 +1004,12 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Issue #131: the oversampling guard (`fs ≥ fc·P`) and the fractional-phase split preamble are
+# Issue #131: the oversampling guard (`sampling_freq ≥ code_freq·P`) and the fractional-phase split preamble are
 # shared by all THREE public LUT entry points — the one-shot `gen_code!(out, signal, prn, …)`,
-# the continuing `code_engine(signal, prn, fs, fc)`, and the fused `code_engine(…, Val(K))`.
+# the continuing `code_engine(signal, prn, sampling_freq, code_freq)`, and the fused `code_engine(…, Val(K))`.
 # This pins that they anchor phase identically: across a rate + fractional `start_phase` /
 # `start_index_shift` sweep the three must produce BYTE-IDENTICAL output, and the guard must
-# fire at exactly the same `fs < fc·P` condition on all three (a shared setup helper must not
+# fire at exactly the same `sampling_freq < code_freq·P` condition on all three (a shared setup helper must not
 # let the guard or the phase-split convention drift between the paths). Baked-secondary signals
 # only, so the `Val(K)` engine (no residual-secondary support) is exercised too.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1028,19 +1031,19 @@ end
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B()]   # BPSK, BOC(1,1), BOC(1,1) — all baked
     for signal in sigs
         prn = 1
-        fc = get_chip_rate(signal)
+        code_freq = get_chip_rate(signal)
         P = signal.lut.subchip_factor
-        for fs in (fc * P, fc * P * 2.5)                 # boundary (fs == fc·P) and permute regime
+        for sampling_freq in (code_freq * P, code_freq * P * 2.5)                 # boundary (sampling_freq == code_freq·P) and permute regime
             for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
                 # size N a multiple of the fused engine's SIMD width W so `collect_val` fills exactly.
-                eng_val = code_engine(signal, prn, fs, fc, Val(1); start_phase = sp, start_index_shift = sis)
+                eng_val = code_engine(signal, prn, sampling_freq, code_freq, Val(1); start_phase = sp, start_index_shift = sis)
                 W = code_width(eng_val)
                 N = 40 * W
 
                 oneshot = Vector{Int8}(undef, N)
-                gen_code!(oneshot, signal, prn, fs, fc, sp, sis)
+                gen_code!(oneshot, signal, prn, sampling_freq, code_freq, sp, sis)
 
-                eng = code_engine(signal, prn, fs, fc; start_phase = sp, start_index_shift = sis)
+                eng = code_engine(signal, prn, sampling_freq, code_freq; start_phase = sp, start_index_shift = sis)
                 cont = Vector{Int8}(undef, N)
                 gen_code!(cont, eng, code_state(eng))
 
@@ -1052,23 +1055,23 @@ end
         end
     end
 
-    # The `fs < fc·P` oversampling guard must fire at the SAME condition on all three entry
-    # points: fine at exactly fc·P, an error for any fs below it.
+    # The `sampling_freq < code_freq·P` oversampling guard must fire at the SAME condition on all three entry
+    # points: fine at exactly code_freq·P, an error for any sampling_freq below it.
     @testset "shared oversampling guard fires identically" begin
-        signal = GPSL1C_D(); prn = 1                     # BOC(1,1) → P = 2, so fc·P > fc
-        fc = get_chip_rate(signal)
+        signal = GPSL1C_D(); prn = 1                     # BOC(1,1) → P = 2, so code_freq·P > code_freq
+        code_freq = get_chip_rate(signal)
         P = signal.lut.subchip_factor
         @test P > 1
-        ok  = fc * P                                     # exactly at the threshold — allowed
-        bad = fc * P * 0.5                               # below fc·P — must error everywhere
+        ok  = code_freq * P                                     # exactly at the threshold — allowed
+        bad = code_freq * P * 0.5                               # below code_freq·P — must error everywhere
         # At the threshold none of the three throw.
-        @test gen_code!(Vector{Int8}(undef, 64), signal, prn, ok, fc) isa AbstractVector
-        @test code_engine(signal, prn, ok, fc) isa GNSSSignals.CodeFillEngine
-        @test code_engine(signal, prn, ok, fc, Val(1)) !== nothing
+        @test gen_code!(Vector{Int8}(undef, 64), signal, prn, ok, code_freq) isa AbstractVector
+        @test code_engine(signal, prn, ok, code_freq) isa GNSSSignals.CodeFillEngine
+        @test code_engine(signal, prn, ok, code_freq, Val(1)) !== nothing
         # Below the threshold all three raise (the shared guard condition).
-        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, bad, fc)
-        @test_throws ErrorException code_engine(signal, prn, bad, fc)
-        @test_throws ErrorException code_engine(signal, prn, bad, fc, Val(1))
+        @test_throws ErrorException gen_code!(Vector{Int8}(undef, 64), signal, prn, bad, code_freq)
+        @test_throws ErrorException code_engine(signal, prn, bad, code_freq)
+        @test_throws ErrorException code_engine(signal, prn, bad, code_freq, Val(1))
     end
 end
 
@@ -1118,22 +1121,22 @@ end
         @test lut.padded[1:lut.table_length, 1] == mc.table.chips
     end
 
-    @testset "resampled output matches float get_code (BOC path) sampled at fc·P" for m in (1, 2, 3)
+    @testset "resampled output matches float get_code (BOC path) sampled at code_freq·P" for m in (1, 2, 3)
         P = 4 * m
         mc = CL.code_replica(primary, CL.BOCcos(m); max_bake = typemax(Int16))
-        N = Lp * P                                       # one full code period at fs = fc·P
-        fc = 1.0; fs = fc * P
-        # At fs = fc·P sample n (0-based) is exactly sub-chip n; evaluate the get_code BOC value
+        N = Lp * P                                       # one full code period at sampling_freq = code_freq·P
+        code_freq = 1.0; sampling_freq = code_freq * P
+        # At sampling_freq = code_freq·P sample n (0-based) is exactly sub-chip n; evaluate the get_code BOC value
         # (n == 1, no secondary: primary[floor φ] × cosine subcarrier φ) at that sub-chip's
         # MIDPOINT φ = (n + 0.5)/P. The subcarrier is constant across the sub-chip, so the midpoint
         # is the get_code value the whole sample represents — and it avoids evaluating exactly on a
         # sub-chip boundary, where `floor((φ + 1/(4m))·2m)` is ill-defined in Float64 (e.g. 7.0 → 6.999…).
-        mid = ((0:N-1) .+ 0.5) .* (fc / fs)
+        mid = ((0:N-1) .+ 0.5) .* (code_freq / sampling_freq)
         ref = Int8[Int8(primary[mod(floor(Int, φ), Lp) + 1] *
                         GNSSSignals.get_subcarrier_code(BOCcos(m, 1), φ)) for φ in mid]
         for be in _BACKENDS
             out = Vector{Int8}(undef, N)
-            CL.generate_code!(out, mc; code_frequency = fc, sampling_frequency = fs, backend = be)
+            CL.generate_code!(out, mc; code_frequency = code_freq, sampling_frequency = sampling_freq, backend = be)
             @test out == ref
         end
     end
@@ -1174,20 +1177,20 @@ end
     sigs = [GPSL1CA(), GPSL1C_D(), GalileoE1B()]   # BPSK, BOC(1,1), BOC(1,1)
     for signal in sigs
         prn = 1
-        fc = get_chip_rate(signal)
+        code_freq = get_chip_rate(signal)
         P = signal.lut.subchip_factor
-        fs = fc * P * 2.5                         # permute regime (sub-chip oversampled), Unitful Hz
+        sampling_freq = code_freq * P * 2.5                         # permute regime (sub-chip oversampled), Unitful Hz
         N = 20000
         # The baked sub-chip table for this PRN (the column the embedded gen_code! resamples).
         Lf = signal.lut.table_length
         full = signal.lut.padded[1:Lf, prn]
-        fcv = Float64(fc); fsv = Float64(fs)
-        sn, sd = GNSSSignals.CodeLUT._fixed_point_step((fcv * P) / fsv)
+        code_freq_hz = Float64(code_freq); sampling_freq_hz = Float64(sampling_freq)
+        sn, sd = GNSSSignals.CodeLUT._fixed_point_step((code_freq_hz * P) / sampling_freq_hz)
         for (sp, sis) in ((0.0, 0), (0.25, 0), (0.5, 0), (3.5, 0), (0.0, -1), (1.7, 5))
             lut = Vector{Int8}(undef, N)
-            gen_code!(lut, signal, prn, fs, fc, sp, sis)
+            gen_code!(lut, signal, prn, sampling_freq, code_freq, sp, sis)
             # Fixed-point scalar oracle at the same fractional phase split the kernel uses.
-            psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, fcv, fsv, P, sd)
+            psub, rem0 = GNSSSignals._subchip_phase_split(sp, sis, code_freq_hz, sampling_freq_hz, P, sd)
             ref = _ref_rem0(full, sn, rem0, psub, N)
             @test lut == ref
         end
@@ -1209,14 +1212,14 @@ end
         # Portable adapter paths over the zero-copy column view are covered regardless of the
         # CI host CPU. Forcing a backend the CPU lacks would SIGILL, so we only sweep _BACKENDS.
         signal = GPSL1CA(); prn = 1
-        fc = get_chip_rate(signal)
-        fs = fc * 2.5                                     # permute regime (sub-chip oversampled)
-        oneshot = Vector{Int8}(undef, 20000); gen_code!(oneshot, signal, prn, fs, fc)
+        code_freq = get_chip_rate(signal)
+        sampling_freq = code_freq * 2.5                                     # permute regime (sub-chip oversampled)
+        oneshot = Vector{Int8}(undef, 20000); gen_code!(oneshot, signal, prn, sampling_freq, code_freq)
         # Function barrier for the @allocated site so the engine/state types are concrete and
         # the isbits state isn't boxed into the testset's soft scope (mirrors `drive` above).
         fill_once(eng, out, st) = gen_code!(out, eng, st)
         for be in _BACKENDS
-            eng = code_engine(signal, prn, fs, fc; backend = be)
+            eng = code_engine(signal, prn, sampling_freq, code_freq; backend = be)
             warm = Vector{Int8}(undef, 20000); gen_code!(warm, eng, code_state(eng))
             @test warm == oneshot
             # The threaded fill state is isbits, so the steady-state fill is allocation-free.
@@ -1236,11 +1239,11 @@ end
         # sign flip across call boundaries; cross several periods (incl. the -1 chips at NH10
         # indices 4,5,7,9) and require byte-exact agreement with the one-shot gen_code!.
         sig = GPSL5I(); prn = 1
-        fc = get_chip_rate(sig); fs = fc * 2
+        code_freq = get_chip_rate(sig); sampling_freq = code_freq * 2
         N = 230_000                       # > 10 NH10 periods (period = 10230·osr samples)
-        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, sig, prn, fs, fc)
+        oneshot = Vector{Int8}(undef, N); gen_code!(oneshot, sig, prn, sampling_freq, code_freq)
         @test any(==(Int8(-1)), GNSSSignals._signal_lut_secondary(sig.lut, prn))   # negate branch can fire
-        eng = code_engine(sig, prn, fs, fc); st = code_state(eng)
+        eng = code_engine(sig, prn, sampling_freq, code_freq); st = code_state(eng)
         got = Int8[]
         for ch in (1, 99_999, 64, 100_000, N - 1 - 99_999 - 64 - 100_000)
             b = Vector{Int8}(undef, ch); st = gen_code!(b, eng, st); append!(got, b)
@@ -1361,20 +1364,20 @@ end
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Issue #105: the public entry points (`gen_code!` / `gen_code` / `code_engine`) must
-# require `Unitful.Frequency` for `sampling_frequency` and `code_frequency`. A bare number
-# used to be silently interpreted as Hz — e.g. `code_frequency = 1.023` (meaning MHz) became
-# 1.023 Hz, passing the fs≥fc·P guard trivially and returning a constant all-ones buffer
+# require `Unitful.Frequency` for `sampling_freq` and `code_freq`. A bare number
+# used to be silently interpreted as Hz — e.g. `code_freq = 1.023` (meaning MHz) became
+# 1.023 Hz, passing the sampling_freq≥code_freq·P guard trivially and returning a constant all-ones buffer
 # (0 chip transitions instead of 511). A bare frequency must raise `MethodError` again.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "issue #105: public API requires Unitful.Frequency" begin
     signal = GPSL1CA(); prn = 1
 
-    # A bare Real code_frequency must NOT be silently accepted as Hz.
+    # A bare Real code_freq must NOT be silently accepted as Hz.
     @test_throws MethodError gen_code!(zeros(Int8, 4000), signal, prn, 4MHz, 1.023)
     @test_throws MethodError gen_code(4000, signal, prn, 4MHz, 1.023)
     @test_throws MethodError code_engine(signal, prn, 4MHz, 1.023)
     @test_throws MethodError code_engine(signal, prn, 4MHz, 1.023, Val(1))
-    # A bare Real sampling_frequency is likewise rejected.
+    # A bare Real sampling_freq is likewise rejected.
     @test_throws MethodError gen_code!(zeros(Int8, 4000), signal, prn, 4e6, 1.023MHz)
     @test_throws MethodError code_engine(signal, prn, 4e6, 1.023MHz)
 
@@ -1385,7 +1388,7 @@ end
     @test sum(diff(buf) .!= 0) == 511
     @test gen_code(4000, signal, prn, 4MHz, 1.023MHz) == buf
 
-    # The default-frequency path (code_frequency omitted, derived from the signal) still works.
+    # The default-frequency path (code_freq omitted, derived from the signal) still works.
     @test sum(diff(gen_code(4000, signal, prn, 4MHz)) .!= 0) == 511
 end
 
@@ -1397,15 +1400,15 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "strided Int8 view targets (issue #103)" begin
     # 20.46 MHz over GPS L1CA's 1.023 MHz gives m ≈ 20 samples/chip → boundary-fill path.
-    fs = 20.46MHz
+    sampling_freq = 20.46MHz
     N = 4000
     signal = GPSL1CA()
-    ref = gen_code(N, signal, 1, fs)
+    ref = gen_code(N, signal, 1, sampling_freq)
 
     @testset "one-shot gen_code! into a matrix row" begin
         A = zeros(Int8, 2, N)
         v = view(A, 1, :)                       # strided (stride 2), NOT contiguous
-        gen_code!(v, signal, 1, fs)
+        gen_code!(v, signal, 1, sampling_freq)
         @test collect(v) == ref                 # the view itself must match the oracle
         @test all(==(0), @view A[2, :])         # the untouched row must stay all-zero
     end
@@ -1413,7 +1416,7 @@ end
     @testset "continuing code_engine fill into a matrix row" begin
         A = zeros(Int8, 2, N)
         v = view(A, 1, :)
-        eng = code_engine(signal, 1, fs)
+        eng = code_engine(signal, 1, sampling_freq)
         st = code_state(eng)
         gen_code!(v, eng, st)
         @test collect(v) == ref
@@ -1437,7 +1440,7 @@ end
         A = zeros(Int8, N, 2)
         col = view(A, :, 1)
         @test col isa Base.FastContiguousSubArray
-        gen_code!(col, signal, 1, fs)
+        gen_code!(col, signal, 1, sampling_freq)
         @test collect(col) == ref
         @test all(==(0), @view A[:, 2])
     end
@@ -1488,9 +1491,9 @@ end
 # permute engine on any host incl. Portable) filling a strided matrix-row view must match the
 # dense fill and leave the neighbouring row intact.
 @testset "continuing permute gen_code! into a matrix row (issue #124)" begin
-    signal = GPSL1CA(); fs = 1.5MHz; N = 4000
-    ref = gen_code(N, signal, 1, fs)
-    eng = code_engine(signal, 1, fs)
+    signal = GPSL1CA(); sampling_freq = 1.5MHz; N = 4000
+    ref = gen_code(N, signal, 1, sampling_freq)
+    eng = code_engine(signal, 1, sampling_freq)
     A = zeros(Int8, 2, N); v = view(A, 1, :)
     gen_code!(v, eng, code_state(eng))
     @test collect(v) == ref
@@ -1514,7 +1517,7 @@ _subchips(m::BOCcos) = 4 * m.m / m.n
         signal = TestBOCSignal(modulation)
         P = signal.lut.subchip_factor
         modulation isa TMBOC || @test P == _subchips(modulation)
-        fc = get_chip_rate(signal)
+        code_freq = get_chip_rate(signal)
         L = get_code_length(signal)
         # Sampling frequencies whose step is an exact binary fraction of a sub-chip (3/8, 5/16,
         # 7/64 per sample), started half a step-grid unit off the sub-chip grid: the table's
@@ -1522,12 +1525,12 @@ _subchips(m::BOCcos) = 4 * m.m / m.n
         # form `get_code` at each sample's phase and the table must agree on every sample.
         for (step_num, log2_den) in ((3, 3), (5, 4), (7, 6))
             step = step_num / 2^log2_den
-            fs = fc * P / step
+            sampling_freq = code_freq * P / step
             start_phase = 1 / (2^(log2_den + 1) * P)
             N = ceil(Int, 2 * L * P / step)                   # two code periods
             for prn in (1, 2)
-                table = gen_code(N, signal, prn, fs, fc, start_phase)
-                closed_form = [get_code(signal, start_phase + i * fc / fs, prn) for i in 0:N-1]
+                table = gen_code(N, signal, prn, sampling_freq, code_freq, start_phase)
+                closed_form = [get_code(signal, start_phase + i * code_freq / sampling_freq, prn) for i in 0:N-1]
                 @test table == closed_form
             end
         end

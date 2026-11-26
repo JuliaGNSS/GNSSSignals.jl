@@ -71,7 +71,7 @@ end
 @testset "GalileoE1B sample-stream matches PocketSDR reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against the BOC(1,1) replica produced by
     # PocketSDR's `gen_code_E1B` at 2 samples per chip, upsampled by 6×
-    # to 12 samples per chip. At `sampling_frequency = 12 × code_frequency`
+    # to 12 samples per chip. At `sampling_freq = 12 × code_freq`
     # the primary-chip and BOC half-cycle boundaries are both
     # sample-aligned, so the comparison is bit-exact.
     #

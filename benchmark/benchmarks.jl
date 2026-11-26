@@ -5,7 +5,7 @@ using Unitful: Hz, ustrip, @u_str
 # Strip a Unitful frequency to a plain Float64 Hz value (for computing N).
 ustrip_hz(x) = Float64(ustrip(u"Hz", x))
 # Sampling frequency as an MHz string for a benchmark label ("5 MHz", "2.5 MHz").
-_mhz(fs) = (m = ustrip_hz(fs) / 1e6; (m == round(m) ? string(Int(m)) : string(m)) * " MHz")
+_mhz(sampling_freq) = (m = ustrip_hz(sampling_freq) / 1e6; (m == round(m) ? string(Int(m)) : string(m)) * " MHz")
 
 const SUITE = BenchmarkGroup()
 
@@ -20,20 +20,20 @@ _buf(n) = zeros(Int8, n)
 # small, stable sanity row for the plain (GPSL1/GPSL5) and CBOC (GalileoE1B(CBOC)) generators; full
 # per-signal coverage lives in "1 ms code generation" below.
 # ─────────────────────────────────────────────────────────────────────────────
-for (name, signal, fs) in (("GPSL1", GPSL1CA(), 2e6Hz), ("GPSL5", GPSL5I(), 20e6Hz),
+for (name, signal, sampling_freq) in (("GPSL1", GPSL1CA(), 2e6Hz), ("GPSL5", GPSL5I(), 20e6Hz),
                            ("GalileoE1B(CBOC)", GalileoE1B(CBOC), 15e6Hz))
     out = _buf(2000)
-    SUITE["2000 sample code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
-        $out, $signal, $1, $fs,
+    SUITE["2000 sample code generation"]["$name @ $(_mhz(sampling_freq))"] = @benchmarkable gen_code!(
+        $out, $signal, $1, $sampling_freq,
     ) evals = 10 samples = 10000
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1 ms code generation — one gen_code! fill of an N = round(Int, fs·1e-3)-sample epoch per signal, for
-# EVERY signal the package defines. `fs` is chosen per (code_frequency, subchip_factor P) family,
+# 1 ms code generation — one gen_code! fill of an N = round(Int, sampling_freq·1e-3)-sample epoch per signal, for
+# EVERY signal the package defines. `sampling_freq` is chosen per (code_freq, subchip_factor P) family,
 # so signals sharing a chip rate + modulation order share a rate and timing differences reflect the
-# signal/modulation rather than a different fs; each row carries its fs in the label. fs clears the
-# LUT's fs ≥ code_frequency·P requirement with headroom:
+# signal/modulation rather than a different sampling_freq; each row carries its sampling_freq in the label. sampling_freq clears the
+# LUT's sampling_freq ≥ code_freq·P requirement with headroom:
 #   1.023 MHz  P=1  BPSK         →  5 MHz   GPSL1CA
 #   1.023 MHz  P=2  BOC(1,1)    →  5 MHz   GPSL1C_D, GPSL1C_P, GalileoE1B, GalileoE1C,
 #                                          BeiDouB1C_D, BeiDouB1C_P
@@ -45,8 +45,8 @@ end
 #                                          GalileoE5bI, GalileoE5bQ, BeiDouB3I, BeiDouB2bI,
 #                                          BeiDouB2aI, BeiDouB2aQ
 # ─────────────────────────────────────────────────────────────────────────────
-# Each case is (name, constructor, fs); `_case` names a default replica after its type.
-_case(S, fs) = (String(nameof(S)), S, fs)
+# Each case is (name, constructor, sampling_freq); `_case` names a default replica after its type.
+_case(S, sampling_freq) = (String(nameof(S)), S, sampling_freq)
 const _MS_CASES = (
     _case(GPSL1CA, 5e6Hz), _case(GPSL1C_D, 5e6Hz), _case(GPSL1C_P, 5e6Hz),
     ("GPSL1C_P(TMBOC)", () -> GPSL1C_P(TMBOC), 15e6Hz),
@@ -59,17 +59,17 @@ const _MS_CASES = (
     _case(BeiDouB2bI, 40e6Hz), _case(BeiDouB2aI, 40e6Hz), _case(BeiDouB2aQ, 40e6Hz),
     _case(BeiDouB1C_D, 5e6Hz), _case(BeiDouB1C_P, 5e6Hz),
 )
-for (name, make, fs) in _MS_CASES
+for (name, make, sampling_freq) in _MS_CASES
     signal = make()
-    N = round(Int, ustrip_hz(fs) * 1e-3)
+    N = round(Int, ustrip_hz(sampling_freq) * 1e-3)
     out = _buf(N)
-    SUITE["1 ms code generation"]["$name @ $(_mhz(fs))"] = @benchmarkable gen_code!(
-        $out, $signal, $1, $fs,
+    SUITE["1 ms code generation"]["$name @ $(_mhz(sampling_freq))"] = @benchmarkable gen_code!(
+        $out, $signal, $1, $sampling_freq,
     ) evals = 10 samples = 1000
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# oversampling sweep — gen_code! across oversampling ratios (fs/fc = samples per chip) at a small
+# oversampling sweep — gen_code! across oversampling ratios (sampling_freq/code_freq = samples per chip) at a small
 # (4k) and steady-state (64k) buffer. Guards the LUT's ratio-dependent path selection: the windowed
 # permute (flat in the ratio) at low oversampling, switching to the exact boundary fill once the
 # baked table is oversampled ≳10× (AVX-512) / ≳4× (AVX2). One representative signal (GPS L1 C/A,
@@ -80,14 +80,14 @@ end
 # interior stores) — the region where the old run-fill fell off its `Val` ladder into the slow
 # generic kernel.
 # ─────────────────────────────────────────────────────────────────────────────
-let signal = GPSL1CA(), fc = 1023e3Hz
+let signal = GPSL1CA(), code_freq = 1023e3Hz
     for oversampling in (2, 8, 17, 24, 32, 64, 128), (slabel, n) in (("4k", 4096), ("64k", 65536))
-        fs = oversampling * fc
+        sampling_freq = oversampling * code_freq
         out = _buf(n)
         # evals = 10 (average out per-call scheduling jitter — the 4k fills run in a few
         # hundred ns, where evals = 1 made the reported minimum swing ±25% on shared runners)
         # and samples = 10000, matching the "2000 sample" group, for a stable minimum.
         SUITE["oversampling sweep"]["$(lpad(oversampling, 2, '0'))x"][slabel] =
-            @benchmarkable gen_code!($out, $signal, $1, $fs, $fc, $0.0, $0) evals = 10 samples = 10000
+            @benchmarkable gen_code!($out, $signal, $1, $sampling_freq, $code_freq, $0.0, $0) evals = 10 samples = 10000
     end
 end

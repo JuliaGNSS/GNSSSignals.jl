@@ -17,22 +17,22 @@ function scalar_sum(signal)
 end
 
 # `rebuild(codes, lut)` makes the same signal around another code matrix.
-function compare_storage(name, original, rebuild, fs)
+function compare_storage(name, original, rebuild, sampling_freq)
     small = rebuild(Int8.(original.codes), original.lut)
     large = rebuild(Int16.(original.codes), original.lut)
     @assert small.lut === large.lut
     @assert all(get_code(small, i + 0.25, 1) == get_code(large, i + 0.25, 1) for i in 0:N-1)
 
     small_out, large_out = zeros(Int8, N), zeros(Int8, N)
-    gen_code!(small_out, small, 1, fs)
-    gen_code!(large_out, large, 1, fs)
+    gen_code!(small_out, small, 1, sampling_freq)
+    gen_code!(large_out, large, 1, sampling_freq)
     @assert small_out == large_out
     @assert scalar_sum(small) == scalar_sum(large)
 
-    println("\n", name, " (", N, " samples, ", fs, ")")
+    println("\n", name, " (", N, " samples, ", sampling_freq, ")")
     for (label, signal, out) in (("Int8", small, small_out), ("Int16", large, large_out))
         scalar = @benchmarkable scalar_sum($signal) evals = 1 samples = 100
-        generated = @benchmarkable gen_code!($out, $signal, $1, $fs) evals = 1 samples = 100
+        generated = @benchmarkable gen_code!($out, $signal, $1, $sampling_freq) evals = 1 samples = 100
         scalar_trial = run(scalar; seconds = 1)
         generated_trial = run(generated; seconds = 1)
         println(label, ": primary matrix = ", Base.summarysize(signal.codes), " bytes; ",

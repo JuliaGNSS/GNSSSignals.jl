@@ -49,13 +49,13 @@ const _LANES64 = Vec{64,Int64}(ntuple(j -> Int64(j - 1), Val(64)))
 end
 
 """
-    chips_per_sample(code_frequency, sampling_frequency)
+    chips_per_sample(code_freq, sampling_freq)
 
-Normalised code frequency `code_frequency / sampling_frequency` (chips advanced per sample).
+Normalised code frequency `code_freq / sampling_freq` (chips advanced per sample).
 Pass the result to [`generate_code!`](@ref) / [`generate_code`](@ref). Must be ≤ 1
-(the front-end must oversample, `sampling_frequency ≥ code_frequency`).
+(the front-end must oversample, `sampling_freq ≥ code_freq`).
 """
-chips_per_sample(code_frequency, sampling_frequency) = code_frequency / sampling_frequency
+chips_per_sample(code_freq, sampling_freq) = code_freq / sampling_freq
 
 # Pointer/`VecRange`-safe output targets for the fast kernels (boundary fill + windowed
 # permute), which write through `pointer(out)` / SIMD `VecRange` stores assuming UNIT STRIDE.

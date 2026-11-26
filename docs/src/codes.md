@@ -33,10 +33,10 @@ GNSSSignals.gen_code!
 
 `gen_code!`/`gen_code` (above) resample PRN `prn`'s fully-modulated replica from the signal's
 embedded `Int8` LUT. For continuing, block-to-block generation (tracking) build a
-[`GNSSSignals.code_engine`](@ref)`(signal, prn, fs, fc)` once and thread the immutable state: seed it with
+[`GNSSSignals.code_engine`](@ref)`(signal, prn, sampling_freq, code_freq)` once and thread the immutable state: seed it with
 [`GNSSSignals.code_state`](@ref)`(eng)`, then call `gen_code!(out, eng, st)` per integration, threading the
 returned `CodeFillState`. For an allocation-free, register-resident fused loop, use the
-value-based [`GNSSSignals.code_engine`](@ref)`(signal, prn, fs, fc, Val(K))` and its state stepping
+value-based [`GNSSSignals.code_engine`](@ref)`(signal, prn, sampling_freq, code_freq, Val(K))` and its state stepping
 ([`GNSSSignals.code_state`](@ref) / [`GNSSSignals.code_lookup`](@ref) / [`GNSSSignals.code_advance`](@ref) / [`GNSSSignals.code_width`](@ref)).
 Both continuing paths use immutable, explicit state — nothing mutates behind your back.
 

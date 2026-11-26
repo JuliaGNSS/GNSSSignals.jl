@@ -68,21 +68,21 @@ $(SIGNATURES)
 Calculate the spectral power density of a sine-phased BOC modulated signal.
 
 Evaluated at baseband frequency `f` for chip rate `chip_rate` and subcarrier frequency
-`subcarrier_frequency`, each Unitful or a plain number in Hz.
+`subcarrier_freq`, each Unitful or a plain number in Hz.
 
-A chip spans `k = 2 · subcarrier_frequency / chip_rate` subcarrier half-periods, which must
+A chip spans `k = 2 · subcarrier_freq / chip_rate` subcarrier half-periods, which must
 be a whole number (an `ArgumentError` otherwise). An even `k` puts whole subcarrier periods in
 a chip and nulls the spectrum at `f = 0`; an odd `k` leaves half a period over, so it does not
 (Betz, "Binary Offset Carrier Modulations for Radionavigation", NAVIGATION 48(4), 2001).
 """
-function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f)
-    chip_rate, subcarrier_frequency, f = _hz(chip_rate), _hz(subcarrier_frequency), _hz(f)
-    k = _half_periods_per_chip(chip_rate, subcarrier_frequency)
+function get_code_spectrum_BOCsin(chip_rate, subcarrier_freq, f)
+    chip_rate, subcarrier_freq, f = _hz(chip_rate), _hz(subcarrier_freq), _hz(f)
+    k = _half_periods_per_chip(chip_rate, subcarrier_freq)
     if iseven(k)
-        return ((sinc(f / chip_rate) * tan(pi * f / (2 * subcarrier_frequency)))^2 / chip_rate)
+        return ((sinc(f / chip_rate) * tan(pi * f / (2 * subcarrier_freq)))^2 / chip_rate)
     else
-        return (sinc(f / (2 * subcarrier_frequency)) * cospi(f / chip_rate) /
-                (k * cospi(f / (2 * subcarrier_frequency))))^2 / chip_rate
+        return (sinc(f / (2 * subcarrier_freq)) * cospi(f / chip_rate) /
+                (k * cospi(f / (2 * subcarrier_freq))))^2 / chip_rate
     end
 end
 
@@ -92,28 +92,28 @@ $(SIGNATURES)
 Calculate the spectral power density of a cosine-phased BOC modulated signal.
 
 Evaluated at baseband frequency `f` for chip rate `chip_rate` and subcarrier frequency
-`subcarrier_frequency`, each Unitful or a plain number in Hz.
+`subcarrier_freq`, each Unitful or a plain number in Hz.
 
 As for [`get_code_spectrum_BOCsin`](@ref GNSSSignals.get_code_spectrum_BOCsin), a chip must
-span a whole number `k = 2 · subcarrier_frequency / chip_rate` of subcarrier half-periods,
+span a whole number `k = 2 · subcarrier_freq / chip_rate` of subcarrier half-periods,
 and an even and an odd `k` take different forms.
 """
-function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f)
-    chip_rate, subcarrier_frequency, f = _hz(chip_rate), _hz(subcarrier_frequency), _hz(f)
-    k = _half_periods_per_chip(chip_rate, subcarrier_frequency)
+function get_code_spectrum_BOCcos(chip_rate, subcarrier_freq, f)
+    chip_rate, subcarrier_freq, f = _hz(chip_rate), _hz(subcarrier_freq), _hz(f)
+    k = _half_periods_per_chip(chip_rate, subcarrier_freq)
     if iseven(k)
-        return (2 * sinc(f / chip_rate) * sinpi(f / (4 * subcarrier_frequency))^2 /
-                cospi(f / (2 * subcarrier_frequency)))^2 / chip_rate
+        return (2 * sinc(f / chip_rate) * sinpi(f / (4 * subcarrier_freq))^2 /
+                cospi(f / (2 * subcarrier_freq)))^2 / chip_rate
     else
-        return (sinpi(f / (4 * subcarrier_frequency)) * sinc(f / (4 * subcarrier_frequency)) *
-                cospi(f / chip_rate) / (k * cospi(f / (2 * subcarrier_frequency))))^2 / chip_rate
+        return (sinpi(f / (4 * subcarrier_freq)) * sinc(f / (4 * subcarrier_freq)) *
+                cospi(f / chip_rate) / (k * cospi(f / (2 * subcarrier_freq))))^2 / chip_rate
     end
 end
 
 # The number of subcarrier half-periods `k = 2 f_s / f_c` a chip spans. The closed-form BOC
 # spectra hold for a whole `k` only, and take one form for an even and another for an odd one.
-function _half_periods_per_chip(chip_rate, subcarrier_frequency)
-    k = 2 * subcarrier_frequency / chip_rate
+function _half_periods_per_chip(chip_rate, subcarrier_freq)
+    k = 2 * subcarrier_freq / chip_rate
     k_whole = round(Int, k)
     isapprox(k, k_whole) || throw(ArgumentError(
         "a BOC chip must span a whole number of subcarrier half-periods; got $k"))

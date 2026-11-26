@@ -4,7 +4,7 @@
 
 For most applications, use [`gen_code`](@ref) or [`gen_code!`](@ref) to generate sampled codes. These functions are highly optimized for real-time GNSS signal processing and are significantly faster than calling [`get_code`](@ref) in a loop.
 
-Each signal bakes its fully-modulated ±1 replica into an embedded `Int8` lookup table at construction; `gen_code!` resamples that table with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, with a scalar fallback). The output buffer is `Int8`, and the sampling frequency must satisfy `fs ≥ code_frequency · subchip_factor`.
+Each signal bakes its fully-modulated ±1 replica into an embedded `Int8` lookup table at construction; `gen_code!` resamples that table with a drift-free fixed-point DDA and a single SIMD sliding-window permute (AVX-512 / AVX2 / NEON, with a scalar fallback). The output buffer is `Int8`, and the sampling frequency must satisfy `sampling_freq ≥ code_freq · subchip_factor`.
 
 ```julia
 using GNSSSignals
@@ -12,15 +12,15 @@ using Unitful: Hz, kHz, MHz
 
 gpsl1ca = GPSL1CA()
 prn = 1
-sampling_frequency = 4MHz
+sampling_freq = 4MHz
 num_samples = 4000  # 1 ms at 4 MHz
 
 # Allocating version
-sampled_code = gen_code(num_samples, gpsl1ca, prn, sampling_frequency)
+sampled_code = gen_code(num_samples, gpsl1ca, prn, sampling_freq)
 
 # In-place version (more efficient for repeated calls). The buffer is Int8.
 buffer = zeros(Int8, num_samples)
-gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
+gen_code!(buffer, gpsl1ca, prn, sampling_freq)
 ```
 
 ### With Doppler Shift
@@ -33,15 +33,15 @@ using Unitful: Hz, MHz
 
 gpsl1ca = GPSL1CA()
 prn = 1
-sampling_frequency = 4MHz
+sampling_freq = 4MHz
 carrier_doppler = 1000Hz
 
 # Calculate code Doppler from carrier Doppler
 code_doppler = carrier_doppler * get_chip_rate_to_center_frequency_ratio(gpsl1ca)
-code_frequency = get_chip_rate(gpsl1ca) + code_doppler
+code_freq = get_chip_rate(gpsl1ca) + code_doppler
 
 # Generate Doppler-shifted code
-sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, code_frequency)
+sampled_code = gen_code(4000, gpsl1ca, prn, sampling_freq, code_freq)
 ```
 
 ### With Phase Offset
@@ -51,8 +51,8 @@ You can specify a starting code phase:
 ```julia
 start_phase = 100.5  # Start at chip 100.5
 prn = 1
-sampling_frequency = 4MHz
-sampled_code = gen_code(4000, gpsl1ca, prn, sampling_frequency, get_chip_rate(gpsl1ca), start_phase)
+sampling_freq = 4MHz
+sampled_code = gen_code(4000, gpsl1ca, prn, sampling_freq, get_chip_rate(gpsl1ca), start_phase)
 ```
 
 ### Long Constant-Rate Fills (Rate Quantization)
@@ -77,9 +77,9 @@ using Unitful: Hz, MHz, upreferred
 
 gpsl1ca = GPSL1CA()
 prn = 1
-sampling_frequency = 50MHz
-code_frequency = get_chip_rate(gpsl1ca)
-chips_per_sample = upreferred(code_frequency / sampling_frequency)  # plain Float64
+sampling_freq = 50MHz
+code_freq = get_chip_rate(gpsl1ca)
+chips_per_sample = upreferred(code_freq / sampling_freq)  # plain Float64
 
 segment_length = 10^7
 buffer = zeros(Int8, segment_length)
@@ -87,7 +87,7 @@ for k in 0:9  # 10 segments = 2 s at 50 MHz
     # Re-anchor each segment at the exact float phase instead of letting the
     # quantized DDA rate run across segment boundaries.
     start_phase = mod(k * segment_length * chips_per_sample, get_code_length(gpsl1ca))
-    gen_code!(buffer, gpsl1ca, prn, sampling_frequency, code_frequency, start_phase)
+    gen_code!(buffer, gpsl1ca, prn, sampling_freq, code_freq, start_phase)
     # process buffer...
 end
 ```
@@ -434,13 +434,13 @@ when it is known so that BeiDou D1 and D2 use the satellite's own rate.
    num_iterations = 1000
    buffer = zeros(Int8, num_samples)
    for i in 1:num_iterations
-       gen_code!(buffer, gpsl1ca, prn, sampling_frequency)
+       gen_code!(buffer, gpsl1ca, prn, sampling_freq)
        # process buffer...
    end
    ```
 
    For repeated integrations that continue seamlessly across blocks (tracking), build a
-   [`GNSSSignals.code_engine`](@ref)`(signal, prn, fs, fc)` once, seed
+   [`GNSSSignals.code_engine`](@ref)`(signal, prn, sampling_freq, code_freq)` once, seed
    `st = GNSSSignals.code_state(eng)`, and call
    `st = gen_code!(buffer, eng, st)` per block — the DDA setup is paid once, the per-call fill
    is allocation-free, and threading the returned state continues the stream seamlessly.

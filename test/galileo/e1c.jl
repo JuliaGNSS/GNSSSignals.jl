@@ -117,20 +117,20 @@ end
     # The embedded LUT emits an Int8 replica: ±1 for the BOC(1,1) approximation
     # and the multi-level integer approximation of the sqrt-power CBOC amplitudes
     # for full E1C — so it matches `get_code`'s SIGN, not its (irrational) value.
-    # Sample at the sub-chip rate `fc · subchip_factor` (12.276 MHz for the CBOC
+    # Sample at the sub-chip rate `code_freq · subchip_factor` (12.276 MHz for the CBOC
     # P=12, 2.046 MHz for the BOC(1,1) P=2) so every sample lands on a sub-chip
     # start and the drift-free DDA agrees with `get_code`'s exact floor bit-for-bit.
     for sig in (GalileoE1C(CBOC), GalileoE1C())
         cf = get_chip_rate(sig)
-        fs = cf * sig.lut.subchip_factor
+        sampling_freq = cf * sig.lut.subchip_factor
         # Span several primary periods to cross CS25 secondary boundaries,
         # and start past the first period so the secondary index offset is
         # exercised too.
         for (samples, start_phase, prn) in
             ((20000, 0.0, 1), (4000, 3.456, 7), (200, 4092.0 * 3 + 1.5, 12))
             code = zeros(Int8, samples)
-            gen_code!(code, sig, prn, fs, cf, start_phase)
-            phase = (0:samples-1) .* cf ./ fs .+ start_phase
+            gen_code!(code, sig, prn, sampling_freq, cf, start_phase)
+            phase = (0:samples-1) .* cf ./ sampling_freq .+ start_phase
             @test sign.(Int.(code)) == sign.(get_code.(sig, phase, prn))
         end
     end
@@ -143,7 +143,7 @@ end
     # primary period. The fixture spans the full 25-period (100 ms) tiered
     # code, so it exercises the primary memory codes, the CS25 secondary
     # overlay and its transitions, and the BOC(1,1) alignment in one shot.
-    # At `sampling_frequency = 12 × code_frequency` the primary-chip and BOC
+    # At `sampling_freq = 12 × code_freq` the primary-chip and BOC
     # half-cycle boundaries are both sample-aligned, so the comparison is
     # bit-exact.
     #

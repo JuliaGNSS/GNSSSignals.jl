@@ -167,14 +167,14 @@ function _signal_output_checksum(signal)
     chip_rate = get_chip_rate(signal)
     P = signal.lut.subchip_factor
     acc = UInt64(0)
-    for kind in (:gen, :engine), (fs_multiple, prn) in ((1.3, 1), (2.7, 2), (5.1, 1)),
+    for kind in (:gen, :engine), (sampling_freq_multiple, prn) in ((1.3, 1), (2.7, 2), (5.1, 1)),
         start_phase in (0.0, 0.37, 123.81)
 
-        fs = fs_multiple * P * chip_rate
+        sampling_freq = sampling_freq_multiple * P * chip_rate
         output = if kind === :gen
-            gen_code(3000, signal, prn, fs, chip_rate + 1234.5Hz, start_phase)
+            gen_code(3000, signal, prn, sampling_freq, chip_rate + 1234.5Hz, start_phase)
         else
-            engine = GNSSSignals.code_engine(signal, prn, fs, chip_rate - 77Hz; start_phase)
+            engine = GNSSSignals.code_engine(signal, prn, sampling_freq, chip_rate - 77Hz; start_phase)
             first_fill, second_fill = zeros(Int8, 1700), zeros(Int8, 1300)
             state = gen_code!(first_fill, engine, GNSSSignals.code_state(engine))
             gen_code!(second_fill, engine, state)

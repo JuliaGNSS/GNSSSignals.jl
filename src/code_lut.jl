@@ -4,9 +4,9 @@
 # Vendors the GNSSSignalsLUT.jl machinery as the internal submodule `CodeLUT` and adds a thin
 # adapter at GNSSSignals top level: `gen_code!(out::Vector{Int8}, signal, prn, …)` (resamples PRN
 # `prn`'s baked column of the signal's embedded `SignalLUT`), the continuing immutable
-# [`code_engine`](@ref)`(signal, prn, fs, fc)` → [`CodeFillEngine`](@ref) / [`code_state`](@ref) /
+# [`code_engine`](@ref)`(signal, prn, sampling_freq, code_freq)` → [`CodeFillEngine`](@ref) / [`code_state`](@ref) /
 # value-threaded `gen_code!(out, eng, st)`, and the fused value-based
-# [`code_engine`](@ref)`(signal, prn, fs, fc, Val(K))`. All read `signal.lut`.
+# [`code_engine`](@ref)`(signal, prn, sampling_freq, code_freq, Val(K))`. All read `signal.lut`.
 #
 # The resampler bakes the BOC/TMBOC subcarrier (and short secondary codes) into an expanded Int8
 # table and resamples it with a single AVX-512 `vpermb` / AVX2 `vpshufb` sliding-window permute over
@@ -16,7 +16,7 @@
 # approximation of the sqrt-power amplitudes for CBOC (Galileo E1B). Sine BOC(m,n) is baked at
 # 2m/n sub-chips per chip, cosine BOC(m,n) at 4m/n quarter-sub-chips (the quarter-period shift
 # halves the grid); a BOC whose count is not a whole number cannot be baked. Requires sub-chip
-# oversampling (`sampling_frequency ≥ code_frequency · subchip_factor`).
+# oversampling (`sampling_freq ≥ code_freq · subchip_factor`).
 # ─────────────────────────────────────────────────────────────────────────────
 
 include("code_lut/CodeLUT.jl")
@@ -63,15 +63,15 @@ end
 # Split a real primary-chip start phase into the sub-chip integer offset `θ_int` and the
 # fixed-point fractional sub-chip residual `rem0 ∈ [0, step_den)` the kernels consume.
 #
-#   eff_chips = start_phase + start_index_shift·fc/fs   (real primary chips)
+#   eff_chips = start_phase + start_index_shift·code_freq/sampling_freq   (real primary chips)
 #   θ         = eff_chips · P                            (real sub-chips)
 #   θ_int     = floor(θ)                                 → kernel phase offset (does mod L)
 #   rem0      = round((θ − θ_int)·step_den)              ∈ [0, step_den)
 #
 # `floor` (not round) keeps the fractional part in [0,1) for negative phases too; the rounding
 # edge (rem0 == step_den) carries into θ_int. Sub-sample phase has 2^-30-sub-chip precision.
-@inline function _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, step_den::Int)
-    θ = (start_phase + start_index_shift * fc / fs) * P
+@inline function _subchip_phase_split(start_phase, start_index_shift, code_freq, sampling_freq, P, step_den::Int)
+    θ = (start_phase + start_index_shift * code_freq / sampling_freq) * P
     θ_int = floor(Int, θ)
     rem0 = round(Int, (θ - θ_int) * step_den)
     if rem0 >= step_den
@@ -82,20 +82,20 @@ end
 end
 
 # Shared preamble of the three LUT resample paths (`_gen_code_lut_core!`, `code_engine`,
-# `code_engine(…, Val(K))`): applies the `fs ≥ fc·P` guard and splits the start phase via
+# `code_engine(…, Val(K))`): applies the `sampling_freq ≥ code_freq·P` guard and splits the start phase via
 # `_subchip_phase_split`. Sharing it keeps the guard and phase convention identical, so gen_code!
 # and code_engine stay byte-for-byte equivalent (#131). `what` names the caller in the error and
 # `hint` is an optional trailing redirect. (`_STEP_DEN` is the DDA denominator every path's
 # `_fixed_point_step` also returns.)
 @inline function _lut_resample_setup(
-    mc::CodeLUT.ModulatedCode, fs::Float64, fc::Float64, start_phase, start_index_shift::Integer;
+    mc::CodeLUT.ModulatedCode, sampling_freq::Float64, code_freq::Float64, start_phase, start_index_shift::Integer;
     what::AbstractString, hint::AbstractString = "",
 )
     P = mc.subchip_factor
-    fs < fc * P && error(
-        "$what needs sampling_frequency ≥ code_frequency·subchip_factor (=$(fc * P) Hz)$hint.",
+    sampling_freq < code_freq * P && error(
+        "$what needs sampling_freq ≥ code_freq·subchip_factor (=$(code_freq * P) Hz)$hint.",
     )
-    _subchip_phase_split(start_phase, start_index_shift, fc, fs, P, CodeLUT._STEP_DEN)
+    _subchip_phase_split(start_phase, start_index_shift, code_freq, sampling_freq, P, CodeLUT._STEP_DEN)
 end
 
 # Map a GNSSSignals modulation to a CodeLUT modulation. ±1 for BPSK/BOCsin/BOCcos/TMBOC; CBOC
@@ -287,11 +287,11 @@ Generate a sampled code signal for a given PRN.
 Allocates a new `Vector{Int8}` of `num_samples` samples. Thin wrapper over the in-place
 [`gen_code!`](@ref); see it for the Int8 output semantics (±1, or the CBOC integer
 approximation), fractional-phase support, and the
-`sampling_frequency ≥ code_frequency · subchip_factor` requirement.
+`sampling_freq ≥ code_freq · subchip_factor` requirement.
 
 # Arguments
-- `sampling_frequency`: Sampling frequency (must be ≥ code frequency · subchip_factor)
-- `code_frequency`: Code frequency the replica runs at (default: [`get_chip_rate`](@ref))
+- `sampling_freq`: Sampling frequency (must be ≥ code frequency · subchip_factor)
+- `code_freq`: Code frequency the replica runs at (default: [`get_chip_rate`](@ref))
 - `start_phase`: Initial code phase in chips (default: 0.0)
 - `start_index`: Index offset (default: 0)
 
@@ -307,18 +307,18 @@ function gen_code(
     num_samples::Integer,
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency = get_chip_rate(signal),
+    sampling_freq::Frequency,
+    code_freq::Frequency = get_chip_rate(signal),
     start_phase = 0.0,
     start_index::Integer = 0,
 )
     code = zeros(Int8, num_samples)
-    gen_code!(code, signal, prn, sampling_frequency, code_frequency, start_phase, start_index)
+    gen_code!(code, signal, prn, sampling_freq, code_freq, start_phase, start_index)
 end
 
 """
-    gen_code!(sampled_code::AbstractVector{Int8}, signal, prn, sampling_frequency,
-              code_frequency = get_chip_rate(signal),
+    gen_code!(sampled_code::AbstractVector{Int8}, signal, prn, sampling_freq,
+              code_freq = get_chip_rate(signal),
               start_phase = 0.0, start_index_shift = 0) -> sampled_code
 
 Generate the sampled spreading code for PRN `prn` of `signal` in-place, by resampling PRN
@@ -348,7 +348,7 @@ per second at 50 MHz. Split constant-rate fills longer than ~1e7 samples into se
 re-anchor each segment via `start_phase`; see the usage docs for an example.
 
 # Requirements
-`sampling_frequency ≥ code_frequency · subchip_factor` (else an error is raised).
+`sampling_freq ≥ code_freq · subchip_factor` (else an error is raised).
 
 # Examples
 ```julia-repl
@@ -361,14 +361,14 @@ function gen_code!(
     sampled_code::AbstractVector{Int8},
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency = get_chip_rate(signal),
+    sampling_freq::Frequency,
+    code_freq::Frequency = get_chip_rate(signal),
     start_phase = 0.0,
     start_index_shift::Integer = 0,
 )
     mc = _modulated_code_view(signal.lut, Int(prn))
     _gen_code_lut_core!(
-        sampled_code, mc, _to_hz(sampling_frequency), _to_hz(code_frequency),
+        sampled_code, mc, _to_hz(sampling_freq), _to_hz(code_freq),
         start_phase, start_index_shift,
     )
 end
@@ -378,18 +378,18 @@ end
 @inline function _gen_code_lut_core!(
     sampled_code::AbstractVector{Int8},
     mc::CodeLUT.ModulatedCode,
-    fs::Float64,
-    fc::Float64,
+    sampling_freq::Float64,
+    code_freq::Float64,
     start_phase,
     start_index_shift::Integer,
 )
-    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift; what = "gen_code!")
+    phase_sub, rem0 = _lut_resample_setup(mc, sampling_freq, code_freq, start_phase, start_index_shift; what = "gen_code!")
     # Parameterless default_backend() const-folds on non-AVX-512 builds; on AVX-512 it is a small
     # Union{AVX512,AVX2,Portable} (runtime Ref read for the #104 demotion), union-split at the
     # barrier below. The table-aware overload would erase even that inference.
     backend = CodeLUT.default_backend()
     CodeLUT.generate_code!(sampled_code, mc;
-        code_frequency = fc, sampling_frequency = fs, phase_sub = phase_sub, rem0 = rem0, backend = backend)
+        code_frequency = code_freq, sampling_frequency = sampling_freq, phase_sub = phase_sub, rem0 = rem0, backend = backend)
     return sampled_code
 end
 
@@ -399,14 +399,14 @@ end
 # `code_engine`; each `gen_code!(out, eng, st)` fills the next `length(out)` samples and returns
 # the advanced state, so consecutive fills concatenate to one big generation. The isbits state
 # keeps the steady-state fill allocation-free. For fused, register-resident correlation use
-# [`code_engine`](@ref)`(signal, prn, fs, fc, Val(K))` / [`code_lookup`](@ref) instead.
+# [`code_engine`](@ref)`(signal, prn, sampling_freq, code_freq, Val(K))` / [`code_lookup`](@ref) instead.
 # ─────────────────────────────────────────────────────────────────────────────
 
 """
     CodeFillEngine
 
 Immutable, loop-invariant LUT code-fill engine built by
-[`code_engine`](@ref)`(signal, prn, fs, fc)`. It holds the backend's resampler config
+[`code_engine`](@ref)`(signal, prn, sampling_freq, code_freq)`. It holds the backend's resampler config
 (precomputed step ratio + DDA deltas), the residual (non-baked) secondary (e.g. GPS L5I's
 NH10), and the initial phase used to seed [`code_state`](@ref).
 
@@ -440,8 +440,8 @@ struct CodeFillState{St}
 end
 
 """
-    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
-                code_frequency = get_chip_rate(signal);
+    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_freq,
+                code_freq = get_chip_rate(signal);
                 start_phase = 0.0, start_index_shift = 0,
                 backend = default_backend()) -> CodeFillEngine
 
@@ -466,23 +466,23 @@ does not support is invalid.
 function code_engine(
     signal::AbstractGNSSSignal,
     prn::Integer,
-    sampling_frequency::Frequency,
-    code_frequency::Frequency = get_chip_rate(signal);
+    sampling_freq::Frequency,
+    code_freq::Frequency = get_chip_rate(signal);
     start_phase = 0.0,
     start_index_shift::Integer = 0,
     backend::CodeLUT.Backend = CodeLUT.default_backend(),
 )
     mc = _modulated_code_view(signal.lut, Int(prn))
-    fc = _to_hz(code_frequency)
-    fs = _to_hz(sampling_frequency)
-    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift;
+    code_freq_hz = _to_hz(code_freq)
+    sampling_freq_hz = _to_hz(sampling_freq)
+    phase_sub, rem0 = _lut_resample_setup(mc, sampling_freq_hz, code_freq_hz, start_phase, start_index_shift;
         what = "code_engine", hint = "; use gen_code! with the signal directly")
     # The parameterless `default_backend()` const-folds on non-AVX-512 builds, else is a small
     # `Union{AVX512,AVX2,Portable}` (runtime Ref read for #104) union-split at the
     # `_wrap_code_fill_engine` barrier; the table-aware overload's length guard is dead code for
     # GNSS codes and would box the engine. `backend` is exposed so tests can force a weaker one.
-    # Resample the baked sub-chip table at fc·P (fixed-point step: one multiply + round).
-    sn, sd = CodeLUT._fixed_point_step((fc * mc.subchip_factor) / fs)
+    # Resample the baked sub-chip table at code_freq·P (fixed-point step: one multiply + round).
+    sn, sd = CodeLUT._fixed_point_step((code_freq_hz * mc.subchip_factor) / sampling_freq_hz)
     engine = CodeLUT.make_fill_engine(mc.table, sn, sd; phase = phase_sub, rem0 = rem0, backend = backend)
     # `mc.secondary` views `signal.lut.secondary`; copy so the engine does not alias it.
     return _wrap_code_fill_engine(engine, collect(mc.secondary), mc.period_subchips, mc.subchip_factor, sn, sd, phase_sub, Int(rem0))
@@ -551,8 +551,8 @@ Initial isbits fill state for `eng` (DDA seeded at the engine's start phase, abs
 @inline CodeLUT.code_state(eng::CodeFillEngine) = CodeFillState(CodeLUT.fill_state(eng.engine), 0)
 
 """
-    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency,
-                code_frequency = get_chip_rate(signal), Val(K);
+    code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_freq,
+                code_freq = get_chip_rate(signal), Val(K);
                 start_phase = 0.0, start_index_shift = 0) -> CodeLUT.CodeEngine
 
 Build a loop-invariant, value-based code engine over PRN `prn` of `signal` for a `K`-way
@@ -561,24 +561,24 @@ apart) and drive each with [`code_lookup`](@ref) / [`code_advance`](@ref); nothi
 materialised or heap-allocated. The code-side counterpart to SinCosLUT's `carrier_engine`. Same
 oversampling requirement, fractional sub-chip phase support, and `2^-30` rate quantization
 (drift ≤ `N · 2^-31` sub-chips over `N` samples) as [`gen_code!`](@ref). A non-baked secondary
-(e.g. GPS L5I's NH10) or `sampling_frequency < code_frequency·subchip_factor` raises an error
+(e.g. GPS L5I's NH10) or `sampling_freq < code_freq·subchip_factor` raises an error
 (use [`gen_code!`](@ref) / [`code_engine`](@ref) without `Val(K)` instead).
 """
-function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency::Frequency, code_frequency::Frequency, ::Val{K};
+function code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_freq::Frequency, code_freq::Frequency, ::Val{K};
                      start_phase = 0.0, start_index_shift::Integer = 0) where {K}
     mc = _modulated_code_view(signal.lut, Int(prn))
-    fc = _to_hz(code_frequency)
-    fs = _to_hz(sampling_frequency)
-    phase_sub, rem0 = _lut_resample_setup(mc, fs, fc, start_phase, start_index_shift;
+    code_freq_hz = _to_hz(code_freq)
+    sampling_freq_hz = _to_hz(sampling_freq)
+    phase_sub, rem0 = _lut_resample_setup(mc, sampling_freq_hz, code_freq_hz, start_phase, start_index_shift;
         what = "code_engine(…, Val(K))", hint = "; use gen_code! / code_engine without Val(K)")
     any(!=(Int8(1)), mc.secondary) && error(
         "code_engine(…, Val(K)) does not support a non-baked secondary (e.g. GPS L5I NH10); use gen_code! / code_engine without Val(K).",
     )
-    # Resample the baked sub-chip table at fc·P. Parameterless default_backend(): see
+    # Resample the baked sub-chip table at code_freq·P. Parameterless default_backend(): see
     # `_gen_code_lut_core!`; the table-aware overload would box the engine.
-    CodeLUT.code_engine(mc.table, (fc * mc.subchip_factor) / fs, Val(K);
+    CodeLUT.code_engine(mc.table, (code_freq_hz * mc.subchip_factor) / sampling_freq_hz, Val(K);
                         phase = phase_sub, rem0 = rem0, backend = CodeLUT.default_backend())
 end
 
-code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_frequency::Frequency, vk::Val; kwargs...) =
-    code_engine(signal, prn, sampling_frequency, get_chip_rate(signal), vk; kwargs...)
+code_engine(signal::AbstractGNSSSignal, prn::Integer, sampling_freq::Frequency, vk::Val; kwargs...) =
+    code_engine(signal, prn, sampling_freq, get_chip_rate(signal), vk; kwargs...)

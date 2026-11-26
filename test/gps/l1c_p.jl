@@ -77,7 +77,7 @@ end
 @testset "L1C-D / L1C-P sample-stream matches external reference (PRN 1, 12.276 MHz)" begin
     # Independent cross-check against PocketSDR's L1C code generator
     # (primary code, overlay code, and TMBOC sub-carrier modulation).
-    # At `sampling_frequency = 12 × code_frequency` the primary chip
+    # At `sampling_freq = 12 × code_freq` the primary chip
     # boundaries and the BOC sub-carrier half-cycle boundaries both
     # land on sample boundaries, so the comparison is bit-exact.
     #

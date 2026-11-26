@@ -25,8 +25,9 @@
 # table to put every subcarrier edge on its sub-chip grid; for n = 1 it is 2m, even, so every
 # chip starts on a whole subcarrier period and the signs are the same in every chip.
 #
-# Resample at `chip_frequency · P` (the sub-chip rate); this needs `fs ≥ chip_frequency·P`
-# (sub-chip oversampling ≥ 1), the same window-span condition as the plain code.
+# Resample at `code_frequency · P` (the sub-chip rate); this needs
+# `sampling_frequency ≥ code_frequency · P` (sub-chip oversampling ≥ 1), the same
+# window-span condition as the plain code.
 #
 # Secondary codes multiply whole primary periods. A short secondary is *baked* into the
 # table (tile ×Ls); a long one (e.g. L1C-P's 1800-chip overlay) is applied as a per-
@@ -141,7 +142,7 @@ pass). `code_frequency` is the replica's **primary code frequency**; the table i
 """
 struct ModulatedCode{T<:CodeTable,S<:AbstractVector{Int8}}
     table::T
-    subchip_factor::Int        # P: output is resampled at chip_frequency · P
+    subchip_factor::Int        # P: output is resampled at code_frequency · P
     secondary::S               # residual secondary to apply per primary period ([1] if baked/none)
     period_subchips::Int       # sub-chips in one primary period (Lp · P)
 end
@@ -216,9 +217,9 @@ end
 # period, so we negate contiguous sample ranges (vectorisable) rather than multiply per sample.
 # `phase_sub`/`rem0` must match the baked-table lookup, or the sign flip lands on the wrong
 # sample at a period edge.
-function _apply_secondary!(out, mc::ModulatedCode, code_frequency, sampling_frequency, phase_sub,
+function _apply_secondary!(out, mc::ModulatedCode, code_freq, sampling_freq, phase_sub,
                            rem0::_RemT = _RemT(0))
-    sn, sd = _fixed_point_step(code_frequency * mc.subchip_factor / sampling_frequency)
+    sn, sd = _fixed_point_step(code_freq * mc.subchip_factor / sampling_freq)
     _apply_secondary!(out, mc.secondary, mc.period_subchips, sn, sd, Int(phase_sub), Int(rem0), 0)
 end
 
