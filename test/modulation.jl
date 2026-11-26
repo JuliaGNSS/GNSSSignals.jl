@@ -68,20 +68,6 @@
     # At a chip boundary BOC(1,1) = BOC(6,1) = +1, so the two signs give a ± b.
     @test GNSSSignals.get_subcarrier_code(cboc_plus, 0.0) ≈ a + b
     @test GNSSSignals.get_subcarrier_code(cboc_minus, 0.0) ≈ a - b
-
-    # The phase counts code chips whatever the chip rate, so the chip is its floor.
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 1), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCcos(2, 2), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 1), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BOCsin(2, 2), 2.3) == 2
-
-    # Test BPSK floored phase
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BPSK(), 2.3) == 2
-    @test GNSSSignals.get_floored_phase(GNSSSignals.BPSK(), 5.9) == 5
-
-    # Test CBOC floored phase
-    cboc_test = GNSSSignals.CBOC(GNSSSignals.BOCsin(1, 2), GNSSSignals.BOCsin(6, 2), 10 / 11)
-    @test GNSSSignals.get_floored_phase(cboc_test, 2.3) == 2
 end
 
 @testset "TMBOC accessors" begin
@@ -118,21 +104,6 @@ end
               GNSSSignals.get_subcarrier_code(tmboc, 0.0)
         @test GNSSSignals.get_subcarrier_code(tmboc, 33 + 1.1) ==
               GNSSSignals.get_subcarrier_code(tmboc, 1.1)
-    end
-
-    # `get_floored_phase`: integer chip index from a continuous phase.
-    # TMBOC uses the boc1 `n` multiplier (same as CBOC).
-    @testset "get_floored_phase" begin
-        @test GNSSSignals.get_floored_phase(tmboc, 0.0) == 0
-        @test GNSSSignals.get_floored_phase(tmboc, 1.7) == 1
-        @test GNSSSignals.get_floored_phase(tmboc, 32.9) == 32
-        @test GNSSSignals.get_floored_phase(tmboc, 33.0) == 33
-
-        # The phase counts code chips whatever `n` is.
-        boc1_n2 = GNSSSignals.BOCsin(1, 2)
-        boc6_n2 = GNSSSignals.BOCsin(6, 2)
-        tmboc_n2 = GNSSSignals.TMBOC(boc1_n2, boc6_n2, pattern)
-        @test GNSSSignals.get_floored_phase(tmboc_n2, 2.3) == 2
     end
 
     # `get_code_spectrum`: power-weighted mix of the BOC component

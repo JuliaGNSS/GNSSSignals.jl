@@ -1,6 +1,3 @@
-# The chip a phase falls in: the phase counts chips for every modulation.
-get_floored_phase(::Modulation, phase) = floor(Int, phase)
-
 """
 $(SIGNATURES)
 
@@ -49,7 +46,7 @@ end
     code * get_subcarrier_code(modulation, phase)
 
 function get_code(modulation::Union{BOC,BPSK}, signal::AbstractGNSSSignal, phase, prn::Integer)
-    floored_phase = get_floored_phase(modulation, phase)
+    floored_phase = floor(Int, phase)  # the phase counts code chips for every modulation
     primary_length = size(signal.codes, 1)
     sec_len = secondary_code_length(get_secondary_code(signal))
     absolute_chip = mod(floored_phase, primary_length * sec_len)
@@ -95,7 +92,7 @@ Base.@propagate_inbounds function get_code_unsafe(
     phase,
     prn::Integer,
 )
-    floored_phase = get_floored_phase(modulation, phase)
+    floored_phase = floor(Int, phase)  # the phase counts code chips for every modulation
     _modulate_code(modulation, _primary_secondary_code(signal, floored_phase, prn), phase)
 end
 

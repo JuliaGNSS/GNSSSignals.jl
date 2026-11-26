@@ -47,7 +47,8 @@ $(SIGNATURES)
 
 Calculate the spectral power density of a BPSK modulated signal.
 
-Evaluated at baseband frequency `f` for chip rate `chip_rate`.
+Evaluated at baseband frequency `f` for chip rate `chip_rate`, each Unitful or a plain
+number in Hz.
 
 # Examples
 ```julia-repl
@@ -56,16 +57,8 @@ julia> get_code_spectrum_BPSK(1.023MHz, 0kHz)
 9.775171065493646e-7
 ```
 """
-function get_code_spectrum_BPSK(chip_rate::Frequency, f)
-    return get_code_spectrum_BPSK(chip_rate / 1Hz, f)
-end
-function get_code_spectrum_BPSK(chip_rate, f::Frequency)
-    return get_code_spectrum_BPSK(chip_rate, f / 1Hz)
-end
-function get_code_spectrum_BPSK(chip_rate::Frequency, f::Frequency)
-    return get_code_spectrum_BPSK(chip_rate / 1Hz, f / 1Hz)
-end
 function get_code_spectrum_BPSK(chip_rate, f)
+    chip_rate, f = _hz(chip_rate), _hz(f)
     return sinc(f / chip_rate)^2 / chip_rate
 end
 
@@ -75,23 +68,15 @@ $(SIGNATURES)
 Calculate the spectral power density of a sine-phased BOC modulated signal.
 
 Evaluated at baseband frequency `f` for chip rate `chip_rate` and subcarrier frequency
-`subcarrier_frequency`.
+`subcarrier_frequency`, each Unitful or a plain number in Hz.
 
 A chip spans `k = 2 · subcarrier_frequency / chip_rate` subcarrier half-periods, which must
 be a whole number (an `ArgumentError` otherwise). An even `k` puts whole subcarrier periods in
 a chip and nulls the spectrum at `f = 0`; an odd `k` leaves half a period over, so it does not
 (Betz, "Binary Offset Carrier Modulations for Radionavigation", NAVIGATION 48(4), 2001).
 """
-function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
-    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
-end
-function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f::Frequency)
-    return get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f / 1Hz)
-end
-function get_code_spectrum_BOCsin(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
-    return get_code_spectrum_BOCsin(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
-end
 function get_code_spectrum_BOCsin(chip_rate, subcarrier_frequency, f)
+    chip_rate, subcarrier_frequency, f = _hz(chip_rate), _hz(subcarrier_frequency), _hz(f)
     k = _half_periods_per_chip(chip_rate, subcarrier_frequency)
     if iseven(k)
         return ((sinc(f / chip_rate) * tan(pi * f / (2 * subcarrier_frequency)))^2 / chip_rate)
@@ -107,22 +92,14 @@ $(SIGNATURES)
 Calculate the spectral power density of a cosine-phased BOC modulated signal.
 
 Evaluated at baseband frequency `f` for chip rate `chip_rate` and subcarrier frequency
-`subcarrier_frequency`.
+`subcarrier_frequency`, each Unitful or a plain number in Hz.
 
 As for [`get_code_spectrum_BOCsin`](@ref GNSSSignals.get_code_spectrum_BOCsin), a chip must
 span a whole number `k = 2 · subcarrier_frequency / chip_rate` of subcarrier half-periods,
 and an even and an odd `k` take different forms.
 """
-function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f)
-    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f)
-end
-function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f::Frequency)
-    return get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f / 1Hz)
-end
-function get_code_spectrum_BOCcos(chip_rate::Frequency, subcarrier_frequency::Frequency, f::Frequency)
-    return get_code_spectrum_BOCcos(chip_rate / 1Hz, subcarrier_frequency / 1Hz, f / 1Hz)
-end
 function get_code_spectrum_BOCcos(chip_rate, subcarrier_frequency, f)
+    chip_rate, subcarrier_frequency, f = _hz(chip_rate), _hz(subcarrier_frequency), _hz(f)
     k = _half_periods_per_chip(chip_rate, subcarrier_frequency)
     if iseven(k)
         return (2 * sinc(f / chip_rate) * sinpi(f / (4 * subcarrier_frequency))^2 /
@@ -142,3 +119,7 @@ function _half_periods_per_chip(chip_rate, subcarrier_frequency)
         "a BOC chip must span a whole number of subcarrier half-periods; got $k"))
     return k_whole
 end
+
+# A frequency in plain Hz: a Unitful one is converted, a plain number is taken as Hz.
+_hz(x::Frequency) = x / 1Hz
+_hz(x) = x
