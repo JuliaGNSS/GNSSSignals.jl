@@ -2,9 +2,7 @@ module GNSSSignals
 
 using Dates: Dates, DateTime
 using DocStringExtensions
-using FixedPointNumbers
 using SIMD: Vec, vload, vstore, vifelse, shufflevector
-using Statistics
 using Unitful: Frequency, Hz, s, upreferred, ustrip, @u_str
 
 import Base.show

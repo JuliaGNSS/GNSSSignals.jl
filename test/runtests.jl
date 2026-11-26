@@ -1,4 +1,4 @@
-using Test, GNSSSignals, Statistics, Aqua
+using Test, GNSSSignals, Aqua
 import Unitful: Hz, MHz, Frequency
 import GNSSSignals: BOCsin, BOCcos, CBOC, TMBOC
 # The documented API reached qualified, which the tests name throughout.
