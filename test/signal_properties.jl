@@ -23,7 +23,7 @@ end
 @testset "get_code_amplitude is a positive, PRN-independent signal property" begin
     # The amplitude is the RMS of ONE baked column, so it must not be read off a PRN slot
     # the signal leaves undefined: BeiDou B2b_I defines only PRN 6..58 and stores the rest
-    # as an all-zero code, which used to make the whole signal report 0.0 — a divide-by-zero
+    # as an all-zero code, which would make the whole signal report 0.0 — a divide-by-zero
     # for the "divide the correlation by this" contract the accessor documents.
     for S in ALL_SIGNALS
         signal = make_signal(S)
@@ -311,8 +311,8 @@ function _gen_code_oracle(signal, prn, sampling_freq, code_freq, sp, sis, N)
     _gen_code_scalar_oracle(full, sn, sd, rem0, psub, N, collect(Int8, sec), per)
 end
 
-# Assert the embedded gen_code! equals the oracle — byte-exact in BOTH regimes (the exact
-# boundary fill removed the old run-fill's ≤2-sample tolerance).
+# Assert the embedded gen_code! equals the oracle — byte-exact in BOTH regimes: the
+# boundary fill's exact reciprocal leaves no tolerance.
 function _check_gen_code(signal, prn, sampling_freq, code_freq, sp, sis, N)
     out = Vector{Int8}(undef, N)
     gen_code!(out, signal, prn, sampling_freq, code_freq, sp, sis)
@@ -442,8 +442,8 @@ end
 end
 
 @testset "Code generation with large start_phase (no overflow / BoundsError)" begin
-    # Large start_phase values used to overflow the old fixed-point accumulator into negative
-    # indices; the LUT DDA wraps mod table length. Still must run cleanly and match the oracle.
+    # Large start_phase values must not overflow into negative indices: the LUT DDA wraps
+    # modulo the table length. They must run cleanly and match the oracle.
     signal = GPSL1CA()
     sampling_freq = 5.0e6Hz
     code_freq = 1.0230022937236385e6Hz  # Actual value from tracking crash

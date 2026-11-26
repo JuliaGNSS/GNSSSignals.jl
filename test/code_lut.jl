@@ -302,9 +302,8 @@ const _BACKENDS = (CL.Portable(),
         # A fixed-point fractional sub-chip offset `rem0 ∈ [0, 2^_B)` seeds the DDA's running
         # remainder so it tracks the SHIFTED stream `((step_num·n + rem0) >> _B + phase)`. Every
         # backend must match the shifted reference byte-exactly — including the
-        # high-oversampling boundary fill, whose exact reciprocal has no tolerance carve-out
-        # (the old run-fill needed ≤2 samples of slack here). rem0 = 0 ⇒ the original
-        # integer-phase output.
+        # high-oversampling boundary fill, whose exact reciprocal leaves no tolerance.
+        # rem0 = 0 ⇒ the integer-phase output.
         rng = MersenneTwister(123)
         for L in (1023, 257, 64)
             chips = rand(rng, Int8[-1, 1], L); ct = CL.CodeTable(chips)
@@ -363,10 +362,10 @@ const _BACKENDS = (CL.Portable(),
     end
 
     @testset "boundary-fill long fills are exact (no drift, no segmentation cap)" begin
-        # The old run-fill's rounded reciprocal drifted ~1–2 samples per ~10⁵ chips and needed
-        # a per-call accumulator cap (`_RUNFILL_MAXFILL`). The boundary fill's magic-reciprocal
-        # boundaries are exact for any dividend a code period can produce, so a multi-million-
-        # sample fill is byte-identical to the floor reference with no segmentation at all.
+        # A rounded reciprocal would drift ~1–2 samples per ~10⁵ chips and need a per-call
+        # fill cap. The boundary fill's magic-reciprocal boundaries are exact for any dividend
+        # a code period can produce, so a multi-million-sample fill is byte-identical to the
+        # floor reference with no segmentation at all.
         chips = rand(MersenneTwister(7), Int8[-1, 1], 1023); ct = CL.CodeTable(chips)
         for cps in (1 / 8, 0.0613, 1 / 16)    # pow2 (shift path) and fractional (magic path)
             sn = _step_num(cps); n = 5_000_000
@@ -512,16 +511,17 @@ const _BACKENDS = (CL.Portable(),
 
     # ── secondary-code period-walk overflow (issues #102 / #108) ──────────────────────────
     # `_apply_secondary!` walks whole primary periods, negating the samples of periods whose
-    # residual (non-baked) secondary chip is −1. It used to compute the seed `n0·sn` and the
-    # per-period products `T·sd` / `Tn·sd` in native `Int`, which overflows:
+    # residual (non-baked) secondary chip is −1. Computing the seed `n0·sn` and the
+    # per-period products `T·sd` / `Tn·sd` in native `Int` overflows:
     #   #102 (64-bit): once the absolute sample offset n0 exceeds typemax(Int64) ÷ sn (≈ 2^34
     #        for GPS L5I at 20.46 MHz — ~14 min of streaming), n0·sn wraps hugely negative, the
     #        seed period p goes to ≈ −10^6, and the walk spins so long that gen_code! never
     #        returns (and T·sd overflows too, so even a returned result is wrong).
     #   #108 (32-bit): with sd = _STEP_DEN = 2^30, `T·sd` overflows Int32 for any real T ≥ 2
     #        (real T is thousands of sub-chips), so cld(…) turns negative → out-of-bounds writes.
-    # The fix seeds in Int128, re-anchors the phase modulo the secondary period Q = Ls·per so p
-    # stays bounded, and does every per-period product in explicit Int64 (see modulation.jl).
+    # So the walk seeds in Int128, re-anchors the phase modulo the secondary period Q = Ls·per
+    # so p stays bounded, and does every per-period product in explicit Int64 (see
+    # modulation.jl).
     @testset "secondary period-walk overflow (#102 / #108)" begin
         # GPS L5I NH10 residual secondary; primary 10230 chips, P = 1 ⇒ period_subchips = 10230.
         sec = Int8[1, 1, 1, 1, -1, -1, 1, -1, 1, -1]
@@ -1363,11 +1363,11 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Issue #105: the public entry points (`gen_code!` / `gen_code` / `code_engine`) must
-# require `Unitful.Frequency` for `sampling_freq` and `code_freq`. A bare number
-# used to be silently interpreted as Hz — e.g. `code_freq = 1.023` (meaning MHz) became
-# 1.023 Hz, passing the sampling_freq≥code_freq·P guard trivially and returning a constant all-ones buffer
-# (0 chip transitions instead of 511). A bare frequency must raise `MethodError` again.
+# Issue #105: the public entry points (`gen_code!` / `gen_code` / `code_engine`) require
+# `Unitful.Frequency` for `sampling_freq` and `code_freq`. A bare number would be taken as
+# Hz: `code_freq = 1.023` (meaning MHz) would become 1.023 Hz, pass the
+# `sampling_freq ≥ code_freq · P` guard trivially and return a constant all-ones buffer
+# (0 chip transitions instead of 511). A bare frequency raises `MethodError`.
 # ─────────────────────────────────────────────────────────────────────────────
 @testset "issue #105: public API requires Unitful.Frequency" begin
     signal = GPSL1CA(); prn = 1
